@@ -163,6 +163,8 @@ function FQR.dot(mesh, g1::TauGrid, g2::TauGrid)
         return dot(g1.vec, g2.vec)
 end
 
+
+
 if abspath(PROGRAM_FILE) == @__FILE__
 
     

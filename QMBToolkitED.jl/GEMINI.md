@@ -75,7 +75,7 @@ julia --project=docs/ docs/make.jl
 ### Testing
 
 - Tests are located in the `test/` directory, with `runtests.jl` as the main entry point.
-- The tests cover both the fundamental algebraic properties of the fermionic operators and the numerical results of the Anderson Impurity Model, Non-interacting model, Hubbard atom.
+- The tests cover both the fundamental algebraic properties of the fermionic operators and the numerical results of the Anderson Impurity Model, Non-interacting model, Hubbard atom, and Hubbard dimer.
 
 ### Dependencies
 

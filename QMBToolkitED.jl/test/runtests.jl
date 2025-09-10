@@ -162,3 +162,142 @@ end
         @test all(isapprox.(gtau_offdiag, 0.0, atol=1e-9))
     end
 end
+
+@testset "Hubbard Dimer" begin
+    @testset "Non-degenerate Ground State" begin
+        t = 1.0
+        U = 2.0
+        beta = 20.0 # Low temperature for the analytical approximation to be valid
+        n_matsubara = 100
+
+        # Flavors: 0 (site 1, up), 1 (site 1, down), 2 (site 2, up), 3 (site 2, down)
+        # The analytical formula assumes mu=U/2, so we add the on-site energy term -U/2.
+        hopping_str = """
+        0 0 $(-U/2) 0.0
+        1 1 $(-U/2) 0.0
+        2 2 $(-U/2) 0.0
+        3 3 $(-U/2) 0.0
+        0 2 $(-t) 0.0
+        2 0 $(-t) 0.0
+        1 3 $(-t) 0.0
+        3 1 $(-t) 0.0
+        """
+        coulomb_str = """
+        4
+        0 0 1 1 0 $(U) 0.0
+        1 1 0 0 1 $(U) 0.0
+        2 2 3 3 2 $(U) 0.0
+        3 3 2 2 3 $(U) 0.0
+        """
+
+        H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str))
+        evals, evecs = solve_hamiltonian(H)
+
+        # Calculate numerical Green's function
+        # G_11 (site 1 up, site 1 up)
+        iwn, g11_numeric = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 1)
+        # G_12 (site 1 up, site 2 up)
+        _, g12_numeric = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 3)
+
+        # Analytical formula (approximation for large t, low T)
+        c = sqrt(16*t^2 + U^2)
+        c_minus_U = c - U
+        # Note: formula uses a^2, so we calculate that directly
+        a_sq = (32*t^2 + 2*c_minus_U^2) / c_minus_U^2
+        
+        term1_factor = (1 + 4*t / c_minus_U)^2
+        term2_factor = (1 - 4*t / c_minus_U)^2
+
+        # Assuming (-1)^ij in the formula corresponds to (-1)^(i+j) for sites i,j in {1,2}
+        # For G_11, i=j=1, so the sign-changing factor is 1
+        g11_analytical = (1 / (2 * a_sq)) .* (
+            (term1_factor ./ (iwn .+ t .- c/2)) .+
+            (term2_factor ./ (iwn .- t .- c/2)) .+
+            (term1_factor ./ (iwn .- t .+ c/2)) .+
+            (term2_factor ./ (iwn .+ t .+ c/2))
+        )
+
+        # For G_12, i=1, j=2, so the sign-changing factor is -1
+        g12_analytical = (1 / (2 * a_sq)) .* (
+            (-term1_factor ./ (iwn .+ t .- c/2)) .+
+            (term2_factor ./ (iwn .- t .- c/2)) .+
+            (term1_factor ./ (iwn .- t .+ c/2)) .+
+            (-term2_factor ./ (iwn .+ t .+ c/2))
+        )
+        
+        # Using a larger tolerance because the analytical formula is an approximation
+        @test g11_numeric ≈ g11_analytical atol=1e-6
+        @test g12_numeric ≈ g12_analytical atol=1e-6
+    end
+
+    @testset "Almost Degenerate Ground State (t << U)" begin
+        t = 0.001
+        U = 2.0 # U and t are close
+        beta = 20.0 # Low temperature
+        n_matsubara = 100
+
+        # Flavors: 0 (site 1, up), 1 (site 1, down), 2 (site 2, up), 3 (site 2, down)
+        # The analytical formula assumes mu=U/2, so we add the on-site energy term -U/2.
+        hopping_str = """
+        0 0 $(-U/2) 0.0
+        1 1 $(-U/2) 0.0
+        2 2 $(-U/2) 0.0
+        3 3 $(-U/2) 0.0
+        0 2 $(-t) 0.0
+        2 0 $(-t) 0.0
+        1 3 $(-t) 0.0
+        3 1 $(-t) 0.0
+        """
+        coulomb_str = """
+        4
+        0 0 1 1 0 $(U) 0.0
+        1 1 0 0 1 $(U) 0.0
+        2 2 3 3 2 $(U) 0.0
+        3 3 2 2 3 $(U) 0.0
+        """
+
+        H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str))
+        evals, evecs = solve_hamiltonian(H)
+
+        # Calculate numerical Green's function
+        iwn, g11_numeric = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 1)
+        _, g12_numeric = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 3)
+
+        # Analytical formula
+        c = sqrt(16*t^2 + U^2)
+        c_minus_U = c - U
+        a_sq = (32*t^2 + 2*c_minus_U^2) / c_minus_U^2
+        
+        term1_factor = (1 + 4*t / c_minus_U)^2
+        term2_factor = (1 - 4*t / c_minus_U)^2
+
+        # G_11
+        g11_analytical = (1 / (8 * a_sq)) .* (
+            (term1_factor ./ (iwn .+ t .- c/2)) .+
+            (term2_factor ./ (iwn .- t .- U/2)) .+
+            (term1_factor ./ (iwn .- t .+ U/2)) .+
+            (term2_factor ./ (iwn .+ t .+ U/2))
+        ) .+ (3/16) .* (
+            (1 ./ (iwn .+ t .- U/2)) .+
+            (1 ./ (iwn .- t .- U/2)) .+
+            (1 ./ (iwn .- t .+ U/2)) .+
+            (1 ./ (iwn .+ t .+ U/2))
+        )
+
+        # G_12
+        g12_analytical = (1 / (8 * a_sq)) .* (
+            (-term1_factor ./ (iwn .+ t .- c/2)) .+
+            (term2_factor ./ (iwn .- t .- U/2)) .+
+            (term1_factor ./ (iwn .- t .+ U/2)) .+
+            (-term2_factor ./ (iwn .+ t .+ U/2))
+        ) .+ (3/16) .* (
+            (1 ./ (iwn .+ t .- U/2)) .+
+            (-1 ./ (iwn .- t .- U/2)) .+
+            (-1 ./ (iwn .- t .+ U/2)) .+
+            (1 ./ (iwn .+ t .+ U/2))
+        )
+        
+        @test g11_numeric ≈ g11_analytical atol=1e-6
+        @test g12_numeric ≈ g12_analytical atol=1e-6
+    end
+end

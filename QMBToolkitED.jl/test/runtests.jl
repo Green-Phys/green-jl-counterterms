@@ -79,7 +79,7 @@ end
     @test Z ≈ 3.87936702286 atol=1e-6
 end
 
-@testset "Matsubara Green's Function (non-interacting)" begin
+@testset "Non-interacting Model" begin
     # Non-interacting single-site model: H = ϵ c^† c
     ϵ = 0.5
     hopping_str = "0 0 $(ϵ) 0.0"
@@ -89,31 +89,76 @@ end
     evals, evecs = solve_hamiltonian(H)
 
     beta = 10.0
-    n_matsubara = 100
-    iwn, giwn = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 1)
 
-    # Analytical result: G(iω_n) = 1 / (iω_n - ϵ)
-    giwn_analytical = 1 ./ (iwn .- ϵ)
+    @testset "Matsubara" begin
+        n_matsubara = 100
+        iwn, giwn = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 1)
 
-    @test giwn ≈ giwn_analytical atol=1e-9
+        # Analytical result: G(iω_n) = 1 / (iω_n - ϵ)
+        giwn_analytical = 1 ./ (iwn .- ϵ)
+
+        @test giwn ≈ giwn_analytical atol=1e-9
+    end
+
+    @testset "Imaginary-Time" begin
+        n_tau = 100
+        tau_grid, gtau = calculate_green_tau(evals, evecs, annh, beta, n_tau, 1, 1)
+
+        # Analytical result: G(τ) = -exp(-ϵτ) / (1 + exp(-βϵ))
+        Z_analytical = 1 + exp(-beta * ϵ)
+        gtau_analytical = -exp.(-ϵ .* tau_grid) ./ Z_analytical
+
+        @test gtau ≈ gtau_analytical atol=1e-9
+    end
 end
 
-@testset "Imaginary-Time Green's Function (non-interacting)" begin
-    # Non-interacting single-site model: H = ϵ c^† c
-    ϵ = 0.5
-    hopping_str = "0 0 $(ϵ) 0.0"
-    coulomb_str = "0"
+@testset "Hubbard Atom" begin
+    U = 2.0
+    beta = 10.0
+
+    # Hamiltonian H = U * n_up * n_down - (U/2) * (n_up + n_down)
+    # This corresponds to a particle-hole symmetric Hubbard atom at half-filling.
+    hopping_str = """
+    0 0 $(-U/2) 0.0
+    1 1 $(-U/2) 0.0
+    """
+    coulomb_str = """
+    2
+    0 0 1 1 0 $(U) 0.0
+    1 1 0 0 1 $(U) 0.0
+    """
 
     H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str))
     evals, evecs = solve_hamiltonian(H)
 
-    beta = 10.0
-    n_tau = 100
-    tau_grid, gtau = calculate_green_tau(evals, evecs, annh, beta, n_tau, 1, 1)
+    @testset "Matsubara" begin
+        n_matsubara = 100
+        # Test for c_up
+        iwn, giwn = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 1)
 
-    # Analytical result: G(τ) = -exp(-ϵτ) / (1 + exp(-βϵ))
-    Z_analytical = 1 + exp(-beta * ϵ)
-    gtau_analytical = -exp.(-ϵ .* tau_grid) ./ Z_analytical
+        # Analytical result: G(iω_n) = 0.5 * (1/(iω_n + U/2) + 1/(iω_n - U/2))
+        giwn_analytical = 0.5 .* (1 ./ (iwn .+ U/2) .+ 1 ./ (iwn .- U/2))
 
-    @test gtau ≈ gtau_analytical atol=1e-9
+        @test giwn ≈ giwn_analytical atol=1e-9
+
+        # Off-diagonal terms should be zero
+        _, giwn_offdiag = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 2)
+        @test all(isapprox.(giwn_offdiag, 0.0, atol=1e-9))
+    end
+
+    @testset "Imaginary-Time" begin
+        n_tau = 100
+        # Test for c_up
+        tau_grid, gtau = calculate_green_tau(evals, evecs, annh, beta, n_tau, 1, 1)
+
+        # Analytical result derived from the Lehmann representation, consistent with the code's calculation.
+        Z_analytical = 2 * (1 + exp(-beta * U/2))
+        gtau_analytical = -(exp.(-(beta .- tau_grid) .* (U/2)) .+ exp.(-tau_grid .* (U/2))) ./ Z_analytical
+
+        @test gtau ≈ gtau_analytical atol=1e-9
+
+        # Off-diagonal terms should be zero
+        _, gtau_offdiag = calculate_green_tau(evals, evecs, annh, beta, n_tau, 1, 2)
+        @test all(isapprox.(gtau_offdiag, 0.0, atol=1e-9))
+    end
 end

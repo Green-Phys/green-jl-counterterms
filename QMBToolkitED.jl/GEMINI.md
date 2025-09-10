@@ -25,7 +25,7 @@ Text file containing the hopping matrix (H_{ij}). The file must have FLAVORS*FLA
 The non-interacting part of the Hamiltonian reads H = \sum_{ij} H_{ij} c^\dagger_i c_j. The index j runs first.
 
 ### coulomb_tensor_input_file
-Text file containing the Coulomb tensor U_{ijkl}. The Hamiltonian reads H = 0.5 \sum_{ijkl} U_{ijkl} c^\dagger_i c^\dagger_j c_k c_l. One does not have to symmetrize the tensor. The Hamiltonian matrix is constructed following the above definition "literally". The users must make sure that the Coulomb tensor is hermite.
+Text file containing the Coulomb tensor U_{ijkl}. The Hamiltonian reads H = 0.5 \sum_{ijkl} U_{ijkl} c^\dagger_i c^\dagger_j c_k c_l. One does not have to symmetrize the tensor. The Hamiltonian matrix is constructed following the above definition "literally". 
 The first line specifies the number of non-zero elements in the Coulomb tensor. From the second line, each line must contain seven columns.
 
 1st column: the index of non-zero elements in the tensor (from 0 in increasing order),

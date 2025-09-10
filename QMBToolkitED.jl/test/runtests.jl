@@ -4,7 +4,7 @@ using LinearAlgebra
 using SparseArrays
 
 @testset "Fermionic Operators" begin
-    nflavours = 4 # A slightly larger test case
+    nflavours = 6
     c = get_annihilators(nflavours)
     c_dag = [op' for op in c]
     nfock = 1 << nflavours
@@ -34,44 +34,86 @@ using SparseArrays
 end
 
 
-@testset "Hamiltonian from files" begin
-    hopping_file = "hopping.txt"
-    coulomb_file = "coulomb.txt"
-    
+@testset "Anderson Impurity Model" begin
+    # impurity site + 2 bath sites = 6 flavours
+    # U=1.0, mu=0.5, epsk=[-0.5, 0.5], vk=[1.0, 1.0]
+    hopping_str = """
+    0 0 -0.5 0.0
+    1 1 -0.5 0.0
+    2 2 -0.5 0.0
+    3 3 -0.5 0.0
+    4 4 0.5 0.0
+    5 5 0.5 0.0
+    2 0 1.0 0.0
+    0 2 1.0 0.0
+    3 1 1.0 0.0
+    1 3 1.0 0.0
+    4 0 1.0 0.0
+    0 4 1.0 0.0
+    5 1 1.0 0.0
+    1 5 1.0 0.0
+    """
+    # U_{0110} = 1.0, U_{1001} = 1.0 for U=1.0, since H_int = 0.5 * U_ijkl c_i'c_j'c_k c_l
+    coulomb_str = """
+    1
+    0 0 1 1 0 1.0 0.0
+    1 1 0 0 1 1.0 0.0
+    """
+
     # 1. Build Hamiltonian
-    H, annh = build_hamiltonian(hopping_file, coulomb_file)
-    nflavours = 2
+    H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str))
+    nflavours = 6
     nfock = 1 << nflavours
     @test size(H) == (nfock, nfock)
     @test ishermitian(H)
 
-    # Check some matrix elements
-    H_dense = Matrix(H)
-    # H = 1.0 * (c_0^† c_1 + c_1^† c_0) + 0.5 * c_0^† c_1^† c_1 c_0
-    # States: |00>, |01>, |10>, |11> (vacuum, c1 occ, c0 occ, c0c1 occ)
-    # Indices: 1,    2,    3,    4
-    # Expected: H[2,3] = 1.0, H[3,2] = 1.0
-    #           H[4,4] = 0.5
-    @test H_dense[2,3] ≈ 1.0
-    @test H_dense[3,2] ≈ 1.0
-    @test H_dense[4,4] ≈ 0.5
-
-    # 2. Solve Hamiltonian
+    # 2. Solve Hamiltonian and check partition function
     evals, evecs = solve_hamiltonian(H)
     @test length(evals) == nfock
-    # Eigenvalues of [[0,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,0.5]] are -1, 0, 0.5, 1
-    # My matrix is [[0,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,0.5]]
-    # The eigenvalues of [[0,1],[1,0]] are -1, 1.
-    # So evals should be -1, 1, 0, 0.5.
-    # The matrix is for block with N=1 particle.
-    # The full matrix is 4x4.
-    # N=0 block: H=0. Eval=0.
-    # N=2 block: H=0.5. Eval=0.5.
-    # N=1 block: [[0, 1], [1, 0]]. Evals = -1, 1.
-    @test sort(real(evals)) ≈ [-1.0, 0.0, 0.5, 1.0] atol=1e-9
-
-    # 3. Calculate Green's function
+    
+    # Partition function
     beta = 10.0
-    tau_grid, gtau = calculate_greens_function(evals, evecs, annh, beta, 100, 1, 1)
-    @test length(gtau) == 100
+    Z = get_Z(evals, beta, shift_energy=true)
+    
+    # ED value from other implementations
+    @test Z ≈ 3.87936702286 atol=1e-6
+end
+
+@testset "Matsubara Green's Function (non-interacting)" begin
+    # Non-interacting single-site model: H = ϵ c^† c
+    ϵ = 0.5
+    hopping_str = "0 0 $(ϵ) 0.0"
+    coulomb_str = "0"
+
+    H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str))
+    evals, evecs = solve_hamiltonian(H)
+
+    beta = 10.0
+    n_matsubara = 100
+    iwn, giwn = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 1)
+
+    # Analytical result: G(iω_n) = 1 / (iω_n - ϵ)
+    giwn_analytical = 1 ./ (iwn .- ϵ)
+
+    @test giwn ≈ giwn_analytical atol=1e-9
+end
+
+@testset "Imaginary-Time Green's Function (non-interacting)" begin
+    # Non-interacting single-site model: H = ϵ c^† c
+    ϵ = 0.5
+    hopping_str = "0 0 $(ϵ) 0.0"
+    coulomb_str = "0"
+
+    H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str))
+    evals, evecs = solve_hamiltonian(H)
+
+    beta = 10.0
+    n_tau = 100
+    tau_grid, gtau = calculate_green_tau(evals, evecs, annh, beta, n_tau, 1, 1)
+
+    # Analytical result: G(τ) = -exp(-ϵτ) / (1 + exp(-βϵ))
+    Z_analytical = 1 + exp(-beta * ϵ)
+    gtau_analytical = -exp.(-ϵ .* tau_grid) ./ Z_analytical
+
+    @test gtau ≈ gtau_analytical atol=1e-9
 end

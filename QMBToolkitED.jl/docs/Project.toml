@@ -1,5 +1,5 @@
 [deps]
-Documenter = "e-30172f5-a6a5-5a46-863b-614d45cd2de4"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 Plots = "91a5bc22-335c-5ec2-940a-7d28b2623b30"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 QMBToolkitED = { path = ".." }

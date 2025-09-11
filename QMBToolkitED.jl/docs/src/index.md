@@ -6,6 +6,6 @@ This package provides a toolkit for performing exact diagonalization (ED) on qua
 
 ## Getting Started
 
-- **[Installation](@ref)**: Learn how to install the package.
-- **[Usage Example](@ref)**: Walk through a detailed example of calculating the Green's function for a Hubbard dimer.
-- **[API Reference](@ref)**: See the complete list of functions and their documentation.
+- **[Installation](@ref "Installation")**: Learn how to install the package.
+- **[Usage Example](@ref "Usage Example")**: Walk through a detailed example of calculating the Green's function for a Hubbard dimer.
+- **[API Reference](@ref "API")**: See the complete list of functions and their documentation.

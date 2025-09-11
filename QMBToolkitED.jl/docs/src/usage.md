@@ -1,6 +1,6 @@
 # Usage Example: Hubbard Dimer
 
-This example demonstrates how to use `QMBToolkitED.jl` to calculate and plot the Green's function for a Hubbard dimer at half-filling.
+This example demonstrates how to use `QMBToolkitED.jl` to calculate the Green's function for a Hubbard dimer at half-filling.
 
 ## 1. Define the Model
 
@@ -8,8 +8,6 @@ First, we define the parameters for our model. We'll consider the non-degenerate
 
 ```@example usage
 using QMBToolkitED
-using Plots
-using LaTeXStrings
 t = 1.0  # Hopping strength
 U = 2.0  # On-site interaction
 beta = 20.0 # Inverse temperature
@@ -75,27 +73,12 @@ _,        g12_tau = calculate_green_tau(evals, evecs, annh, beta, n_tau, 1, 3);
 
 ## 5. Plot the Results
 
-Finally, we can visualize the results using the `Plots` package.
+Finally, we can visualize the results.
 
 ### Matsubara Green's Function
 
-```@example usage
-# Plot the real and imaginary parts of G(iωₙ)
-p1 = plot(imag.(iwn), real.(g11_matsubara), title=L"G_{11}(i\omega_n)", label="Re", xlabel=L"\omega_n")
-plot!(p1, imag.(iwn), imag.(g11_matsubara), label="Im")
-
-p2 = plot(imag.(iwn), real.(g12_matsubara), title=L"G_{12}(i\omega_n)", label="Re", xlabel=L"\omega_n")
-plot!(p2, imag.(iwn), imag.(g12_matsubara), label="Im")
-
-plot(p1, p2, layout=(1, 2), size=(800, 300))
-```
+![Matsubara Green's Function](assets/matsubara_plot.png)
 
 ### Imaginary-Time Green's Function
 
-```@example usage
-# Plot G(τ)
-p3 = plot(tau_grid, real.(g11_tau), title=L"G_{11}(\tau)", label="", xlabel=L"\tau")
-p4 = plot(tau_grid, real.(g12_tau), title=L"G_{12}(\tau)", label="", xlabel=L"\tau")
-
-plot(p3, p4, layout=(1, 2), size=(800, 300))
-```
+![Imaginary-Time Green's Function](assets/tau_plot.png)

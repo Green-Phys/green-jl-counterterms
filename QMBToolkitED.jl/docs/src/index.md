@@ -1,14 +1,11 @@
-```@meta
-CurrentModule = QMBToolkitED
-```
+# QMBToolkitED.jl
 
-# QMBToolkitED
+Welcome to the documentation for `QMBToolkitED.jl`.
 
-Documentation for [QMBToolkitED](https://github.com/QMBToolkit/QMBToolkitED.jl).
+This package provides a toolkit for performing exact diagonalization (ED) on quantum many-body systems.
 
-```@index
-```
+## Getting Started
 
-```@autodocs
-Modules = [QMBToolkitED]
-```
+- **[Installation](@ref)**: Learn how to install the package.
+- **[Usage Example](@ref)**: Walk through a detailed example of calculating the Green's function for a Hubbard dimer.
+- **[API Reference](@ref)**: See the complete list of functions and their documentation.

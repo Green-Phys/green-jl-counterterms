@@ -1,5 +1,5 @@
 using Pkg
-Pkg.develop(path="..")
+Pkg.develop(path=".")
 
 using QMBToolkitED
 using Plots

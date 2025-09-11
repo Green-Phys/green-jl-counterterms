@@ -6,7 +6,10 @@ This example demonstrates how to use `QMBToolkitED.jl` to calculate and plot the
 
 First, we define the parameters for our model. We'll consider the non-degenerate ground state case where the hopping parameter `t` is significant compared to the on-site interaction `U`.
 
-```julia
+```@example usage
+using QMBToolkitED
+using Plots
+using LaTeXStrings
 t = 1.0  # Hopping strength
 U = 2.0  # On-site interaction
 beta = 20.0 # Inverse temperature
@@ -24,7 +27,7 @@ n_tau = 100 # Number of imaginary time points
 
 We create the hopping matrix and Coulomb tensor as strings. The model is defined at half-filling by setting the on-site energy to `-U/2`.
 
-```julia
+```@example usage
 hopping_str = """
 0 0 $(-U/2) 0.0
 1 1 $(-U/2) 0.0
@@ -52,15 +55,15 @@ H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str));
 
 Next, we diagonalize the Hamiltonian to find its eigenvalues and eigenvectors.
 
-```julia
+```@example usage
 evals, evecs = solve_hamiltonian(H);
 ```
 
 ## 4. Calculate Green's Functions
 
-With the solution, we can now compute the Green's functions in both Matsubara frequency and imaginary time. We'll calculate the on-site (diagonal) Green's function `$G_{11}$` and the inter-site (off-diagonal) Green's function `$G_{12}$`.
+With the solution, we can now compute the Green's functions in both Matsubara frequency and imaginary time. We'll calculate the on-site (diagonal) Green's function `$G_{11}` and the inter-site (off-diagonal) Green's function `$G_{12}`.
 
-```julia
+```@example usage
 # Matsubara Green's function G(iωₙ)
 iwn, g11_matsubara = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 1);
 _,   g12_matsubara = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 3);
@@ -77,9 +80,6 @@ Finally, we can visualize the results using the `Plots` package.
 ### Matsubara Green's Function
 
 ```@example usage
-using Plots
-using LaTeXStrings
-
 # Plot the real and imaginary parts of G(iωₙ)
 p1 = plot(imag.(iwn), real.(g11_matsubara), title=L"G_{11}(i\omega_n)", label="Re", xlabel=L"\omega_n")
 plot!(p1, imag.(iwn), imag.(g11_matsubara), label="Im")
@@ -99,5 +99,3 @@ p4 = plot(tau_grid, real.(g12_tau), title=L"G_{12}(\tau)", label="", xlabel=L"\t
 
 plot(p3, p4, layout=(1, 2), size=(800, 300))
 ```
-
-

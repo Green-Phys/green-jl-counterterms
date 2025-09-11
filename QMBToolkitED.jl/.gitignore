@@ -1,7 +1,3 @@
-*.jl.*.cov
-*.jl.cov
-*.jl.mem
-/docs/Manifest*.toml
-/docs/build/
-/auxiliary/
 .env
+docs/Manifest.toml
+

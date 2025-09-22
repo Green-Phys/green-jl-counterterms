@@ -1,0 +1,13 @@
+name = "NumericsESPRIT"
+uuid = "8057858c-c8fe-4d4f-9972-97ef26a6e9c0"
+authors = ["Yang Yu <yangyu.code@gmail.com> and contributors"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.6.7"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

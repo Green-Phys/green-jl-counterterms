@@ -5,7 +5,7 @@ using Statistics
 export esprit, reconstruct_signal
 
 """
-    esprit(f::AbstractArray{<:Complex}, t::Vector{<:Real}, M::Union{Int, Nothing} = nothing, L_factor::Float64=0.4, tolerance::Float64=1e-15, verbose::Bool=false)
+    esprit(f::AbstractArray{<:Complex}, t::Vector{<:Real}, M::Union{Int, Nothing} = nothing, tolerance::Union{Float64, Nothing}=nothing, L_factor::Float64=0.4, verbose::Bool=false)
 
 Estimate the signal parameters `s` and amplitudes `R` from a signal `f` sampled at times `t`.
 
@@ -17,16 +17,18 @@ This function is a wrapper around `esprit_original` that handles potentially non
 # Arguments
 - `f`: The input signal, a complex-valued array. The first dimension is time.
 - `t`: The time points at which the signal `f` is sampled.
-- `M`: The number of exponential components to estimate (model order). If set to `nothing`, the model order is estimated automatically based on the `tolerance`.
+- `M`: The number of exponential components to estimate (model order). If not provided, it is estimated automatically.
+- `tolerance`: If `M` is `nothing`, this tolerance is used for the `:threshold` method of `M` estimation. If `tolerance` is also `nothing`, a knee-finding algorithm is used.
 - `L_factor`: A factor to determine the size of the covariance matrix, should be in [1/3, 1/2]. Defaults to 0.4.
-- `tolerance`: Tolerance for the automatic estimation of the model order `M`. It is relative to the largest singular value. Defaults to 1e-15.
 - `verbose`: If true, prints warnings and info messages.
 
 # Returns
 - `s`: A vector of complex numbers representing the estimated signal parameters (frequencies and damping factors).
-- `R`: An array of complex numbers representing the amplitudes of each component. The dimensions of `R` will be `(M, size(f)[2:end]...)`.
+- `R`: An array of complex numbers representing the amplitudes of each component.
+- `S`: The singular values of the Hankel matrix.
+- `M_est`: The estimated (or provided) model order.
 """
-function esprit(f::AbstractArray{<:Complex}, t::Vector{<:Real}, M::Union{Int, Nothing} = nothing, L_factor::Float64=0.4, tolerance::Float64=1e-15, verbose::Bool=false)
+function esprit(f::AbstractArray{<:Complex}, t::Vector{<:Real}, M::Union{Int, Nothing} = nothing, tolerance::Union{Float64, Nothing}=nothing, L_factor::Float64=0.4, verbose::Bool=false)
     # check if t is uniformly spaced
     dt = diff(t)
     if maximum(dt) - minimum(dt) > 1e-14
@@ -34,10 +36,10 @@ function esprit(f::AbstractArray{<:Complex}, t::Vector{<:Real}, M::Union{Int, No
             @warn "t is not uniformly spaced, detecting max(dt) - min(dt) = $(maximum(dt) - minimum(dt))"
         end
     end
-    z, R = esprit_original(f, M, L_factor, tolerance, verbose)
+    z, R, S, M_est = esprit_original(f, M, tolerance, L_factor, verbose)
     s = log.(z) / mean(dt)
     R = R.*exp.(-s * t[1])
-    return s, R
+    return s, R, S, M_est
 end
 
 """
@@ -67,26 +69,79 @@ function reconstruct_signal(s::Vector{<:Complex}, R::AbstractArray{<:Complex}, t
     return f_rec
 end
 
-"""
-    esprit_original(f::AbstractArray{<:Complex}, M::Union{Int, Nothing} = nothing, L_factor::Float64=0.4, tolerance::Float64=1e-15, verbose::Bool=false)
+function find_knee(y::Vector{Float64})
+    n = length(y)
+    if n < 2
+        return n
+    end
+    x = 1:n
+    
+    # Points defining the line
+    p1 = [Float64(x[1]), y[1]]
+    p2 = [Float64(x[end]), y[end]]
+    
+    # Vector for the line
+    line_vec = p2 - p1
+    
+    line_vec_norm_sq = sum(line_vec.^2)
+    if line_vec_norm_sq == 0
+        return 1
+    end
 
-The core ESPRIT algorithm implementation.
+    # Find distances
+    distances = zeros(n)
+    for i in 2:(n-1)
+        p_i = [Float64(x[i]), y[i]]
+        p1_to_p_i = p_i - p1
+        area = abs(line_vec[1] * p1_to_p_i[2] - line_vec[2] * p1_to_p_i[1])
+        distances[i] = area
+    end
+    
+    knee_idx = argmax(distances)
+    if distances[knee_idx] == 0
+        return 1 # All points are on the line
+    end
 
-It estimates the parameters of a signal that is a sum of complex exponentials.
-This function assumes a uniformly sampled signal and returns the discrete-time eigenvalues `z` and amplitudes `R`.
+    return knee_idx
+end
 
-# Arguments
-- `f`: The input signal, a complex-valued array. The first dimension is assumed to be the uniformly sampled time series.
-- `M`: The model order (number of exponential components). If set to `nothing`, the model order is estimated automatically based on the `tolerance`.
-- `L_factor`: Factor to determine the size of the Hankel matrix. It is recommended to be in [1/3, 1/2].
-- `tolerance`: Tolerance for the automatic estimation of the model order `M`. It is relative to the largest singular value. Defaults to 1e-15.
-- `verbose`: If true, prints warnings and info messages.
+function find_M_with_exp_decay(S::Vector{Float64})
+    if isempty(S)
+        return 0
+    end
+    
+    logS = log.(S)
+    
+    # Find the knee of the log-plot of singular values
+    knee = find_knee(logS)
+    
+    if knee < 2
+        return knee
+    end
+    
+    # Take S up to the knee
+    S_truncated = S[1:knee]
+    
+    # Calculate the derivative of the log of these singular values
+    dlogS = abs.(diff(log.(S_truncated)))
+    
+    if isempty(dlogS)
+        return 1
+    end
+    
+    # Find where the derivative is significant
+    threshold = maximum(dlogS) / 3.0
+    indices = findall(dlogS .> threshold)
+    
+    if isempty(indices)
+        return 1 # Default to 1 if no significant drop is found
+    end
+    
+    M = last(indices)
+    return M
+end
 
-# Returns
-- `z`: The eigenvalues of the shift operator, which are related to the frequencies of the signal components. These are discrete-time frequencies.
-- `R`: The amplitudes of the signal components.
-"""
-function esprit_original(f::AbstractArray{<:Complex}, M::Union{Int, Nothing} = nothing, L_factor::Float64=0.4, tolerance::Float64=1e-15, verbose::Bool=false)
+function esprit_original(f::AbstractArray{<:Complex}, M::Union{Int, Nothing} = nothing, tolerance::Union{Float64, Nothing}=nothing, L_factor::Float64=0.4, verbose::Bool=false)
     if !(1.0/3.0 <= L_factor <= 1.0/2.0)
         if verbose
             @warn "L_factor should be in [1/3, 1/2] for best results, got L_factor = $L_factor"
@@ -111,18 +166,26 @@ function esprit_original(f::AbstractArray{<:Complex}, M::Union{Int, Nothing} = n
     end
 
     # Perform SVD
-    _, S, W = svd(Y) # Y = U * Diagonal(S) * W'
+    _, S, W = svd(Y, full=false)
     W = conj(W)
 
-    if M === nothing
-        M = sum(S .> tolerance * S[1])
-        if verbose
-            @info "Estimated model order M = $M"
+    M_eff = M
+    if M_eff === nothing
+        if tolerance isa Float64
+            M_eff = sum(S .> tolerance * S[1])
+            if verbose
+                @info "Estimated model order M = $M_eff using threshold method with tolerance $tolerance."
+            end
+        else
+            M_eff = find_M_with_exp_decay(S)
+            if verbose
+                @info "Estimated model order M = $M_eff using exp_decay method."
+            end
         end
     end
 
     # Extract subspaces
-    W_M = @view W[:, 1:M]
+    W_M = @view W[:, 1:M_eff]
     W_0 = @view W_M[1:end-1, :]
     W_1 = @view W_M[2:end, :]
 
@@ -141,7 +204,7 @@ function esprit_original(f::AbstractArray{<:Complex}, M::Union{Int, Nothing} = n
         R = reshape(R, (length(z), original_dim...))
     end
 
-    return z, R
+    return z, R, S, M_eff
 end
 
 end # module NumericsESPRIT

@@ -19,11 +19,8 @@ using Random
         true_R = [R1, R2]
         f = R1 * exp.(s1 * t) + R2 * exp.(s2 * t)
 
-        # ESPRIT parameters
-        M = 2
-
         # Estimate results
-        s_est, R_est, _, _ = esprit(f, t, M)
+        s_est, R_est, _, _ = esprit(f, t)
         f_rec = reconstruct_signal(s_est, R_est, t)
 
         # Sort results for comparison
@@ -152,9 +149,8 @@ using Random
             sorted_true_R = true_R[perm_true]
             sorted_est_R = R_est[perm_est]
 
-            # Compare with a larger tolerance for the noisy case
             @test sorted_est_s ≈ sorted_true_s atol=0.05
-            @test sorted_est_R ≈ sorted_true_R atol=0.2
+            @test sorted_est_R ≈ sorted_true_R atol=0.01
         end
     end
 end

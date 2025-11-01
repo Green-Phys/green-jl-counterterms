@@ -2,7 +2,7 @@ module NumericsESPRIT
 
 using LinearAlgebra
 using Statistics
-export esprit, reconstruct_signal
+export esprit, reconstruct_signal, esprit_original
 
 """
     esprit(f::AbstractArray{<:Complex}, t::Vector{<:Real}, M::Union{Int, Nothing} = nothing, tolerance::Union{Float64, Nothing}=nothing, L_factor::Float64=0.4, verbose::Bool=false)
@@ -166,7 +166,7 @@ function esprit_original(f::AbstractArray{<:Complex}, M::Union{Int, Nothing} = n
     end
 
     # Perform SVD
-    _, S, W = svd(Y, full=false)
+    _, S, W = svd(Y, full=false) # In julia, svd returns U, S, W such that Y = U * Diagonal(S) * W
     W = conj(W)
 
     M_eff = M
@@ -189,7 +189,7 @@ function esprit_original(f::AbstractArray{<:Complex}, M::Union{Int, Nothing} = n
     W_0 = @view W_M[1:end-1, :]
     W_1 = @view W_M[2:end, :]
 
-    # Solve for the shift operator, using least square fit F = pinv(transpose(W_0)) * transpose(W_1)
+    # Solve for the shift operator, using least square fit F = pinv(W_0) * W_1 
     F = W_0 \ W_1
 
     # Find z
@@ -197,7 +197,18 @@ function esprit_original(f::AbstractArray{<:Complex}, M::Union{Int, Nothing} = n
 
     # Find R by solving the linear system
     V = transpose(z).^(0:N-1)
-    R = V \ f
+    # R = inv(V' * V) * V' * f # explicit pseudo-inverse solution
+    # R = pinv(V) * f # using pinv
+    # R = V \ f # lsq solution
+
+    # V_max = diagm(vec(maximum(abs.(V), dims=1))) # scale V to improve conditioning
+    # V_0 = V * inv(V_max)
+    # R = inv(V_max) * inv(V_0' * V_0) * V_0' * f
+
+    V_max = diagm(vec(maximum(abs.(V), dims=1)))
+    V_0 = V * inv(V_max)
+    R_0 = V_0 \ f
+    R = inv(V_max) * R_0
 
     # reshape R to match the input f dimensions
     if length(original_dim) > 0

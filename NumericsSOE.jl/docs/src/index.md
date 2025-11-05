@@ -1,14 +1,14 @@
 ```@meta
-CurrentModule = NumericsESPRIT
+CurrentModule = NumericsSOE
 ```
 
-# NumericsESPRIT
+# NumericsSOE
 
-Documentation for [NumericsESPRIT](https://github.com/yangyu-code/NumericsESPRIT.jl).
+Documentation for [NumericsSOE](https://github.com/QMBToolkit/NumericsSOE.jl).
 
 ```@index
 ```
 
 ```@autodocs
-Modules = [NumericsESPRIT]
+Modules = [NumericsSOE]
 ```

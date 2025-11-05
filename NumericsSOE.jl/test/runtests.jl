@@ -1,8 +1,8 @@
-using NumericsESPRIT
+using NumericsSOE
 using Test
 using Random
 
-@testset "NumericsESPRIT.jl" begin
+@testset "NumericsSOE.jl" begin
     @testset "esprit noiseless" begin
 
         # Create a test signal

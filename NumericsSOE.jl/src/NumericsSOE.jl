@@ -1,4 +1,4 @@
-module NumericsESPRIT
+module NumericsSOE
 
 using LinearAlgebra
 using Statistics
@@ -218,4 +218,4 @@ function esprit_original(f::AbstractArray{<:Complex}, M::Union{Int, Nothing} = n
     return z, R, S, M_eff
 end
 
-end # module NumericsESPRIT
+end # module NumericsSOE

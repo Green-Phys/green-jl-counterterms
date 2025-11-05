@@ -73,6 +73,6 @@ jobs:
         shell: julia --project=docs --color=yes {0}
         run: |
           using Documenter: DocMeta, doctest
-          using NumericsESPRIT
-          DocMeta.setdocmeta!(NumericsESPRIT, :DocTestSetup, :(using NumericsESPRIT); recursive=true)
-          doctest(NumericsESPRIT)
+          using NumericsSOE
+          DocMeta.setdocmeta!(NumericsSOE, :DocTestSetup, :(using NumericsSOE); recursive=true)
+          doctest(NumericsSOE)

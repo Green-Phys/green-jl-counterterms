@@ -1,14 +1,14 @@
-using NumericsESPRIT
+using NumericsSOE
 using Documenter
 
-DocMeta.setdocmeta!(NumericsESPRIT, :DocTestSetup, :(using NumericsESPRIT); recursive=true)
+DocMeta.setdocmeta!(NumericsSOE, :DocTestSetup, :(using NumericsSOE); recursive=true)
 
 makedocs(;
-    modules=[NumericsESPRIT],
+    modules=[NumericsSOE],
     authors="Yang Yu <yangyu.code@gmail.com> and contributors",
-    sitename="NumericsESPRIT.jl",
+    sitename="NumericsSOE.jl",
     format=Documenter.HTML(;
-        canonical="https://yangyu-code.github.io/NumericsESPRIT.jl",
+        canonical="https://yangyu-code.github.io/NumericsSOE.jl",
         edit_link="main",
         assets=String[],
     ),
@@ -18,6 +18,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/yangyu-code/NumericsESPRIT.jl",
+    repo="github.com/QMBToolkit/NumericsSOE.jl",
     devbranch="main",
 )

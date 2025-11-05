@@ -22,7 +22,7 @@ function ESPRIT(; M=nothing, tolerance=nothing, L_factor=0.4, verbose::Bool=fals
 end
 
 # Kernel function for ESPRIT - returns discrete-time eigenvalues
-function _find_discrete_eigenvalues(method::ESPRIT, f::AbstractArray{<:Complex}, t::Vector{<:Real})
+function _find_discrete_eigenvalues(f::AbstractArray{<:Number}, t::Vector{<:Real},method::ESPRIT)
     # This function ignores `t` as ESPRIT assumes uniform sampling.
     f_reshaped = reshape(f, size(f, 1), :)
     N = size(f_reshaped, 1)

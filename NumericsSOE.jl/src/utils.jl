@@ -13,11 +13,11 @@ function _check_uniform_spacing(t::Vector{<:Real}, verbose::Bool)
 end
 
 """
-    reconstruct_signal(s::Vector{<:Complex}, R::AbstractArray{<:Complex}, t::Vector{<:Real})
+    reconstruct_signal(s::Vector{<:Number}, R::AbstractArray{<:Number}, t::Vector{<:Real})
 
 Reconstruct a signal from its estimated parameters `s` and amplitudes `R` at given time points `t`.
 """
-function reconstruct_signal(s::Vector{<:Complex}, R::AbstractArray{<:Complex}, t::Vector{<:Real})
+function reconstruct_signal(s::Vector{<:Number}, R::AbstractArray{<:Number}, t::Vector{<:Real})
     N = length(t)
     M = length(s)
     f_rec = zeros(ComplexF64, (N,size(R)[2:end]...))

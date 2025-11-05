@@ -8,8 +8,6 @@ This method is often more stable than direct inversion but can be slower.
 """
 struct PseudoInverse <: AbstractCoefficientMethod end
 
-function solve_coefficients(method::PseudoInverse, s::Vector{<:Complex}, f::AbstractArray{<:Complex}, t::Vector{<:Real})
-    error("PseudoInverse coefficient solver is not yet implemented.")
-    # The return signature should be: R
-    # R: An array of coefficients with dimensions (length(s), size(f)[2:end]...)
+function _solve_coefficients_kernel(V::AbstractMatrix{<:Number}, f_reshaped::AbstractVecOrMat{<:Number},::PseudoInverse)
+    return V \ f_reshaped
 end

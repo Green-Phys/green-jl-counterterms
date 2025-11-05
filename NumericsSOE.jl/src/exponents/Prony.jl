@@ -24,7 +24,7 @@ function Prony(; M::Int, verbose::Bool=false)
 end
 
 # Kernel function for Prony's method - returns discrete-time eigenvalues
-function _find_discrete_eigenvalues(method::Prony, f::AbstractArray{<:Complex}, t::Vector{<:Real})
+function _find_discrete_eigenvalues(f::AbstractArray{<:Number}, t::Vector{<:Real}, method::Prony)
     error("Prony's method is not yet implemented.")
     # The return signature must be: (z, S, M_est)
     # z:     Vector of discrete-time eigenvalues

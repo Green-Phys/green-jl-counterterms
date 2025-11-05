@@ -1,8 +1,10 @@
-# Gemini Project Context: NumericsESPRIT.jl
+# Gemini Project Context: NumericsSOE.jl
 
 ## Project Overview
 
-This is a Julia package named `NumericsESPRIT`. Based on the file structure and configuration files (`Project.toml`, `Manifest.toml`), it is a software project developed in the Julia programming language. The project is in its early stages, with placeholder source and test files. The purpose of the package is not yet clear from the code, but the name suggests it might be related to numerical algorithms, possibly the ESPRIT algorithm.
+This is a Julia package named `NumericsSOE`. Based on the file structure and configuration files (`Project.toml`, `Manifest.toml`), it is a software project developed in the Julia programming language. The purpose of the package is to solve the Sum-of-Exponentials problem, which involves finding the exponents and coefficients of a signal that is modeled as a sum of complex exponentials.
+
+The package provides several methods for finding the exponents, such as ESPRIT and Prony's method, and methods for finding the coefficients, such as least squares and pseudo-inverse.
 
 ## Building and Running
 

@@ -1,0 +1,3 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+QMBToolkitSOEXCA = "c59e8169-549d-454f-b5d8-07bad43e82a7"

@@ -1,16 +1,16 @@
-export AbstractExponentMethod, AbstractCoefficientMethod, CommonOptions
+export AbstractExponentMethod, AbstractCoefficientMethod, AbstractSOEOutput, SOEOutput, AbstractExponentsOutput
+
+abstract type AbstractSOEOutput end
+abstract type AbstractExponentsOutput end
+
+struct SOEOutput{S, R, E <: AbstractExponentsOutput} <: AbstractSOEOutput
+    s::S
+    R::R
+    exponents_output::E
+end
 
 abstract type AbstractExponentMethod end
 abstract type AbstractCoefficientMethod end
-
-"""
-    CommonOptions
-
-A struct for holding common options across different methods.
-
-# Fields
-- `verbose::Bool`: If true, enables verbose logging and warnings.
-"""
 struct CommonOptions
     verbose::Bool
 end

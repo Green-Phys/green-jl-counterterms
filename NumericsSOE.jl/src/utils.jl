@@ -1,5 +1,23 @@
 export reconstruct_signal
 
+function _estimate_model_order(M::Union{Int, Nothing}, tolerance::Union{Float64, Nothing}, verbose::Bool, S::AbstractVector{<:Real})
+    M_eff = M
+    if M_eff === nothing
+        if tolerance isa Float64
+            M_eff = sum(S .> tolerance * S[1])
+            if verbose
+                @info "Estimated model order M = $M_eff using threshold method with tolerance $tolerance."
+            end
+        else
+            M_eff = _find_M_with_exp_decay(S)
+            if verbose
+                @info "Estimated model order M = $M_eff using exp_decay method."
+            end
+        end
+    end
+    return M_eff
+end
+
 # Internal helper to check for uniform time spacing
 function _check_uniform_spacing(t::Vector{<:Real}, verbose::Bool)
     if length(t) > 1
@@ -10,6 +28,22 @@ function _check_uniform_spacing(t::Vector{<:Real}, verbose::Bool)
             end
         end
     end
+end
+
+function _prepare_signal_for_hankel(f::AbstractArray{<:Number})
+    f_reshaped = reshape(f, size(f, 1), :)  # TODO: there is other ways to arange data for 2+1D signals
+    return f_reshaped
+end
+
+function _hankel_matrix(f_reshaped::AbstractMatrix{<:Number}, L_factor::Float64)
+    N = size(f_reshaped, 1)
+    D = size(f_reshaped, 2)
+    L = Int(floor(L_factor * N)) 
+    Y = zeros(ComplexF64, D * (N - L), L + 1)
+    for i in 1:(L + 1)
+        Y[:, i] = vec(@view f_reshaped[i:(i + N - L - 1),:])
+    end
+    return Y
 end
 
 """
@@ -90,4 +124,13 @@ function _find_M_with_exp_decay(S::Vector{Float64})
     
     M = last(indices)
     return M
+end
+
+function _find_roots_from_companion_matrix(a::AbstractVector{<:Number})
+    C = zeros(ComplexF64, length(a), length(a))
+    for k in 1:length(a)-1
+        C[k+1, k] = 1.0
+    end
+    C[:, end] .= -a
+    return eigvals(C)
 end

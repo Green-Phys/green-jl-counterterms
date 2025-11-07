@@ -1,4 +1,9 @@
-export ESPRIT
+export ESPRIT, ESPRITOutput
+
+struct ESPRITOutput{T_z, T_S} <: AbstractExponentsOutput
+    z::T_z
+    S::T_S
+end
 
 struct ESPRIT <: AbstractExponentMethod
     opts::CommonOptions
@@ -21,43 +26,29 @@ function ESPRIT(; M=nothing, tolerance=nothing, L_factor=0.4, verbose::Bool=fals
     return ESPRIT(opts, M, tolerance, L_factor)
 end
 
-# Kernel function for ESPRIT - returns discrete-time eigenvalues
+# Kernel function for ESPRIT 
 function _find_discrete_eigenvalues(f::AbstractArray{<:Number}, t::Vector{<:Real},method::ESPRIT)
     # This function ignores `t` as ESPRIT assumes uniform sampling.
-    f_reshaped = reshape(f, size(f, 1), :)
-    N = size(f_reshaped, 1)
-    D = size(f_reshaped, 2)
-    L = Int(floor(method.L_factor * N))
+    f_reshaped = _prepare_signal_for_hankel(f)
 
-    Y = zeros(ComplexF64, D * (N - L), L + 1)
-    for i in 1:(L + 1)
-        Y[:, i] = vec(@view f_reshaped[i:(i + N - L - 1),:])
-    end
+    Y = _hankel_matrix(f_reshaped, method.L_factor)
 
     _, S, W = svd(Y, full=false)
-    W = conj(W)
+    W_conj = conj(W)
 
-    M_eff = method.M
-    if M_eff === nothing
-        if method.tolerance isa Float64
-            M_eff = sum(S .> method.tolerance * S[1])
-            if method.opts.verbose
-                @info "Estimated model order M = $M_eff using threshold method with tolerance $(method.tolerance)."
-            end
-        else
-            M_eff = _find_M_with_exp_decay(S)
-            if method.opts.verbose
-                @info "Estimated model order M = $M_eff using exp_decay method."
-            end
-        end
+    M_eff = _estimate_model_order(method.M, method.tolerance, method.opts.verbose, S)
+
+    # check that M_eff is less than the number of singular values
+    if M_eff >= length(S)
+        throw(ArgumentError("Estimated model order M = $M_eff is not less than the number of singular values $(length(S))."))
     end
 
-    W_M = @view W[:, 1:M_eff]
+    W_M = @view W_conj[:, 1:M_eff]
     W_0 = @view W_M[1:end-1, :]
     W_1 = @view W_M[2:end, :]
 
     F = W_0 \ W_1
     z = eigvals(F)
 
-    return z, S, M_eff
+    return ESPRITOutput(z, S)
 end

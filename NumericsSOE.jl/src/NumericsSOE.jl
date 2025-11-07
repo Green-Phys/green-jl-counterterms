@@ -9,6 +9,7 @@ include("utils.jl")
 # Exponent Methods
 include("exponents/ESPRIT.jl")
 include("exponents/Prony.jl")
+include("exponents/PronyTLS.jl") ## TODO: investigate this
 
 # Coefficient Methods
 include("coefficients/LeastSquares.jl")
@@ -16,7 +17,7 @@ include("coefficients/PseudoInverse.jl")
 include("coefficients/LeastSquaresEquilibration.jl")
 include("coefficients/PseudoInverseEquilibration.jl")
 
-export solve, find_exponents, solve_coefficients
+export solve, find_exponents, solve_coefficients, SOEOutput
 export ESPRIT, Prony
 export LeastSquares, PseudoInverse, LeastSquaresEquilibration, PseudoInverseEquilibration
 
@@ -28,12 +29,12 @@ function find_exponents(f::AbstractArray{<:Number}, t::Vector{<:Real}, method::A
     dt = mean(diff(t))
 
     # 2. Dispatch to the method-specific kernel
-    z, S, M_est = _find_discrete_eigenvalues(f, t, method)
+    exponents_output = _find_discrete_eigenvalues(f, t, method)
 
     # 3. Common Post-processing
-    s = log.(z) / dt
+    s = log.(exponents_output.z) / dt
     
-    return s, S, M_est
+    return s, exponents_output
 end
 
 function solve_coefficients(s::Vector{<:Number}, f::AbstractArray{<:Number}, t::Vector{<:Real}, method::AbstractCoefficientMethod=LeastSquares())
@@ -58,9 +59,9 @@ function solve_coefficients(s::Vector{<:Number}, f::AbstractArray{<:Number}, t::
 end
 
 function solve(f::AbstractArray{<:Number}, t::Vector{<:Real}, exponent_method::AbstractExponentMethod=ESPRIT(), coefficient_method::AbstractCoefficientMethod=LeastSquares())
-    s, S, M_est = find_exponents(f, t, exponent_method)
+    s, exponents_output = find_exponents(f, t, exponent_method)
     R = solve_coefficients(s, f, t, coefficient_method)
-    return s, R, S, M_est
+    return SOEOutput(s, R, exponents_output)
 end
 
 end # module NumericsSOE

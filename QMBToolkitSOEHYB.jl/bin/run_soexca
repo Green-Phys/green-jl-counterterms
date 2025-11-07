@@ -1,0 +1,19 @@
+#!/usr/bin/env julia
+
+# Add the project's src directory to the load path
+# This assumes the script is in a `bin` directory at the project root
+push!(LOAD_PATH, joinpath(@__DIR__, "..", "src"))
+
+using QMBToolkitSOEXCA
+
+# Check for command-line arguments
+if length(ARGS) != 1
+    println(stderr, "Usage: ./run_soexca <input_file.toml>")
+    exit(1)
+end
+
+# Get the input file from the command-line arguments
+input_file = ARGS[1]
+
+# Run the solver
+QMBToolkitSOEXCA.run(input_file)

@@ -1,0 +1,1 @@
+# Self-energy diagram topologies and evaluation

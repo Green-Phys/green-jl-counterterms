@@ -14,7 +14,8 @@ and starts the calculation.
 """
 function run(input_file::String)
     # 1. Read the input parameters
-    params = _read_input(input_file)
+    params = read_input(input_file)
+    fill_model_params!(params.model)
 
     # 2. Start the calculation using the parameters
     # welcome message
@@ -22,8 +23,7 @@ function run(input_file::String)
     println("  QMBToolkitSOEXCA Solver Starting Up  ")
     println("========================================")
     println()
-
-    _print_parameters(params)
+    print_parameters(params)
     
     # In the future, you would call your main solver function here, e.g.:
     # solve(params)

@@ -5,8 +5,44 @@ using TOML
 
 Read input parameters from a TOML file.
 """
-function _read_input(file_path::String)
+function read_input(file_path::String)
     dict = TOML.parsefile(file_path)
+
+    # Check for the existence of top-level keys
+    for key in ["model", "solver"]
+        if !haskey(dict, key)
+            println(stderr, "Error: Missing top-level key '", key, "' in input file.")
+            exit(1)
+        end
+    end
+
+    # Check for keys within the [model] section
+    model_keys = ["beta", "hopping_file", "interaction_file", "hybridization_file"]
+    for key in model_keys
+        if !haskey(dict["model"], key)
+            println(stderr, "Error: Missing key '", key, "' in [model] section.")
+            exit(1)
+        end
+    end
+
+    # Check for keys within the [solver] section
+    solver_sub_keys = Dict(
+        "propagator" => ["expansion_order"],
+        "green" => ["expansion_order"],
+        "dlr" => ["lambda", "epsilon"]
+    )
+    for (sub_key, keys) in solver_sub_keys
+        if !haskey(dict["solver"], sub_key)
+            println(stderr, "Error: Missing section '", sub_key, "' in [solver].")
+            exit(1)
+        end
+        for key in keys
+            if !haskey(dict["solver"][sub_key], key)
+                println(stderr, "Error: Missing key '", key, "' in [solver.", sub_key, "].")
+                exit(1)
+            end
+        end
+    end
 
     model_params = ModelParams(
         dict["model"]["beta"],
@@ -14,9 +50,6 @@ function _read_input(file_path::String)
         dict["model"]["interaction_file"],
         dict["model"]["hybridization_file"]
     )
-
-    _fill_model_params!(model_params)
-
 
     propagator_params = PropagatorParams(
         dict["solver"]["propagator"]["expansion_order"]
@@ -45,7 +78,7 @@ end
 
 Print parameters in a formatted way.
 """
-function _print_parameters(params::InputParams)
+function print_parameters(params::InputParams)
     println("="^40)
     println(" Model Parameters")
     println("-"^40)
@@ -55,9 +88,13 @@ function _print_parameters(params::InputParams)
     println("  hybridization_file: ", params.model.hybridization_file)
     println("  n_flavors: ", params.model.n_flavors)
     println("  n_fock: ", params.model.n_fock)
-    println("  evals[1:4]: ", params.model.evals[1:4])
-    println("  Delta[:10, 1, 1]: ", params.model.Delta[1:10, 1, 1])
-    println("  Delta[:10, 1, 2]: ", params.model.Delta[1:10, 1, 2])
+    if length(params.model.evals) >= 4
+        println("  evals[1:4]: ", params.model.evals[1:4])
+    end
+    if size(params.model.Delta, 1) >= 10
+        println("  Delta[:10, 1, 1]: ", params.model.Delta[1:10, 1, 1])
+        println("  Delta[:10, 1, 2]: ", params.model.Delta[1:10, 1, 2])
+    end
     println(" Solver Parameters")
     println("-"^40)
     println("  [propagator]")

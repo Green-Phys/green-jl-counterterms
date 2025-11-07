@@ -3,7 +3,7 @@ using DelimitedFiles
 
 # fill information about hybridization function and local Hamiltonian in ModelParams
 
-function _fill_model_params!(model::ModelParams)
+function fill_model_params!(model::ModelParams)
     ### Load local Hamiltonian data
     H, model.ann_opts = QMBToolkitED.build_hamiltonian(model.hopping_file, model.interaction_file)
     model.n_flavors = length(model.ann_opts)

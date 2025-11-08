@@ -1,6 +1,7 @@
 using QMBToolkitED
 using DelimitedFiles
 using Lehmann
+using LinearAlgebra
 
 """
     create_model_data(model_params::ModelParams)
@@ -10,6 +11,11 @@ This involves reading data from files to construct the Hamiltonian, operators,
 and hybridization function.
 """
 function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
+    ### Load pole energies and hybridizations 
+    poles_energies = readdlm(model_params.poles_energies_file)
+    poles_hybs = readdlm(model_params.poles_hybs_file)
+    poles_energies = vec(poles_energies)
+
     ### Load local Hamiltonian data
     H, ann_opts = QMBToolkitED.build_hamiltonian(model_params.hopping_file, model_params.interaction_file)
     n_flavors = length(ann_opts)
@@ -18,21 +24,33 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
     evals, evecs = QMBToolkitED.solve_hamiltonian(H)
 
     ### Load hybridization function data
-    Delta_data = readdlm(model_params.hybridization_file)
-    @assert size(Delta_data, 2) == 5  # ind_tau, orb_1, orb_2, ReDelta, ImDelta
-    n_orb = Int(maximum(Delta_data[:, 2:3])) + 1
-    n_tau = Int(maximum(Delta_data[:, 1])) + 1
-    @assert size(Delta_data, 1) == n_tau * n_orb * n_orb
+    hyb_data = readdlm(model_params.hybridization_file)
+    @assert size(hyb_data, 2) == 5  # ind_tau, orb_1, orb_2, ReDelta, ImDelta
+    n_orb = Int(maximum(hyb_data[:, 2:3])) + 1
+    n_tau = Int(maximum(hyb_data[:, 1])) + 1
+    @assert size(hyb_data, 1) == n_tau * n_orb * n_orb
     @assert n_orb == n_flavors "Number of orbitals in hybridization function must match number of flavors from local Hamiltonian."
-    delta_flat = Delta_data[:, 4]
-    Delta_permuted = reshape(delta_flat, (n_orb, n_orb, n_tau))
-    Delta = permutedims(Delta_permuted, (3, 2, 1))  # Now Delta[tau, orb_1, orb_2]
+    hyb_flat = hyb_data[:, 4]
+    hyb_permuted = reshape(hyb_flat, (n_orb, n_orb, n_tau))
+    hyb = permutedims(hyb_permuted, (3, 2, 1))  # Now Delta[tau, orb_1, orb_2]
     
     ### Create DLR grid
-    tau_grid_Delta = collect(LinRange(0.0, model_params.beta, n_tau))
+    tau_grid_hyb = collect(LinRange(0.0, model_params.beta, n_tau))
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
+    
+    ### create bare propagator
+    tau_grid = dlr_grid.tau
+    bare_propagator = zeros(Float64, length(tau_grid), n_fock, n_fock)
+    E0 = minimum(evals)
+    evals_shifted = evals .- E0
+    for (k, tau) in enumerate(tau_grid)
+        U_tau = exp.(-tau .* evals_shifted)
+        bare_propagator[k, :, :] = evecs * Diagonal(U_tau) * adjoint(evecs)
+    end
 
     return ModelData(
+        poles_energies,
+        poles_hybs,
         model_params.beta,
         n_flavors,
         n_fock,
@@ -40,9 +58,10 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
         cre_opts,
         evals,
         evecs,
-        Delta,
-        tau_grid_Delta,
-        dlr_grid
+        hyb,
+        tau_grid_hyb,
+        dlr_grid,
+        bare_propagator
     )
 end
 
@@ -52,16 +71,25 @@ end
 Create a `SolverData` object from the `ModelData` and `Params`.
 """
 function create_solver_data(model_data::ModelData)
-    Delta_dlr = tau2dlr(model_data.dlr_grid, model_data.Delta, model_data.tau_grid_Delta)
-    Delta_reconstructed = dlr2tau(model_data.dlr_grid, Delta_dlr, model_data.tau_grid_Delta)
-    abs_diff = maximum(abs.(Delta_reconstructed .- model_data.Delta))
+    # Convert hybridization function to DLR representation
+    hyb_dlr = tau2dlr(model_data.dlr_grid, model_data.hyb, model_data.tau_grid_hyb)
+    hyb_reconstructed = dlr2tau(model_data.dlr_grid, hyb_dlr, model_data.tau_grid_hyb)
+    hyb_error = maximum(abs.(hyb_reconstructed .- model_data.hyb))
+    
+    # Convert bare propagator e^{-tau H} to DLR representation
+    tau_grid = model_data.dlr_grid.tau
+    bare_propagator_dlr = tau2dlr(model_data.dlr_grid, model_data.bare_propagator, tau_grid)
+    bare_propagator_reconstructed = dlr2tau(model_data.dlr_grid, bare_propagator_dlr, tau_grid)
+    bare_propagator_err = maximum(abs.(bare_propagator_reconstructed .- model_data.bare_propagator))
+
     calculation_data = CalculationData(
-        abs_diff,
-        Delta_dlr,
-        zeros(Float64, size(Delta_dlr)),
-        zeros(Float64, size(Delta_dlr)),
-        zeros(Float64, size(Delta_dlr)),
-        zeros(Float64, size(Delta_dlr))
+        hyb_error,
+        bare_propagator_err,
+        hyb_dlr,
+        zeros(Float64, size(hyb_dlr)),
+        bare_propagator_dlr,
+        bare_propagator_dlr,
+        zeros(Float64, size(hyb_dlr))
     )
     return SolverData(model_data, calculation_data)
 end

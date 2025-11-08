@@ -1,4 +1,4 @@
-#!/usr/bin/env julia
+#!/usr/bin/env julia --project=@.
 
 # Add the project's src directory to the load path
 # This assumes the script is in a `bin` directory at the project root

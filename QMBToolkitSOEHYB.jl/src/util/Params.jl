@@ -49,6 +49,8 @@ struct ModelParams
     hopping_file::String
     interaction_file::String
     hybridization_file::String
+    poles_energies_file::String
+    poles_hybs_file::String
 end
 
 """

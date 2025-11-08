@@ -2,7 +2,7 @@
 
 julia_version = "1.12.1"
 manifest_format = "2.0"
-project_hash = "6108f47a29212b5dc19361a1966af4547e60c4f2"
+project_hash = "17861efb4a49f012357547abc91f317901e03be0"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
@@ -47,6 +47,12 @@ version = "1.6.0"
     IntervalSets = "8197267c-284f-5f27-9208-e0e47529a953"
     LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
     StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
+[[deps.DataStructures]]
+deps = ["OrderedCollections"]
+git-tree-sha1 = "e357641bb3e0638d353c4b29ea0e40ea644066a6"
+uuid = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
+version = "0.19.3"
 
 [[deps.Dates]]
 deps = ["Printf"]
@@ -201,10 +207,22 @@ uuid = "1d152fa9-cea6-4728-9c5c-b50c1b54dcac"
 version = "1.0.0-DEV"
 
 [[deps.QMBToolkitSOEXCA]]
-deps = ["Lehmann"]
+deps = ["DelimitedFiles", "Lehmann", "LinearAlgebra", "QMBToolkitED", "QuadGK", "SparseArrays", "TOML"]
 path = "."
 uuid = "c59e8169-549d-454f-b5d8-07bad43e82a7"
 version = "1.0.0-DEV"
+
+[[deps.QuadGK]]
+deps = ["DataStructures", "LinearAlgebra"]
+git-tree-sha1 = "9da16da70037ba9d701192e27befedefb91ec284"
+uuid = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
+version = "2.11.2"
+
+    [deps.QuadGK.extensions]
+    QuadGKEnzymeExt = "Enzyme"
+
+    [deps.QuadGK.weakdeps]
+    Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 
 [[deps.Quadmath]]
 deps = ["Compat", "Printf", "Random", "Requires"]

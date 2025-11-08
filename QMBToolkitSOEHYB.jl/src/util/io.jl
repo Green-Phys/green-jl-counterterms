@@ -1,5 +1,6 @@
 using TOML
 using Lehmann
+using Printf
 
 """
     read_input(file_path::String)
@@ -19,7 +20,9 @@ function read_input(file_path::String)
         dict["model"]["beta"],
         dict["model"]["hopping_file"],
         dict["model"]["interaction_file"],
-        dict["model"]["hybridization_file"]
+        dict["model"]["hybridization_file"],
+        dict["model"]["poles_energies_file"],
+        dict["model"]["poles_hybs_file"]
     )
 
     propagator_params = PropagatorParams(
@@ -51,21 +54,21 @@ Print parameters in a formatted way.
 """
 function print_parameters(params::Params)
     println("="^40)
-    println(" Input Parameters")
+    println("Input Parameters")
     println("-"^40)
-    println("  [model]")
-    println("    beta: ", params.model.beta)
-    println("    hopping_file: ", params.model.hopping_file)
-    println("    interaction_file: ", params.model.interaction_file)
-    println("    hybridization_file: ", params.model.hybridization_file)
+    println(" [model]")
+    println("   beta: ", params.model.beta)
+    println("   hopping_file: ", params.model.hopping_file)
+    println("   interaction_file: ", params.model.interaction_file)
+    println("   hybridization_file: ", params.model.hybridization_file)
     println("  [solver]")
-    println("    [propagator]")
-    println("      expansion_order: ", params.solver.propagator.expansion_order)
-    println("    [green]")
-    println("      expansion_order: ", params.solver.green.expansion_order)
-    println("    [dlr]")
-    println("      Euv: ", params.solver.dlr.Euv)
-    println("      rtol: ", params.solver.dlr.rtol)
+    println("   [propagator]")
+    println("     expansion_order: ", params.solver.propagator.expansion_order)
+    println("   [green]")
+    println("     expansion_order: ", params.solver.green.expansion_order)
+    println("   [dlr]")
+    println("     Euv: ", params.solver.dlr.Euv)
+    println("     rtol: ", params.solver.dlr.rtol)
     println("="^40)
 end
 
@@ -76,26 +79,52 @@ Print the contents of a `SolverData` object.
 """
 function print_init_data(solver_data::SolverData)
     println("="^40)
-    println(" Model Data")
+    println("Model Data")
     println("-"^40)
-    println("  n_flavors: ", solver_data.model.n_flavors)
-    println("  n_fock: ", solver_data.model.n_fock)
+    println(" poles energies : ", solver_data.model.poles_energies)
+    println(" poles hybs : ", solver_data.model.poles_hybs)
+    println(" n_flavors: ", solver_data.model.n_flavors)
+    println(" n_fock: ", solver_data.model.n_fock)
+    println(" Local Hamiltonian Eigenvalues (first 4 out of ", length(solver_data.model.evals), "):")
     if length(solver_data.model.evals) >= 4
-        println("  evals[1:4]: ", solver_data.model.evals[1:4])
+        for i in 1:4
+            println("  evals[", i, "]: ", solver_data.model.evals[i])
+        end
     end
-    if size(solver_data.model.Delta, 1) >= 10
-        println("  Delta[:10, 1, 1]: ", solver_data.model.Delta[1:10, 1, 1])
-        println("  Delta[:10, 1, 2]: ", solver_data.model.Delta[1:10, 1, 2])
+    Z_loc = sum(exp.(-solver_data.model.evals .* solver_data.model.beta))
+    Z_poles = compute_Z_noninteracting(solver_data.model.beta, solver_data.model.poles_energies)
+    Z_Bethe = compute_Z_Bethe(solver_data.model.beta)^2
+    remaining_percentage = 100 * (1 - Z_loc / (Z_poles * Z_Bethe))
+    println(" Partition Function for Local Hamiltonian: Z = ", Z_loc)
+    println(" Target impurity partition function for Bethe lattice: Z_Bethe = ", Z_Bethe)
+    println(" Partition function for poles: Z_poles = ", Z_poles)
+    println(" Remaining partition function (%): 1 - Z_loc / (Z_poles * Z_Bethe) = ", @sprintf("%.2f", remaining_percentage), "%")
+    println(" Hybridization Function (first 5 tau slices out of ", size(solver_data.model.hyb, 1), "):")
+    if size(solver_data.model.hyb, 1) >= 5
+        for i in 1:5
+            println("  hyb[", i, ", 1, 1]: ", solver_data.model.hyb[i, 1, 1])
+        end
+    end
+    println(" Bare Propagator (first :5 tau slices out of ", size(solver_data.model.bare_propagator, 1), "):")
+    if size(solver_data.model.bare_propagator, 1) >= 5
+        for i in 1:5
+            println("  bare_propagator[", i, ", 1, 1]: ", solver_data.model.bare_propagator[i, 1, 1])
+        end
     end
     println("-"^40)
-    println(" DLR Data")
+    println("DLR Data")
     println("-"^40)
-    println("  # of DLR coefficients: ", solver_data.model.dlr_grid.size)
-    println("="^40)
+    println(" # of DLR coefficients: ", solver_data.model.dlr_grid.size)
     println(" DLR Grid Points (first 5):")
     for i in 1:min(5, solver_data.model.dlr_grid.size)
         println("  w[", i, "] = ", solver_data.model.dlr_grid.omega[i])
     end
-    println("Maximum reconstruction error in Delta: ", solver_data.calc.Delta_error)
+    println(" # of tau points for DLR grid: ", length(solver_data.model.dlr_grid.tau))
+    println(" DLR Tau Points (last 5):")
+    for i in max(1, length(solver_data.model.dlr_grid.tau)-4):length(solver_data.model.dlr_grid.tau)
+        println("  tau[", i, "] = ", solver_data.model.dlr_grid.tau[i])
+    end
+    println(" Maximum reconstruction error in hybrdization function: ", solver_data.calc.hyb_error)
+    println(" Maximum reconstruction error in bare propagator: ", solver_data.calc.bare_propagator_err)
     println("="^40)
 end

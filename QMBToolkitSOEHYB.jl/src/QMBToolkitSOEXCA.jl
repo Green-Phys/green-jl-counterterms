@@ -5,6 +5,7 @@ include("solver/Data.jl")
 include("util/io.jl")
 include("util/init_data.jl")
 include("util/others.jl")
+include("util//convolution_dlr.jl")
 
 export run
 

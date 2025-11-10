@@ -1,9 +1,15 @@
 name = "QMBToolkitDLR"
 uuid = "88558c09-ce6c-406f-aebb-ec948f67cfc7"
-authors = ["Yang Yu <yangyu.code@gmail.com> and contributors"]
 version = "1.0.0-DEV"
+authors = ["Yang Yu <yangyu.code@gmail.com> and contributors"]
+
+[deps]
+Lehmann = "95bf888a-8996-4655-9f35-1c0506bdfefe"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [compat]
+Lehmann = "0.2.7"
+Printf = "1.11.0"
 julia = "1.6.7"
 
 [extras]

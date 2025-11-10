@@ -5,7 +5,7 @@ using Random
 using Test
 
 function get_noiseless_data()
-    N = 100
+    N = 50
     a = 2.0
     b = 3.0
     t = collect(range(a, stop=b, length=N))
@@ -20,7 +20,7 @@ function get_noiseless_data()
 end
 
 function get_tensor_data()
-    N = 100
+    N = 50
     t = collect(range(0.0, stop=10.0, length=N))
     dims = (2, 3, 4)
     true_s = [0.1 + 2.0im, -0.05 + 5.0im]
@@ -32,7 +32,7 @@ function get_tensor_data()
 end
 
 function get_noisy_data()
-    N = 100
+    N = 50
     t = collect(range(0.0, stop=5.0, length=N))
     true_s = [-0.1 + 4.0im, -0.2 + 8.0im, -0.3 + 12.0im]
     true_R = [1.0 + 0.0im, 0.5 + 0.0im, 0.2 + 0.0im]

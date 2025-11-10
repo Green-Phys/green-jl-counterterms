@@ -35,7 +35,7 @@ function _find_discrete_eigenvalues(f::AbstractArray{<:Number}, t::Vector{<:Real
     Y1 = Y[:, 1:end-1]
     b = -1.0.*Y[:, end]
 
-    U, S, W = svd(Y1, full=false)
+    U, S, V = svd(Y1, full=false)
 
     M_eff = _estimate_model_order(method.M, method.tolerance, method.opts.verbose, S)
 
@@ -47,7 +47,7 @@ function _find_discrete_eigenvalues(f::AbstractArray{<:Number}, t::Vector{<:Real
     # Solve the least squares problem using the truncated SVD components.
     # This is equivalent to a = pinv(Y1_M) * b but more numerically stable.
     # The vector `a` stores the coefficients (a_L, ..., a_1) of the polynomial
-    Y1_M = U[:, 1:M_eff] * Diagonal(S[1:M_eff]) * W[:, 1:M_eff]'
+    Y1_M = U[:, 1:M_eff] * Diagonal(S[1:M_eff]) * V[:, 1:M_eff]'
     a = Y1_M \ b
 
     z_all = _find_roots_from_companion_matrix(a)

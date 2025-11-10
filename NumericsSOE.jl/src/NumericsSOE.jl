@@ -10,6 +10,7 @@ include("utils.jl")
 include("exponents/ESPRIT.jl")
 include("exponents/Prony.jl")
 include("exponents/PronyTLS.jl") ## TODO: investigate this
+include("exponents/MPM.jl")
 
 # Coefficient Methods
 include("coefficients/LeastSquares.jl")
@@ -18,7 +19,7 @@ include("coefficients/LeastSquaresEquilibration.jl")
 include("coefficients/PseudoInverseEquilibration.jl")
 
 export solve, find_exponents, solve_coefficients, SOEOutput
-export ESPRIT, Prony
+export Prony, ESPRIT, MPM
 export LeastSquares, PseudoInverse, LeastSquaresEquilibration, PseudoInverseEquilibration
 
 

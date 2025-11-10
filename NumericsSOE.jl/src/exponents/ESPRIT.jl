@@ -33,8 +33,7 @@ function _find_discrete_eigenvalues(f::AbstractArray{<:Number}, t::Vector{<:Real
 
     Y = _hankel_matrix(f_reshaped, method.L_factor)
 
-    _, S, W = svd(Y, full=false)
-    W_conj = conj(W)
+    _, S, V = svd(Y, full=false) # Y = U * Diagonal(S) * V'
 
     M_eff = _estimate_model_order(method.M, method.tolerance, method.opts.verbose, S)
 
@@ -43,11 +42,12 @@ function _find_discrete_eigenvalues(f::AbstractArray{<:Number}, t::Vector{<:Real
         throw(ArgumentError("Estimated model order M = $M_eff is not less than the number of singular values $(length(S))."))
     end
 
-    W_M = @view W_conj[:, 1:M_eff]
-    W_0 = @view W_M[1:end-1, :]
-    W_1 = @view W_M[2:end, :]
+    V_M = @view V[:, 1:M_eff]
+    V_1 = @view V_M[1:end-1, :]
+    V_2 = @view V_M[2:end, :]
 
-    F = W_0 \ W_1
+    F = V_2' / V_1'  # Solve V_2' = F * V_1' for F
+    @assert size(F, 1) == M_eff && size(F, 2) == M_eff
     z = eigvals(F)
 
     return ESPRITOutput(z, S)

@@ -1,1 +1,1 @@
-# Green's function diagram topologies and evaluation
+# Green's function diagram topologies

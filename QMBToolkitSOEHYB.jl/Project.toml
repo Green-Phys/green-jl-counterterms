@@ -5,9 +5,9 @@ authors = ["Yang Yu <yangyu.code@gmail.com> and contributors"]
 
 [deps]
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
-Lehmann = "95bf888a-8996-4655-9f35-1c0506bdfefe"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+QMBToolkitDLR = "88558c09-ce6c-406f-aebb-ec948f67cfc7"
 QMBToolkitED = "1d152fa9-cea6-4728-9c5c-b50c1b54dcac"
 QuadGK = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
@@ -15,7 +15,6 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 
 [compat]
 DelimitedFiles = "1.9.1"
-Lehmann = "0.2.7"
 LinearAlgebra = "1.12.0"
 Printf = "1.11.0"
 QuadGK = "2.11.2"

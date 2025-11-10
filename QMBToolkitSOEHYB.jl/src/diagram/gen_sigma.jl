@@ -1,1 +1,1 @@
-# Self-energy diagram topologies and evaluation
+# Pseudo-particle self-energy diagram topologies for bold expansion

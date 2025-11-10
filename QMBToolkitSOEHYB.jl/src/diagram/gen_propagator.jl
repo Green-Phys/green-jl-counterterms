@@ -1,0 +1,1 @@
+# Propagator diagram topologies for bare expansion

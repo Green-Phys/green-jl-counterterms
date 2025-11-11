@@ -55,3 +55,18 @@ function do_reflection_dlr(dlr_grid::DLRGrid, H_dlr::Array{Float64,3})
     H_reflected_tau = dlr2tau(dlr_grid, H_dlr, tau_grid_reflected)
     return tau2dlr(dlr_grid, H_reflected_tau, dlr_grid.tau)
 end
+
+
+"""
+    Perform multiplication in DLR representation: H(tau) = F(tau) * G(tau)
+"""
+function do_multiplication_dlr(dlr_grid::DLRGrid, F_dlr::Array{Float64,3}, G_dlr::Array{Float64,3})
+    tau_grid = dlr_grid.tau
+    F_tau = dlr2tau(dlr_grid, F_dlr, tau_grid)
+    G_tau = dlr2tau(dlr_grid, G_dlr, tau_grid)  
+    H_tau = zeros(Float64, length(tau_grid), size(F_dlr, 2), size(G_dlr, 3))
+    for (k, tau) in enumerate(tau_grid)
+        H_tau[k, :, :] = F_tau[k, :, :] * G_tau[k, :, :]
+    end
+    return tau2dlr(dlr_grid, H_tau, tau_grid)
+end

@@ -1,6 +1,5 @@
 using QMBToolkitDLR
 using Test
-using Lehmann
 using Printf
 
 @testset "scalar convolution DLR" begin
@@ -77,4 +76,61 @@ end
     @printf("Matrix Convolution DLR test: ||error||_inf = %.3e, ||error||_2 = %.3e\n", err_inf, err_l2)
     @test err_inf < rtol*100 * maximum(abs.(F_coeffs)) * maximum(abs.(G_coeffs))
     @test err_l2 < rtol*100 * maximum(abs.(F_coeffs)) * maximum(abs.(G_coeffs))
+end
+
+@testset "reflection DLR" begin
+    beta = 10.0
+    Euv = 10.0
+    rtol = 1e-12
+    dlr_grid = DLRGrid(Euv, beta, rtol, true)
+
+    omega_matrix = [0.1234 0.5678; -0.9012 -0.3456] # All positive omegas
+
+    tau_grid = dlr_grid.tau
+    r = length(dlr_grid.omega)
+
+    H_dlr = zeros(Float64, r, 2, 2)
+    for i in 1:2
+        for j in 1:2
+            h_tau = [exp(-omega_matrix[i,j] * tau) for tau in tau_grid]
+            H_dlr[:, i, j] = tau2dlr(dlr_grid, h_tau, tau_grid)
+        end
+    end
+
+    G_dlr = do_reflection_dlr(dlr_grid, H_dlr)
+
+    tau_grid_test = collect(LinRange(0.0, beta, 10000))
+    G_reconstructed_test = dlr2tau(dlr_grid, G_dlr, tau_grid_test)
+    
+    G_analytical_test = zeros(Float64, length(tau_grid_test), 2, 2)
+    for i in 1:2
+        for j in 1:2
+            G_analytical_test[:, i, j] = [exp(-omega_matrix[i,j] * (beta - tau)) for tau in tau_grid_test]
+        end
+    end
+
+    err_inf = maximum(abs.(G_reconstructed_test .- G_analytical_test))
+    err_l2 = sqrt(sum(abs.(G_reconstructed_test .- G_analytical_test).^2) / length(G_analytical_test))
+
+    max_ind = findmax(abs.(G_analytical_test))[2]
+    tau_indx = max_ind[1]
+    @printf("Max value of G analytical: %.3e at tau=%.3e with error %.3e\n", G_analytical_test[tau_indx, max_ind[2], max_ind[3]], tau_grid_test[tau_indx], abs(G_reconstructed_test[tau_indx, max_ind[2], max_ind[3]] - G_analytical_test[tau_indx, max_ind[2], max_ind[3]]))
+    @printf("Reflection DLR test: ||error||_inf = %.3e, ||error||_2 = %.3e\n", err_inf, err_l2)
+    @test err_inf < rtol*100 * maximum(abs.(G_analytical_test))
+    @test err_l2 < rtol*100 * maximum(abs.(G_analytical_test))
+end
+
+@testset "kernel_dlr" begin
+    beta = 10.0
+    tau = 2.0
+    
+    # Test case 1: omega > 0
+    omega1 = 1.5
+    expected1 = exp(-tau * omega1) / (1 + exp(-beta * omega1))
+    @test kernel_dlr(tau, omega1, beta) ≈ expected1
+    
+    # Test case 2: omega < 0
+    omega2 = -1.5
+    expected2 = exp(-(tau - beta) * omega2) / (1 + exp(beta * omega2))
+    @test kernel_dlr(tau, omega2, beta) ≈ expected2
 end

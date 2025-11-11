@@ -46,3 +46,12 @@ function do_convolution_dlr(dlr_grid::DLRGrid, F_dlr::Array{Float64,3}, G_dlr::A
     H_tau = dlr_grid.tau .* H1_tau .+ H2_tau
     return tau2dlr(dlr_grid, H_tau, dlr_grid.tau)
 end
+
+""" 
+    Perform reflection operation: G(tau) = H(beta - tau)
+"""
+function do_reflection_dlr(dlr_grid::DLRGrid, H_dlr::Array{Float64,3})
+    tau_grid_reflected = dlr_grid.beta .- dlr_grid.tau
+    H_reflected_tau = dlr2tau(dlr_grid, H_dlr, tau_grid_reflected)
+    return tau2dlr(dlr_grid, H_reflected_tau, dlr_grid.tau)
+end

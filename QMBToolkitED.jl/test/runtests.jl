@@ -18,7 +18,7 @@ using SparseArrays
         end
     end
 
-    # Test {c_i, c_j_dag} = delta_ij * I
+    # Test {c_i, c_j_dag} = hyb_ij * I
     @testset "Anticommutator {c_i, c_j_dag}" begin
         for i in 1:nflavours
             for j in 1:nflavours

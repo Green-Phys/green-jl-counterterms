@@ -5,24 +5,24 @@ using LinearAlgebra, SparseArrays
 export get_annihilators, build_hamiltonian, solve_hamiltonian, calculate_green_tau, calculate_green_matsubara, get_Z
 
 """
-    get_annihilators(nflavours::Int)
+    get_annihilators(nflavors::Int)
 
-Generate fermionic annihilation operators for a Fock space with `nflavours`.
+Generate fermionic annihilation operators for a Fock space with `nflavors`.
 
 The operators are represented as sparse matrices in the occupation number basis.
-The Fock space is ordered such that the i-th bit of an integer corresponds to the occupation of the i-th state. E.g., for `nflavours = 3`, the state |100> has the first state occupied and the others empty, the corresponding integer (fock_state) is 4.
+The Fock space is ordered such that the i-th bit of an integer corresponds to the occupation of the i-th state. E.g., for `nflavors = 3`, the state |100> has the first state occupied and the others empty, the corresponding integer (fock_state) is 4.
 
 """
-function get_annihilators(nflavours::Int)
-    nfock = 1 << nflavours
+function get_annihilators(nflavors::Int)
+    nfock = 1 << nflavors
 
     # Annihilation operators
-    c = Vector{SparseMatrixCSC{Int8,Int}}(undef, nflavours)
+    c = Vector{SparseMatrixCSC{Int8,Int}}(undef, nflavors)
 
     # Sign for fermionic anti-commutation relations
     sign = ones(Int8, nfock)
 
-    for i in 1:nflavours
+    for i in 1:nflavors
         bitmask = 1 << (i - 1)
 
         # This is exactly half the states, so we can pre-allocate.
@@ -76,10 +76,10 @@ function build_hamiltonian(hopping_matrix_input::Union{String, IO}, coulomb_tens
             max_flavor = max(max_flavor, i, j)
         end
     end
-    nflavours = max_flavor + 1
-    nfock = 1 << nflavours
+    nflavors = max_flavor + 1
+    nfock = 1 << nflavors
 
-    annh = get_annihilators(nflavours)
+    annh = get_annihilators(nflavors)
     
     H_hop = spzeros(ComplexF64, nfock, nfock)
     if !isempty(hopping_lines)
@@ -119,8 +119,8 @@ Diagonalize the Hamiltonian to find eigenvalues and eigenvectors.
 function solve_hamiltonian(H::SparseMatrixCSC)
     H_dense = Matrix(H)
     # Ensure H is treated as Hermitian
-    sol = eigen(Hermitian(H_dense))
-    return sol.values, sol.vectors
+    sol = eigen(Hermitian(H_dense)) 
+    return sol.values, sol.vectors # H = V * Diagonal(values) * V'
 end
 
 """
@@ -143,7 +143,7 @@ end
 Compute an element of the imaginary-time Green's function matrix G(τ).
 Specifically, it calculates -<c_i(τ) c_j^†(0)>.
 """
-function calculate_green_tau(evals::Vector{<:Real}, evecs::Matrix, annh_ops, beta::Real, n_tau::Int, i::Int, j::Int)
+function calculate_green_tau(evals::Vector{Float64}, evecs::Matrix{ComplexF64}, annh_ops::Vector{SparseMatrixCSC{Int8,Int}}, beta::Real, n_tau::Int, i::Int, j::Int)
     # Get annihilation operators for indices i and j
     c_i = annh_ops[i]
     c_j = annh_ops[j]

@@ -41,12 +41,16 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
     ### create bare propagator
     tau_grid = dlr_grid.tau
     bare_propagator = zeros(Float64, length(tau_grid), n_fock, n_fock)
-    E0 = minimum(evals)
-    evals_shifted = evals .- E0
+    E_shift = minimum(evals)
+    evals_shifted = evals .- E_shift
     for (k, tau) in enumerate(tau_grid)
         U_tau = exp.(-tau .* evals_shifted)
         bare_propagator[k, :, :] = evecs * Diagonal(U_tau) * adjoint(evecs)
     end
+
+    ### Derived quantities
+    n_flavors_physical = n_flavors - length(poles_energies)
+    n_fock_physical = 1 << n_flavors_physical
 
     return ModelData(
         poles_energies,
@@ -61,7 +65,10 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
         hyb,
         tau_grid_hyb,
         dlr_grid,
-        bare_propagator
+        bare_propagator,
+        E_shift,
+        n_flavors_physical,
+        n_fock_physical
     )
 end
 
@@ -86,10 +93,10 @@ function create_solver_data(model_data::ModelData)
         hyb_error,
         bare_propagator_err,
         hyb_dlr,
-        zeros(Float64, size(hyb_dlr)),
         bare_propagator_dlr,
-        bare_propagator_dlr,
-        zeros(Float64, size(hyb_dlr))
+        bare_propagator_dlr, # bold propagator 
+        zeros(Float64, (model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock)), # pseudo-particle self-energy
+        zeros(Float64, (model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical)) # physical Green's function
     )
     return SolverData(model_data, calculation_data)
 end

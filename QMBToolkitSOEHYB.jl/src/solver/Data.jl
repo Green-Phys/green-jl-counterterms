@@ -20,6 +20,9 @@ struct ModelData
     tau_grid_hyb::Array{Float64,1}
     dlr_grid::DLRGrid
     bare_propagator::Array{Float64,3}
+    E_shift::Float64
+    n_flavors_physical::Int
+    n_fock_physical::Int
 end
 
 """
@@ -31,10 +34,10 @@ mutable struct CalculationData
     hyb_error::Float64
     bare_propagator_err::Float64
     hyb_dlr::Array{Float64,3}
-    green_dlr::Array{Float64, 3}
     propagator_dlr::Array{Float64, 3}
     bare_propagator_dlr::Array{Float64, 3}
     self_energy_dlr::Array{Float64, 3}
+    green_dlr::Array{Float64, 3}
 end
 
 """

@@ -2,6 +2,7 @@ module QMBToolkitSOEXCA
 
 include("util/Params.jl")
 include("solver/Data.jl")
+include("solver/solver.jl")
 include("util/io.jl")
 include("util/init_data.jl")
 include("util/others.jl")
@@ -34,7 +35,7 @@ function run(input_file::String)
     print_init_data(solver_data)
     
     # In the future, you would call your main solver function here, e.g.:
-    # solve(solver_data, params.solver)
+    solve(solver_data, params.solver)
 end
 
 end

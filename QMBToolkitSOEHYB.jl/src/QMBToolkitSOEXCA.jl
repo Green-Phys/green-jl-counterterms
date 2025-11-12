@@ -6,8 +6,11 @@ include("solver/solver.jl")
 include("util/io.jl")
 include("util/init_data.jl")
 include("util/others.jl")
+include("diagram/DiagramStructure.jl")
+include("diagram/gen_green.jl")
+include("diagram/print_diagram.jl")
 
-export run
+export run, print_diagram
 
 """
     run(input_file::String)

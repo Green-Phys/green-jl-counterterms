@@ -5,20 +5,20 @@
 # Skeleton structure
 
 struct SkeletonNode
-    time_index::UInt # index of the time variable
-    flavor::UInt # spin-orbital index
+    time_index::Int # index of the time variable
+    flavor::Int # spin-orbital index
     is_creation::Bool # true for creation, false for annihilation
     attached_hyb::HybridizationState # can be NoHyb, DeltaHyb, KPlus(l), KMinus(l)
 end
 
 struct SkeletonEdge
-    time_start_index::UInt
-    time_end_index::UInt
+    time_start_index::Int
+    time_end_index::Int
     KPlus_list::Vector{KPlus} # list of KPlus hybridizations along this edge
 end
 
 struct Skeleton
-    n_taus::UInt # at least 2 which are the first index for 0 and the last index for tau or beta
+    n_taus::Int # at least 2 which are the first index for 0 and the last index for tau or beta
     prefactor::Float64
     nodes::Vector{SkeletonNode}
     edges::Vector{SkeletonEdge}

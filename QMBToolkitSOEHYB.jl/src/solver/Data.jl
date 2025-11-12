@@ -25,6 +25,34 @@ struct ModelData
     n_fock_physical::Int
 end
 
+
+mutable struct DLRData
+    vals::Array{Float64,3} # values on the DLR tau grid
+    coeffs::Array{Float64,3}
+
+    # --- Constructors ---
+    
+    function DLRData(vals::Array{Float64,3}, coeffs::Array{Float64,3})
+        return new(vals, coeffs)
+    end
+s
+    function DLRData(r::Int, flavor1::Int, flavor2::Int)
+        vals = zeros(Float64, r, flavor1, flavor2)
+        coeffs = zeros(Float64, r, flavor1, flavor2)
+        return new(vals, coeffs)
+    end
+
+    function DLRData(::Nothing, coeffs::Array{Float64,3})
+        vals = zeros(Float64, size(coeffs))
+        return new(vals, coeffs)
+    end
+
+    function DLRData(vals::Array{Float64,3}, ::Nothing)
+        coeffs = zeros(Float64, size(vals))
+        return new(vals, coeffs)
+    end
+end
+
 """
     CalculationData
 
@@ -33,11 +61,11 @@ Holds the data for the calculation, such as the Green's function, propagator, et
 mutable struct CalculationData
     hyb_error::Float64
     bare_propagator_err::Float64
-    hyb_dlr::Array{Float64,3}
-    propagator_dlr::Array{Float64, 3}
-    bare_propagator_dlr::Array{Float64, 3}
-    self_energy_dlr::Array{Float64, 3}
-    green_dlr::Array{Float64, 3}
+    hyb::DLRData
+    propagator::DLRData
+    bare_propagator::DLRData
+    self_energy::DLRData
+    green::DLRData
 end
 
 """

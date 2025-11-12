@@ -88,21 +88,21 @@ function create_solver_data(model_data::ModelData)
     hyb_dlr = tau2dlr(model_data.dlr_grid, model_data.hyb, model_data.tau_grid_hyb)
     hyb_reconstructed = dlr2tau(model_data.dlr_grid, hyb_dlr, model_data.tau_grid_hyb)
     hyb_error = maximum(abs.(hyb_reconstructed .- model_data.hyb))
+    hyb_tau = dlr2tau(model_data.dlr_grid, hyb_dlr, model_data.dlr_grid.tau)
     
     # Convert bare propagator e^{-tau H} to DLR representation
-    tau_grid = model_data.dlr_grid.tau
-    bare_propagator_dlr = tau2dlr(model_data.dlr_grid, model_data.bare_propagator, tau_grid)
-    bare_propagator_reconstructed = dlr2tau(model_data.dlr_grid, bare_propagator_dlr, tau_grid)
+    bare_propagator_dlr = tau2dlr(model_data.dlr_grid, model_data.bare_propagator, model_data.dlr_grid.tau)
+    bare_propagator_reconstructed = dlr2tau(model_data.dlr_grid, bare_propagator_dlr, model_data.dlr_grid.tau)
     bare_propagator_err = maximum(abs.(bare_propagator_reconstructed .- model_data.bare_propagator))
 
     calculation_data = CalculationData(
         hyb_error,
         bare_propagator_err,
-        hyb_dlr,
-        bare_propagator_dlr,
-        bare_propagator_dlr, # bold propagator 
-        zeros(Float64, (model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock)), # pseudo-particle self-energy
-        zeros(Float64, (model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical)) # physical Green's function
+        DLRData(hyb_tau, hyb_dlr), # hybridization function
+        DLRData(model_data.bare_propagator, bare_propagator_dlr), # bare propagator
+        DLRData(model_data.bare_propagator, bare_propagator_dlr), # bold propagator 
+        DLRData(model_data.dlr_grid.size, model_data.n_flavors,model_data.n_flavors), # pseudo-particle self-energy
+        DLRData(model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical) # physical Green's function
     )
     return SolverData(model_data, calculation_data)
 end

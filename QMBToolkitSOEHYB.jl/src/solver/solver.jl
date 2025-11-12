@@ -7,7 +7,7 @@ function solve(solver_data::SolverData, solver_params::SolverParams)
     calculate_propagator!(solver_data, solver_params)
     calculate_green_function!(solver_data, solver_params)
     uniform_grid = collect(LinRange(0.0, solver_data.model.beta, 1001))
-    green_tau = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.green_dlr, uniform_grid)
+    green_tau = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.green.coeffs, uniform_grid)
     println("Green's function G[1:10, 1,1] at uniform node points:")
     println(green_tau[1:10, 2, 2])
     println("Green's function G[end-9:end, 1,1] at uniform node points:")
@@ -17,12 +17,12 @@ function solve(solver_data::SolverData, solver_params::SolverParams)
 end
 
 function calculate_propagator!(solver_data::SolverData, solver_params::SolverParams)
-    solver_data.calc.propagator_dlr = copy(solver_data.calc.bare_propagator_dlr)
+    solver_data.calc.propagator = solver_data.calc.bare_propagator
 end
 
 function calculate_green_function!(solver_data::SolverData, solver_params::SolverParams)
     # partition function is the trace of the propagator at tau=beta
-    propagator_beta = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.propagator_dlr, [solver_data.model.beta])
+    propagator_beta = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.propagator.coeffs, [solver_data.model.beta])
     Z = tr(propagator_beta[1, :, :])
     println("Partition function Z = ", Z)
     # for i in 1:solver_data.model.n_flavors_physical

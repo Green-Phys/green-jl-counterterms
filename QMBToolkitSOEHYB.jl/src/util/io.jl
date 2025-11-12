@@ -1,6 +1,7 @@
 using TOML
 using QMBToolkitDLR
 using Printf
+using HDF5
 
 """
     read_input(file_path::String)
@@ -18,6 +19,7 @@ function read_input(file_path::String)
 
     model_params = ModelParams(
         dict["model"]["beta"],
+        dict["model"]["file_path"],
         dict["model"]["hopping_file"],
         dict["model"]["interaction_file"],
         dict["model"]["hybridization_file"],
@@ -41,7 +43,8 @@ function read_input(file_path::String)
     solver_params = SolverParams(
         propagator_params,
         green_params,
-        dlr_params
+        dlr_params,
+        dict["solver"]["output_path"]
     )
 
     return Params(model_params, solver_params)
@@ -85,6 +88,8 @@ function print_init_data(solver_data::SolverData)
     println(" poles hybs : ", solver_data.model.poles_hybs)
     println(" n_flavors: ", solver_data.model.n_flavors)
     println(" n_fock: ", solver_data.model.n_fock)
+    println(" n_flavors_physical: ", solver_data.model.n_flavors_physical)
+    println(" n_fock_physical: ", solver_data.model.n_fock_physical)
     println(" Local Hamiltonian Eigenvalues (first 4 out of ", length(solver_data.model.evals), "):")
     if length(solver_data.model.evals) >= 4
         for i in 1:4
@@ -127,4 +132,15 @@ function print_init_data(solver_data::SolverData)
     println(" Maximum reconstruction error in hybrdization function: ", solver_data.calc.hyb_error)
     println(" Maximum reconstruction error in bare propagator: ", solver_data.calc.bare_propagator_err)
     println("="^40)
+end
+
+
+"""
+    Save Green's function to a h5 file.
+"""
+function save_green_function(green_tau::Array{Float64,3}, tau_grid::Array{Float64,1}, file_path::String)
+    h5open(file_path, "w") do file
+        write(file, "green_tau", green_tau)
+        write(file, "tau_grid", tau_grid)
+    end
 end

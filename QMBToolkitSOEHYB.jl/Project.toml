@@ -5,6 +5,7 @@ authors = ["Yang Yu <yangyu.code@gmail.com> and contributors"]
 
 [deps]
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
+HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 QMBToolkitDLR = "88558c09-ce6c-406f-aebb-ec948f67cfc7"
@@ -15,6 +16,7 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 
 [compat]
 DelimitedFiles = "1.9.1"
+HDF5 = "0.17.2"
 LinearAlgebra = "1.12.0"
 Printf = "1.11.0"
 QuadGK = "2.11.2"

@@ -37,6 +37,7 @@ struct SolverParams
     propagator::PropagatorParams
     green::GreenParams
     dlr::DLRParams
+    output_path::String
 end
 
 """
@@ -46,6 +47,7 @@ Parameters for the model.
 """
 struct ModelParams
     beta::Float64
+    file_path::String
     hopping_file::String
     interaction_file::String
     hybridization_file::String

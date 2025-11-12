@@ -11,20 +11,26 @@ This involves reading data from files to construct the Hamiltonian, operators,
 and hybridization function.
 """
 function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
-    ### Load pole energies and hybridizations 
-    poles_energies = readdlm(model_params.poles_energies_file)
-    poles_hybs = readdlm(model_params.poles_hybs_file)
-    poles_energies = vec(poles_energies)
+    ### Load pole energies and hybridizations, the file could be empty
+    poles_energies = Float64[]
+    poles_hybs = zeros(Float64, 0, 0)
+    if isfile(model_params.file_path*model_params.poles_energies_file) && filesize(model_params.file_path*model_params.poles_energies_file) > 0
+        poles_energies = readdlm(model_params.file_path*model_params.poles_energies_file)[:, 1]
+    end
+    if isfile(model_params.file_path*model_params.poles_hybs_file) && filesize(model_params.file_path*model_params.poles_hybs_file) > 0
+        poles_hybs = readdlm(model_params.file_path*model_params.poles_hybs_file)
+        @assert size(poles_hybs, 1) == length(poles_energies) "Number of rows in poles_hybs must match number of pole energies."
+    end
 
     ### Load local Hamiltonian data
-    H, ann_opts = QMBToolkitED.build_hamiltonian(model_params.hopping_file, model_params.interaction_file)
+    H, ann_opts = QMBToolkitED.build_hamiltonian(model_params.file_path*model_params.hopping_file, model_params.file_path*model_params.interaction_file)
     n_flavors = length(ann_opts)
     n_fock = 1 << n_flavors
     cre_opts = [adjoint(c) for c in ann_opts]
     evals, evecs = QMBToolkitED.solve_hamiltonian(H)
 
     ### Load hybridization function data
-    hyb_data = readdlm(model_params.hybridization_file)
+    hyb_data = readdlm(model_params.file_path*model_params.hybridization_file)
     @assert size(hyb_data, 2) == 5  # ind_tau, orb_1, orb_2, ReDelta, ImDelta
     n_orb = Int(maximum(hyb_data[:, 2:3])) + 1
     n_tau = Int(maximum(hyb_data[:, 1])) + 1

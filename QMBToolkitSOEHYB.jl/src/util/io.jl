@@ -12,7 +12,7 @@ function read_input(file_path::String)
     dict = TOML.parsefile(file_path)
 
     @assert dict["model"]["beta"] > 0 "beta must be positive"
-    @assert dict["solver"]["propagator"]["expansion_order"] >= 0 "expansion_order must be non-negative"
+    @assert dict["solver"]["expansion"]["expansion_order"] >= 0 "expansion_order must be non-negative"
     @assert dict["solver"]["green"]["expansion_order"] >= 0 "expansion_order must be non-negative"
     @assert dict["solver"]["dlr"]["rtol"] > 0 "rtol must be positive"
     @assert dict["solver"]["dlr"]["Euv"] > 0 "Euv must be positive"
@@ -27,8 +27,8 @@ function read_input(file_path::String)
         dict["model"]["poles_hybs_file"]
     )
 
-    propagator_params = PropagatorParams(
-        dict["solver"]["propagator"]["expansion_order"]
+    expansion_params = ExpansionParams(
+        dict["solver"]["expansion"]["expansion_order"]
     )
 
     green_params = GreenParams(
@@ -41,7 +41,7 @@ function read_input(file_path::String)
     )
 
     solver_params = SolverParams(
-        propagator_params,
+        expansion_params,
         green_params,
         dlr_params,
         dict["solver"]["output_path"]
@@ -65,8 +65,8 @@ function print_parameters(params::Params)
     println("   interaction_file: ", params.model.interaction_file)
     println("   hybridization_file: ", params.model.hybridization_file)
     println("  [solver]")
-    println("   [propagator]")
-    println("     expansion_order: ", params.solver.propagator.expansion_order)
+    println("   [expansion]")
+    println("     expansion_order: ", params.solver.expansion.expansion_order)
     println("   [green]")
     println("     expansion_order: ", params.solver.green.expansion_order)
     println("   [dlr]")

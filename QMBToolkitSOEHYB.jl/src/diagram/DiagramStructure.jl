@@ -11,7 +11,7 @@
     - Propagator diagram of the bare expansion: L = (M-2)/2
     - Self-energy diagram of the bold expansion: L = (M-2)/2 # there is one undecomposed hybrdization line connected to 0
     - Green's function diagram: L = (M-3)/2
-    We assme each of the L decomposed hybrdization functions can be in r states
+    We assme each of the L decomposed hybrdization functions can be in p states
 """
 
 abstract type HybridizationState end
@@ -21,16 +21,16 @@ mutable struct DeltaHyb <: HybridizationState
     j::Int # flavor index for Delta_{ij} associated with a c_{j}
 end
 mutable struct KPlus <: HybridizationState
-    l::Int # index of the decomposed hybridization function, runs from 1 to L
+    l::Int # index of the decomposed hybridization function, runs from 1 to p
 end
 mutable struct KMinus <: HybridizationState
-    l::Int # index of the decomposed hybridization function, runs from 1 to L
+    l::Int # index of the decomposed hybridization function, runs from 1 to p
 end
 
 mutable struct BackBoneNode
     opt_type::Symbol # :c or :cdag or :empty
     flavor::Union{Int, Nothing} # spin-orbital index associated with the creation or annihilation operator
-    bar_index::Union{Int, Nothing} # can take 1 to r if the operator has bar, otherwise nothing
+    bar_index::Union{Int, Nothing} # can take 1 to p if the operator has bar, otherwise nothing
     attached_hyb::HybridizationState # can be NoHyb, DeltaHyb, KPlus(l), KMinus(l)
 end
 
@@ -39,13 +39,11 @@ mutable struct BackBoneEdge
     attached_hybs::Vector{HybridizationState} # length <=L, each can be KPlus(l) or KMinus(l) with distinct l
 end
 
-struct BackBone 
-    prefactor::Float64 # overall prefactor = sign * 1/[(K_{1}^{\Ksign_{1}})^{Kexp_{1}}...(K_{L}^{K_sign{L}})^{Kexp_{L}}]
-    sign::Float64
-    prefactor_Ksigns::Vector{Int} 
-    prefactor_Kexps::Vector{Int}  
+struct BackBone
+    diagram_type::Symbol # :propagator_diagram, :selfenergy_diagram, :green_diagram
+    sign::Float64 # the overall prefactor is sign * 1/(K_{1}^{sign_{1}}(0))^{Kexp_{1}} * ... * 1/(K_{p}^{sign_{p}}(0))^{Kexp_{p}}; sign_{i} is - if K_exp{i} <=0 else +
+    prefactor_Kexps::Vector{Int} # Length p
     nodes::Vector{BackBoneNode} # length M
     edges::Vector{BackBoneEdge} # length M-1
-    exponentials_index::Vector{Int} # length L, index of the exponentials in the decomposed hybridization functions, runs from 1 to r
 end
 

@@ -64,7 +64,7 @@ mutable struct CalculationData
     hyb::DLRData
     propagator::DLRData
     bare_propagator::DLRData
-    self_energy::DLRData
+    selfenergy::DLRData
     green::DLRData
 end
 

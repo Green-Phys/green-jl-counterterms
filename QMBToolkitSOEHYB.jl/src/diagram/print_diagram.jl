@@ -16,10 +16,11 @@ function format_node(node::BackBoneNode)
 
     # Determine subindex string
     sub = ""
-    if node.bar_index !== nothing
-        sub = "$(node.bar_index)"
-    elseif node.flavor !== nothing
+    if node.flavor !== nothing
         sub = "$(node.flavor)"
+    end
+    if node.bar_index !== nothing
+        sub *= "$(node.bar_index)"
     end
 
     op_part = op * (isempty(sub) ? "" : "_{$sub}")
@@ -48,11 +49,12 @@ function format_hyb(hyb::HybridizationState)
 end
 
 function print_diagram(backbone::BackBone)
-    println("Prefactor: ", backbone.prefactor)
-    println()
+    println("Diagram type: ", backbone.diagram_type)
+    println("Sign: ", backbone.sign)
+    println("Prefactor K exponents: ", backbone.prefactor_Kexps)
 
-    nodes = backbone.nodes
-    edges = backbone.edges
+    nodes = reverse(backbone.nodes)
+    edges = reverse(backbone.edges)
     M = length(nodes)
 
     if M == 0
@@ -90,32 +92,37 @@ function print_diagram(backbone::BackBone)
     end
     
     # Calculate total width needed
-    min_start = 1
-    max_end = 0
+    min_overall_coord = 1 # Initialize with 1, as coordinates are 1-based
+    max_overall_coord = 0
     for i in 1:M
         center = node_center_pos[i]
-        node_s, op_part, hyb_part = node_infos[i]
+        node_s, op_part, _ = node_infos[i]
         
-        align_pos = 1
+        align_pos = 1 # Align first character
         
         start_s = center - align_pos + 1
         end_s = start_s + length(node_s) - 1
         
-        if start_s < min_start
-            min_start = start_s
+        # Consider all coordinates that will be accessed
+        min_current_coord = min(start_s, center)
+        max_current_coord = max(end_s, center)
+
+        if min_current_coord < min_overall_coord
+            min_overall_coord = min_current_coord
         end
-        if end_s > max_end
-            max_end = end_s
+        if max_current_coord > max_overall_coord
+            max_overall_coord = max_current_coord
         end
     end
     
     # Adjust all positions if we have negative start
-    if min_start < 1
-        shift = 1 - min_start
-        node_center_pos .+= shift
-        max_end += shift
+    shift = 0
+    if min_overall_coord < 1
+        shift = 1 - min_overall_coord
+        node_center_pos .+= shift # Shift node centers
+        max_overall_coord += shift # Shift max overall coord
     end
-    total_width = max_end
+    total_width = max_overall_coord
 
     max_hybs = 0
     if !isempty(edges)
@@ -130,27 +137,37 @@ function print_diagram(backbone::BackBone)
 
     # Place nodes and markers
     for i in 1:M
-        center = node_center_pos[i]
-        line3[center] = '│'
+        center_unshifed = node_center_pos[i]
+        center_on_line = center_unshifed - min_overall_coord + 1
+        line3[center_on_line] = '│'
         
-        node_s, op_part, hyb_part = node_infos[i]
+        node_s = node_strs[i]
+        align_pos = 1 # Align first character
         
-        align_pos = 1
+        start_s_unshifed = center_unshifed - align_pos + 1
+        start_s_on_line = start_s_unshifed - min_overall_coord + 1
+        end_s_on_line = start_s_on_line + length(node_s) - 1
         
-        start_s = center - align_pos + 1
-        end_s = start_s + length(node_s) - 1
-        line2[start_s:end_s] = collect(node_s)
+        line2[start_s_on_line:end_s_on_line] = collect(node_s)
     end
 
     # Draw edges and R
     for i in 1:M-1
-        start = node_center_pos[i] + 1
-        stop = node_center_pos[i+1] - 1
-        if start <= stop
-            line3[start:stop] .= '─'
+        start_unshifed = node_center_pos[i] + 1
+        stop_unshifed = node_center_pos[i+1] - 1
+        
+        start_on_line = start_unshifed - min_overall_coord + 1
+        stop_on_line = stop_unshifed - min_overall_coord + 1
+
+        if start_on_line <= stop_on_line
+            line3[start_on_line:stop_on_line] .= '─'
             
-            mid = (start + stop) ÷ 2
-            line4[mid] = 'R'
+            mid_on_line = (start_on_line + stop_on_line) ÷ 2
+            if backbone.diagram_type == :propagator_diagram
+                line4[mid_on_line:mid_on_line+1] = collect("R0")
+            else
+                line4[mid_on_line] = 'R'
+            end
         end
     end
 
@@ -161,18 +178,18 @@ function print_diagram(backbone::BackBone)
                 hyb = edges[i].attached_hybs[k]
                 hyb_str = format_hyb(hyb)
                 
-                edge_start = node_center_pos[i] + 1
-                edge_stop = node_center_pos[i+1] - 1
+                edge_start_unshifed = node_center_pos[i] + 1
+                edge_stop_unshifed = node_center_pos[i+1] - 1
                 
-                if edge_start <= edge_stop
-                    edge_mid = (edge_start + edge_stop) ÷ 2
+                if edge_start_unshifed <= edge_stop_unshifed
+                    edge_mid_unshifed = (edge_start_unshifed + edge_stop_unshifed) ÷ 2
+                    edge_mid_on_line = edge_mid_unshifed - min_overall_coord + 1
                     
                     underscore_pos = findfirst('_', hyb_str)
-                    if underscore_pos !== nothing
-                        start_h = edge_mid - underscore_pos + 3
+                    start_h = if underscore_pos !== nothing
+                        edge_mid_on_line - underscore_pos + 3
                     else
-                        # Fallback to center alignment
-                        start_h = edge_mid - (length(hyb_str) ÷ 2)
+                        edge_mid_on_line - (length(hyb_str) ÷ 2)
                     end
                     start_h = max(1, start_h)
                     end_h = start_h + length(hyb_str) - 1
@@ -186,7 +203,6 @@ function print_diagram(backbone::BackBone)
 
     # Print lines
     println(String(line2))
-    println()
     println(String(line3))
     println(String(line4))
     for line in hyb_lines

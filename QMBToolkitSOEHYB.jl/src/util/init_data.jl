@@ -24,6 +24,7 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
 
     ### Load local Hamiltonian data
     H, ann_opts = QMBToolkitED.build_hamiltonian(model_params.file_path*model_params.hopping_file, model_params.file_path*model_params.interaction_file)
+    ann_opts = [Matrix{Float64}(c) for c in ann_opts] # convert to Float64
     n_flavors = length(ann_opts)
     n_fock = 1 << n_flavors
     cre_opts = [adjoint(c) for c in ann_opts]
@@ -169,7 +170,7 @@ function _get_val_from_SOE(soe::SOEData, tau_grid::Vector{Float64}, beta::Float6
 end
 
 
-function _generate_opts_SOE(opts::Vector{SparseMatrixCSC{Int8,Int}}, coeffs::Array{Float64,3}, is_creation::Bool)
+function _generate_opts_SOE(opts::Vector{Matrix{Float64}}, coeffs::Array{Float64,3}, is_creation::Bool)
     # coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation
     # \bar{F}^{\dagger}_{o, l} = \sum_{o'} Delta_{l, o', o} F^{\dagger}_{o'}
     # \bar{F}_{o, l} = \sum_{o'} Delta_{l, o, o'} F_{o'}
@@ -178,10 +179,10 @@ function _generate_opts_SOE(opts::Vector{SparseMatrixCSC{Int8,Int}}, coeffs::Arr
     p = size(coeffs, 1)
     @assert size(coeffs, 2) == n_flavors "Size mismatch between coeffs and number of flavors."
     @assert size(coeffs, 3) == n_flavors "Size mismatch between coeffs and number of flavors."
-    opts_SOE = Matrix{SparseMatrixCSC{Int8,Int}}(undef, n_flavors, p)
+    opts_SOE = Matrix{Matrix{Float64}}(undef, n_flavors, p)
     for o in 1:n_flavors
         for l in 1:p
-            mat = spzeros(Int8, size(opts[1], 1), size(opts[1], 2))
+            mat = zeros(Float64, size(opts[1])...)
             if is_creation
                 for o_prime in 1:n_flavors
                     mat .+= coeffs[l, o_prime, o] * opts[o_prime]

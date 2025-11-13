@@ -12,8 +12,8 @@ struct ModelData
     beta::Float64
     n_flavors::Int
     n_fock::Int # 2^n_flavors
-    ann_opts::Vector{SparseMatrixCSC{Int8,Int}}
-    cre_opts::Vector{SparseMatrixCSC{Int8,Int}}
+    ann_opts::Vector{Matrix{Float64}}
+    cre_opts::Vector{Matrix{Float64}}
     evals::Vector{Float64}
     evecs::Matrix{ComplexF64}
     hyb::Array{Float64,3}
@@ -75,8 +75,8 @@ mutable struct CalculationData
     selfenergy::DLRData
     green::DLRData
     K0_inverse::Vector{Float64}
-    ann_opts_SOE::Matrix{SparseMatrixCSC{Int8,Int}} # shape: (n_flavors, p)
-    cre_opts_SOE::Matrix{SparseMatrixCSC{Int8,Int}} # shape: (n_flavors, p)
+    ann_opts_SOE::Matrix{Matrix{Float64}} # shape: (n_flavors, p)
+    cre_opts_SOE::Matrix{Matrix{Float64}} # shape: (n_flavors, p)
 end
 
 """

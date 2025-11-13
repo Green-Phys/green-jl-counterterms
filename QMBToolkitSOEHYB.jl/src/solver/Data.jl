@@ -54,8 +54,8 @@ s
 end
 
 mutable struct SOEData # the value is recovered by sum_{i} coeffs[i] * K(tau, exponents[i]), different matrix element share the same exponents
-    coeffs::Array{Float64,3} # SOE coefficients
-    exponents::Vector{Float64} # SOE exponents
+    coeffs::Array{Float64,3} # SOE coefficients, shape: (p, o1, o2)
+    exponents::Vector{Float64} # SOE exponents, shape: (p,)
     KPlus_on_DLRtau::Array{Float64,2} # K(tau_k, exponent_i) on the DLR tau grid
     KMinus_on_DLRtau::Array{Float64,2} # K(tau_k, -exponent_i) on the DLR tau grid
     val_on_DLR::DLRData
@@ -75,6 +75,8 @@ mutable struct CalculationData
     selfenergy::DLRData
     green::DLRData
     K0_inverse::Vector{Float64}
+    ann_opts_SOE::Matrix{SparseMatrixCSC{Int8,Int}} # shape: (n_flavors, p)
+    cre_opts_SOE::Matrix{SparseMatrixCSC{Int8,Int}} # shape: (n_flavors, p)
 end
 
 """

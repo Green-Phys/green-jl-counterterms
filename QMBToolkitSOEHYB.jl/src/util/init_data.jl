@@ -108,6 +108,10 @@ function create_solver_data(model_data::ModelData)
     # precompute K0_inverse
     K0_inverse = _generate_K0_inverse(model_data.dlr_grid.omega, model_data.beta)
 
+    # precompute annihilation and creation operators multiplied with SOE coefficients of the hybridization function
+    ann_opts_SOE = _generate_opts_SOE(model_data.ann_opts, hyb_soe.coeffs, false)
+    cre_opts_SOE = _generate_opts_SOE(model_data.cre_opts, hyb_soe.coeffs, true)
+
     calculation_data = CalculationData(
         hyb_error,
         bare_propagator_err,
@@ -116,7 +120,9 @@ function create_solver_data(model_data::ModelData)
         DLRData(model_data.bare_propagator, bare_propagator_dlr), # bold propagator 
         DLRData(model_data.dlr_grid.size, model_data.n_flavors,model_data.n_flavors), # pseudo-particle self-energy
         DLRData(model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical), # physical Green's function
-        K0_inverse
+        K0_inverse,
+        ann_opts_SOE,
+        cre_opts_SOE
     )
     return SolverData(model_data, calculation_data)
 end
@@ -149,15 +155,44 @@ end
 function _get_val_from_SOE(soe::SOEData, tau_grid::Vector{Float64}, beta::Float64)
     # sum_{i} coeffs[i] * K(tau, exponents[i]), different matrix element share the same exponents
     n_tau = length(tau_grid)
-    r = size(soe.coeffs, 1)
+    p = size(soe.coeffs, 1)
     o1 = size(soe.coeffs, 2)
     o2 = size(soe.coeffs, 3)
     val = zeros(Float64, n_tau, o1, o2)
     for (k, tau) in enumerate(tau_grid)
-        for j in 1:r
+        for j in 1:p
             K_val = kernel_tau(tau, soe.exponents[j], beta)
             val[k, :, :] .+= soe.coeffs[j, :, :] * K_val
         end
     end
     return val
+end
+
+
+function _generate_opts_SOE(opts::Vector{SparseMatrixCSC{Int8,Int}}, coeffs::Array{Float64,3}, is_creation::Bool)
+    # coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation
+    # \bar{F}^{\dagger}_{o, l} = \sum_{o'} Delta_{l, o', o} F^{\dagger}_{o'}
+    # \bar{F}_{o, l} = \sum_{o'} Delta_{l, o, o'} F_{o'}
+
+    n_flavors = length(opts)
+    p = size(coeffs, 1)
+    @assert size(coeffs, 2) == n_flavors "Size mismatch between coeffs and number of flavors."
+    @assert size(coeffs, 3) == n_flavors "Size mismatch between coeffs and number of flavors."
+    opts_SOE = Matrix{SparseMatrixCSC{Int8,Int}}(undef, n_flavors, p)
+    for o in 1:n_flavors
+        for l in 1:p
+            mat = spzeros(Int8, size(opts[1], 1), size(opts[1], 2))
+            if is_creation
+                for o_prime in 1:n_flavors
+                    mat .+= coeffs[l, o_prime, o] * opts[o_prime]
+                end 
+            else
+                for o_prime in 1:n_flavors
+                    mat .+= coeffs[l, o, o_prime] * opts[o_prime]
+                end
+            end
+            opts_SOE[o, l] = mat
+        end
+    end
+    return opts_SOE
 end

@@ -1,0 +1,72 @@
+# Common utility functions for diagram generation
+
+function _generate_diagram_combinations(
+    diagram_type::Symbol,
+    M::Int,
+    connected_pairs::Vector{Tuple{Int,Int}},
+    n_flavors::Int,
+    exponents::Vector{Float64},
+    base_nodes::Vector{BackBoneNode},
+    base_sign::Float64,
+    external_opts_loc::Union{Vector{Int}, Nothing}=nothing
+)
+    diagrams = []
+    p = length(exponents)
+    L = length(connected_pairs)
+
+    ### enumerate 2^L possible forward or backward hybridization lines
+    for hyb_directions in Iterators.product(fill((:forward, :backward), L)...)
+        ### enumerate n_flavors^L possible flavor assignments (one side of the hybridization line contain bar, and the corresponding flavor index is summed over)
+        for flavor_indices in Iterators.product(fill(1:n_flavors, L)...)
+            ### enumerate p^L possible hybridization decompositions exponents
+            for exponent_indices in Iterators.product(fill(1:p, L)...)
+                nodes = copy(base_nodes)
+                edges = [BackBoneEdge([]) for _ in 1:(M-1)]
+                prefactor_Kexps = zeros(Int, p)
+                sign = base_sign
+                for (idx, (i, j)) in enumerate(connected_pairs)
+                    hyb_direction = hyb_directions[idx]
+                    flavor_index = flavor_indices[idx]
+                    exponent_index = exponent_indices[idx]
+                    if hyb_direction == :forward && exponents[exponent_index] <= 0.0
+                        # cdag with bar at node i with KPlus, c at node j with KMinus
+                        nodes[i] = BackBoneNode(:cdag, flavor_index, exponent_index, KPlus(exponent_index))
+                        nodes[j] = BackBoneNode(:c, flavor_index, nothing, KMinus(exponent_index))
+                        prefactor_Kexps[exponent_index] += 1
+                        sign *= -1.0 # this is because diagram rule, forward hybridization line contributes a -1 factor
+                    elseif hyb_direction == :forward && exponents[exponent_index] > 0.0
+                        # cdag with bar at node i, c at node j
+                        nodes[i] = BackBoneNode(:cdag, flavor_index, exponent_index, NoHyb())
+                        nodes[j] = BackBoneNode(:c, flavor_index, nothing, NoHyb())
+                        # from jth edge to (i-1)th edge, attach KPlus
+                        for e in j:(i-1)
+                            push!(edges[e].attached_hybs, KPlus(exponent_index))
+                        end
+                        prefactor_Kexps[exponent_index] += i-j
+                        sign *= -1.0 # this is because diagram rule, forward hybridization line contributes a -1 factor
+                    elseif hyb_direction == :backward && exponents[exponent_index] > 0.0
+                        # c with bar at node i with KMinus, cdag at node j with KPlus
+                        nodes[i] = BackBoneNode(:c, flavor_index, exponent_index, KMinus(exponent_index))
+                        nodes[j] = BackBoneNode(:cdag, flavor_index, nothing, KPlus(exponent_index))
+                        prefactor_Kexps[exponent_index] += 1
+                        sign *= -1.0  # this is due to separation of backward hybridization line
+                    elseif hyb_direction == :backward && exponents[exponent_index] <= 0.0
+                        # c with bar at node i, cdag at node j
+                        nodes[i] = BackBoneNode(:c, flavor_index, exponent_index, NoHyb())
+                        nodes[j] = BackBoneNode(:cdag, flavor_index, nothing, NoHyb())
+                        # from jth edge to (i-1)th edge, attach KMinus
+                        for e in j:(i-1)
+                            push!(edges[e].attached_hybs, KMinus(exponent_index))
+                        end
+                        prefactor_Kexps[exponent_index] += i-j
+                        sign *= -1.0 # this is due to separation of backward hybridization line
+                    else
+                        error("Unrecognized hybridization direction or exponent sign")
+                    end
+                end
+                push!(diagrams, BackBone(diagram_type, sign, prefactor_Kexps, nodes, edges, external_opts_loc))
+            end
+        end
+    end
+    return diagrams
+end

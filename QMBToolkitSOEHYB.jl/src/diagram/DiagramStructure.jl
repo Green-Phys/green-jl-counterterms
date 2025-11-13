@@ -45,5 +45,6 @@ struct BackBone
     prefactor_Kexps::Vector{Int} # Length p
     nodes::Vector{BackBoneNode} # length M
     edges::Vector{BackBoneEdge} # length M-1
+    external_opts_loc::Union{Vector{Int}, Nothing} # only for green_diagram, record the location of external operators (annihilation and creation), otherwise nothing
 end
 

@@ -1,18 +1,33 @@
-function format_node(node::BackBoneNode)
+function format_node(node::BackBoneNode, is_external_opt::Bool=false)
     # Determine operator string
     op = ""
-    if node.bar_index !== nothing
-        op = "c̄"
-        if node.opt_type == :cdag
-            op *= "†"
-        end
-    else
-        if node.opt_type == :c
+    if is_external_opt
+        if node.bar_index !== nothing 
+            error("Unrecognized operator type")
+        elseif node.opt_type == :c
             op = "c"
         elseif node.opt_type == :cdag
-            op = "c"*"†"
+            op = "c⁺"
+        elseif node.opt_type == :empty
+            op = ""
+        else
+            error("Unrecognized operator type")
         end
-    end    
+    else
+        if node.bar_index !== nothing && node.opt_type == :c
+            op = "F̅"
+        elseif node.bar_index !== nothing && node.opt_type == :cdag
+            op = "F̅⁺"
+        elseif node.opt_type == :c
+            op = "F"
+        elseif node.opt_type == :cdag
+            op = "F⁺"
+        elseif node.opt_type == :empty
+            op = ""
+        else
+            error("Unrecognized operator type")
+        end
+    end
 
     # Determine subindex string
     sub = ""
@@ -53,17 +68,27 @@ function print_diagram(backbone::BackBone)
     println("Sign: ", backbone.sign)
     println("Prefactor K exponents: ", backbone.prefactor_Kexps)
 
-    nodes = reverse(backbone.nodes)
-    edges = reverse(backbone.edges)
+    nodes = backbone.nodes
+    edges = backbone.edges
     M = length(nodes)
 
     if M == 0
         return
     end
-
-    node_infos = [format_node(n) for n in nodes]
+    
+    external_opts_loc = backbone.external_opts_loc
+    node_infos = [
+        format_node(
+            nodes[i],
+            external_opts_loc !== nothing && i in external_opts_loc
+        ) for i in 1:M
+    ]
     node_strs = [info[1] for info in node_infos]
     node_widths = [max(1, length(s)) for s in node_strs]
+
+    node_infos = reverse(node_infos)
+    node_strs = reverse(node_strs)
+    node_widths = reverse(node_widths)
     
     # Determine constant edge length
     max_half_width_sum = 0
@@ -148,7 +173,7 @@ function print_diagram(backbone::BackBone)
             # change align_post to the underscore position in opt_part
             underscore_pos = findfirst(isequal('_'), collect(opt_part))
             if underscore_pos !== nothing
-                align_pos = underscore_pos-1
+                align_pos = underscore_pos
             end
         end
         

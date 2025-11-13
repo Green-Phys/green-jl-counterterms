@@ -53,6 +53,14 @@ s
     end
 end
 
+mutable struct SOEData # the value is recovered by sum_{i} coeffs[i] * K(tau, exponents[i]), different matrix element share the same exponents
+    coeffs::Array{Float64,3} # SOE coefficients
+    exponents::Vector{Float64} # SOE exponents
+    KPlus_on_DLRtau::Array{Float64,2} # K(tau_k, exponent_i) on the DLR tau grid
+    KMinus_on_DLRtau::Array{Float64,2} # K(tau_k, -exponent_i) on the DLR tau grid
+    val_on_DLR::DLRData
+end
+
 """
     CalculationData
 
@@ -61,11 +69,12 @@ Holds the data for the calculation, such as the Green's function, propagator, et
 mutable struct CalculationData
     hyb_error::Float64
     bare_propagator_err::Float64
-    hyb::DLRData
+    hyb::SOEData
     propagator::DLRData
     bare_propagator::DLRData
     selfenergy::DLRData
     green::DLRData
+    K0_inverse::Vector{Float64}
 end
 
 """

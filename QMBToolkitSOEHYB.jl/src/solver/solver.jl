@@ -15,11 +15,12 @@ function solve(solver_data::SolverData, solver_params::SolverParams)
     save_green_function(green_tau, uniform_grid, solver_params.output_path*"/sim.h5")
     println("--- Finish calculation ---")
     # diagrams = generate_green_diagrams(solver_params.green.expansion_order, solver_data.model.n_flavors, 1, 1)
-    diagrams = generate_propagator_diagrams(solver_params.expansion.expansion_order, solver_data.model.n_flavors)
-    for (i, diagram) in enumerate(diagrams)
-        println("Diagram ", i, ":")
-        print_diagram(diagram)
-    end
+    diagrams = generate_propagator_diagrams(solver_params.expansion.expansion_order, solver_data.model.n_flavors, [-1.0,1.0])
+    # for (i, diagram) in enumerate(diagrams)
+    #     println("Diagram ", i, ":")
+    #     print_diagram(diagram)
+    # end
+    print("Total number of propagator diagrams generated: ", length(diagrams), "\n")
 end
 
 function calculate_propagator!(solver_data::SolverData, solver_params::SolverParams)

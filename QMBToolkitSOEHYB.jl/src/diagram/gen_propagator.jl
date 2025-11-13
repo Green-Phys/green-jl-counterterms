@@ -1,6 +1,6 @@
 # Propagator diagram topologies for bare expansion
 
-function generate_propagator_diagrams(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64} = [-1.0, 1.0])
+function generate_propagator_diagrams(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64})
     
     diagrams = []
     if expansion_order == 0 

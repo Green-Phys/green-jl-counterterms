@@ -10,9 +10,9 @@ function format_node(node::BackBoneNode)
         if node.opt_type == :c
             op = "c"
         elseif node.opt_type == :cdag
-            op = "c†"
+            op = "c"*"†"
         end
-    end
+    end    
 
     # Determine subindex string
     sub = ""
@@ -75,7 +75,7 @@ function print_diagram(backbone::BackBone)
             end
         end
     end
-    edge_len = max_half_width_sum + 3 # +3 for " R "
+    edge_len = max_half_width_sum + 5 # +3 for " R "
 
     dist_between_nodes = edge_len + 1
 
@@ -142,7 +142,15 @@ function print_diagram(backbone::BackBone)
         line3[center_on_line] = '│'
         
         node_s = node_strs[i]
-        align_pos = 1 # Align first character
+        tot_part, opt_part, hyb_part = node_infos[i]
+        align_pos = (length(tot_part) + 1) ÷ 2 -1
+        if hyb_part == ""
+            # change align_post to the underscore position in opt_part
+            underscore_pos = findfirst(isequal('_'), collect(opt_part))
+            if underscore_pos !== nothing
+                align_pos = underscore_pos-1
+            end
+        end
         
         start_s_unshifed = center_unshifed - align_pos + 1
         start_s_on_line = start_s_unshifed - min_overall_coord + 1

@@ -30,7 +30,7 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
     # calculate the multiplication and convolution from right to left ignoring the two boundary nodes
     # |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
     # nodes and edges are stored from 1 to M
-    result = propagator.vals
+    result = copy(propagator.vals)
     for i in 1:length(edges)-1
         edge = edges[i]
         if i == 1
@@ -54,8 +54,8 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
             elseif node.opt_type == :c && node.bar_index != nothing
                 op_matrix = model_data.ann_opts_SOE[node.flavor, node.bar_index]
             end
+            result = _multiplication_23(op_matrix, result)
         end
-        result = _multiplication_23(op_matrix, result)
 
         if node.attached_hyb isa KPlus
             result = _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, node.attached_hyb.l], result)
@@ -65,7 +65,7 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
 
         # calculate the convolution with the next edge
         edge_plus1 = edges[i+1]
-        to_be_convoluted = propagator.vals
+        to_be_convoluted = copy(propagator.vals)
         for hyb in edge_plus1.attached_hybs
             if hyb isa KPlus
                 to_be_convoluted = _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, hyb.l], to_be_convoluted)

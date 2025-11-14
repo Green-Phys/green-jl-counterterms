@@ -48,6 +48,7 @@ end
 function eval_propagator_given_order!(solver_data::SolverData, diagrams::Array{BackBone,4})
     diagrams_flat = vcat(diagrams...)
     @showprogress "Evaluating propagator diagrams" for (i, diagram) in enumerate(diagrams_flat)
+        # print_diagram(diagram)
         backbone_0_to_tau = multiplication_convolution(diagram.nodes, diagram.edges, solver_data.model.dlr_grid, solver_data.model, solver_data.model.bare_propagator)
         prefactor = diagram.sign
         for (idx, Kexp) in enumerate(diagram.prefactor_Kexps)

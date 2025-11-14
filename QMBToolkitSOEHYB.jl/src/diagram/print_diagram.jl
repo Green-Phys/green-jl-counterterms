@@ -1,17 +1,11 @@
-function format_node(node::BackBoneNode, is_external_opt::Bool=false)
+function format_node(node::BackBoneNode, is_external_opt::Bool=false, is_external_ann::Bool=false)
     # Determine operator string
     op = ""
     if is_external_opt
-        if node.bar_index !== nothing 
-            error("Unrecognized operator type")
-        elseif node.opt_type == :c
+        if is_external_ann
             op = "c"
-        elseif node.opt_type == :cdag
+        else 
             op = "c⁺"
-        elseif node.opt_type == :empty
-            op = ""
-        else
-            error("Unrecognized operator type")
         end
     else
         if node.bar_index !== nothing && node.opt_type == :c
@@ -35,7 +29,7 @@ function format_node(node::BackBoneNode, is_external_opt::Bool=false)
         sub = "$(node.flavor)"
     end
     if node.bar_index !== nothing
-        sub *= "$(node.bar_index)"
+        sub *= ",$(node.bar_index)"
     end
 
     op_part = op * (isempty(sub) ? "" : "_{$sub}")
@@ -80,7 +74,8 @@ function print_diagram(backbone::BackBone)
     node_infos = [
         format_node(
             nodes[i],
-            external_opts_loc !== nothing && i in external_opts_loc
+            external_opts_loc !== nothing && i in external_opts_loc,
+            external_opts_loc !== nothing && i == external_opts_loc[1]
         ) for i in 1:M
     ]
     node_strs = [info[1] for info in node_infos]
@@ -171,7 +166,7 @@ function print_diagram(backbone::BackBone)
         align_pos = (length(tot_part) + 1) ÷ 2 -1
         if hyb_part == ""
             # change align_post to the underscore position in opt_part
-            underscore_pos = findfirst(isequal('_'), collect(opt_part))
+            underscore_pos = findfirst(isequal('c'), collect(opt_part))
             if underscore_pos !== nothing
                 align_pos = underscore_pos
             end

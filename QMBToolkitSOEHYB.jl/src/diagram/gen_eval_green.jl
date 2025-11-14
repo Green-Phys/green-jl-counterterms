@@ -53,6 +53,7 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
     n_directions = size(diagrams, 2)
     n_line_flavors = size(diagrams, 3)
     n_hyb_exponents = size(diagrams, 4)
+    propagator = solver_data.calc.propagator
     @showprogress "Evaluating green diagrams" for i in 1:n_topology
         for j in 1:n_directions
             external_opts_loc = diagrams[i, j, 1, 1].external_opts_loc
@@ -61,9 +62,10 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
             for k in 1:n_line_flavors
                 for l in 1:n_hyb_exponents
                     diagram = diagrams[i, j, k, l]
+                    # print_diagram(diagram)
                     @assert diagram.external_opts_loc == external_opts_loc "External operator locations do not match among diagrams of the same topology and direction."
-                    contrib_0_to_tau = multiplication_convolution(diagram.nodes[1:external_opts_loc[2]], diagram.edges[1:external_opts_loc[2]-1], solver_data.model.dlr_grid, solver_data.model, solver_data.calc.propagator)
-                    contrib_tau_to_beta = multiplication_convolution(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, solver_data.calc.propagator)
+                    contrib_0_to_tau = multiplication_convolution(diagram.nodes[1:external_opts_loc[2]], diagram.edges[1:external_opts_loc[2]-1], solver_data.model.dlr_grid, solver_data.model, propagator)
+                    contrib_tau_to_beta = multiplication_convolution(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, propagator)
                     contrib_tau_to_beta = do_reflection_tau2tau(solver_data.model.dlr_grid, contrib_tau_to_beta)
                     prefactor = diagram.sign
                     for (idx, Kexp) in enumerate(diagram.prefactor_Kexps)

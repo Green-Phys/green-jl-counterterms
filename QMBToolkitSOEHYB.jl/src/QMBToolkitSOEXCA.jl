@@ -7,10 +7,12 @@ include("util/init_data.jl")
 include("util/others.jl")
 include("solver/solve.jl")
 include("diagram/DiagramStructure.jl")
+include("diagram/print_diagram.jl")
 include("diagram/gen_common.jl")
 include("diagram/eval_common.jl")
 include("diagram/gen_eval_propagator.jl")
 include("diagram/gen_eval_green.jl")
+
 
 export run
 

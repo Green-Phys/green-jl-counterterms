@@ -16,18 +16,18 @@
 
 abstract type HybridizationState end
 struct NoHyb <: HybridizationState end
-mutable struct DeltaHyb <: HybridizationState 
+struct DeltaHyb <: HybridizationState 
     i::Int # flavor index for Delta_{ij} associated with a c^{\dag}_{i}
     j::Int # flavor index for Delta_{ij} associated with a c_{j}
 end
-mutable struct KPlus <: HybridizationState
+struct KPlus <: HybridizationState
     l::Int # index of the decomposed hybridization function, runs from 1 to p
 end
-mutable struct KMinus <: HybridizationState
+struct KMinus <: HybridizationState
     l::Int # index of the decomposed hybridization function, runs from 1 to p
 end
 
-mutable struct BackBoneNode
+struct BackBoneNode
     opt_type::Symbol # :c or :cdag or :empty
     flavor::Union{Int, Nothing} # spin-orbital index associated with the creation or annihilation operator
     bar_index::Union{Int, Nothing} # can take 1 to p if the operator has bar, otherwise nothing
@@ -35,8 +35,8 @@ mutable struct BackBoneNode
 end
 
 
-mutable struct BackBoneEdge
-    attached_hybs::Vector{HybridizationState} # length <=L, each can be KPlus(l) or KMinus(l) with distinct l
+struct BackBoneEdge
+    attached_hybs::Vector{HybridizationState} # length <=L, each can be KPlus(l) or KMinus(l)
 end
 
 struct BackBone

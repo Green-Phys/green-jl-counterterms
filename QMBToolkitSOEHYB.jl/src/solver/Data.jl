@@ -6,25 +6,6 @@ using QMBToolkitDLR
 
 Holds the derived data for the model, such as the Hamiltonian, operators, and hybridization function.
 """
-struct ModelData
-    poles_energies::Vector{Float64}
-    poles_hybs::Matrix{Float64}
-    beta::Float64
-    n_flavors::Int
-    n_fock::Int # 2^n_flavors
-    ann_opts::Vector{Matrix{Float64}}
-    cre_opts::Vector{Matrix{Float64}}
-    evals::Vector{Float64}
-    evecs::Matrix{ComplexF64}
-    hyb::Array{Float64,3}
-    tau_grid_hyb::Array{Float64,1}
-    dlr_grid::DLRGrid
-    bare_propagator::Array{Float64,3}
-    E_shift::Float64
-    n_flavors_physical::Int
-    n_fock_physical::Int
-end
-
 
 mutable struct DLRData
     vals::Array{Float64,3} # values on the DLR tau grid
@@ -61,22 +42,41 @@ mutable struct SOEData # the value is recovered by sum_{i} coeffs[i] * K(tau, ex
     val_on_DLR::DLRData
 end
 
+struct ModelData
+    poles_energies::Vector{Float64}
+    poles_hybs::Matrix{Float64}
+    beta::Float64
+    n_flavors::Int
+    n_fock::Int # 2^n_flavors
+    ann_opts::Vector{Matrix{Float64}}
+    cre_opts::Vector{Matrix{Float64}}
+    evals::Vector{Float64}
+    evecs::Matrix{ComplexF64}
+    hyb_input::Array{Float64,3}
+    tau_grid_hyb::Array{Float64,1}
+    dlr_grid::DLRGrid
+    E_shift::Float64
+    n_flavors_physical::Int
+    n_fock_physical::Int
+    hyb_error::Float64
+    bare_propagator_err::Float64
+    hyb::SOEData
+    bare_propagator::DLRData
+    K0_inverse::Vector{Float64}
+    ann_opts_SOE::Matrix{Matrix{Float64}} # shape: (n_flavors, p)
+    cre_opts_SOE::Matrix{Matrix{Float64}} # shape: (n_flavors, p)
+end
+
+
 """
     CalculationData
 
 Holds the data for the calculation, such as the Green's function, propagator, etc.
 """
 mutable struct CalculationData
-    hyb_error::Float64
-    bare_propagator_err::Float64
-    hyb::SOEData
     propagator::DLRData
-    bare_propagator::DLRData
     selfenergy::DLRData
     green::DLRData
-    K0_inverse::Vector{Float64}
-    ann_opts_SOE::Matrix{Matrix{Float64}} # shape: (n_flavors, p)
-    cre_opts_SOE::Matrix{Matrix{Float64}} # shape: (n_flavors, p)
 end
 
 """

@@ -104,16 +104,16 @@ function print_init_data(solver_data::SolverData)
     println(" Target impurity partition function for Bethe lattice: Z_Bethe = ", Z_Bethe)
     println(" Partition function for poles: Z_poles = ", Z_poles)
     println(" Remaining partition function (%): 1 - Z_loc / (Z_poles * Z_Bethe) = ", @sprintf("%.2f", remaining_percentage), "%")
-    println(" Hybridization Function (first 5 tau slices out of ", size(solver_data.model.hyb, 1), "):")
-    if size(solver_data.model.hyb, 1) >= 5
+    println(" Hybridization Function (first 5 tau slices out of ", size(solver_data.model.hyb_input, 1), "):")
+    if size(solver_data.model.hyb_input, 1) >= 5
         for i in 1:5
-            println("  hyb[", i, ", 1, 1]: ", solver_data.model.hyb[i, 1, 1])
+            println("  hyb_input[", i, ", 1, 1]: ", solver_data.model.hyb_input[i, 1, 1])
         end
     end
-    println(" Bare Propagator (first :5 tau slices out of ", size(solver_data.model.bare_propagator, 1), "):")
-    if size(solver_data.model.bare_propagator, 1) >= 5
+    println(" Bare Propagator (first :5 tau slices out of ", size(solver_data.model.bare_propagator.vals, 1), "):")
+    if size(solver_data.model.bare_propagator.vals, 1) >= 5
         for i in 1:5
-            println("  bare_propagator[", i, ", 1, 1]: ", solver_data.model.bare_propagator[i, 1, 1])
+            println("  bare_propagator[", i, ", 1, 1]: ", solver_data.model.bare_propagator.vals[i, 1, 1])
         end
     end
     println("-"^40)
@@ -129,8 +129,8 @@ function print_init_data(solver_data::SolverData)
     for i in max(1, length(solver_data.model.dlr_grid.tau)-4):length(solver_data.model.dlr_grid.tau)
         println("  tau[", i, "] = ", solver_data.model.dlr_grid.tau[i])
     end
-    println(" Maximum reconstruction error in hybrdization function: ", solver_data.calc.hyb_error)
-    println(" Maximum reconstruction error in bare propagator: ", solver_data.calc.bare_propagator_err)
+    println(" Maximum reconstruction error in hybrdization function: ", solver_data.model.hyb_error)
+    println(" Maximum reconstruction error in bare propagator: ", solver_data.model.bare_propagator_err)
     println("="^40)
 end
 

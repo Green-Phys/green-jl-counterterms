@@ -12,6 +12,7 @@ include("diagram/gen_green.jl")
 include("diagram/gen_propagator.jl")
 include("diagram/gen_selfenergy.jl")
 include("diagram/print_diagram.jl")
+include("diagram/eval_diagram.jl")
 
 export run, print_diagram
 

@@ -24,10 +24,10 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
 
     ### Load local Hamiltonian data
     H, ann_opts = QMBToolkitED.build_hamiltonian(model_params.file_path*model_params.hopping_file, model_params.file_path*model_params.interaction_file)
-    ann_opts = [Matrix{Float64}(c) for c in ann_opts] # convert to Float64
+    ann_opts = vec([Matrix{Float64}(c) for c in ann_opts]) # convert to Float64
     n_flavors = length(ann_opts)
     n_fock = 1 << n_flavors
-    cre_opts = [adjoint(c) for c in ann_opts]
+    cre_opts = vec([Matrix{Float64}(adjoint(c)) for c in ann_opts])
     evals, evecs = QMBToolkitED.solve_hamiltonian(H)
 
     ### Load hybridization function data
@@ -39,7 +39,7 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
     @assert n_orb == n_flavors "Number of orbitals in hybridization function must match number of flavors from local Hamiltonian."
     hyb_flat = hyb_data[:, 4]
     hyb_permuted = reshape(hyb_flat, (n_orb, n_orb, n_tau))
-    hyb = permutedims(hyb_permuted, (3, 2, 1))  # Now Delta[tau, orb_1, orb_2]
+    hyb_input = permutedims(hyb_permuted, (3, 2, 1))  # Now Delta[tau, orb_1, orb_2]
     
     ### Create DLR grid
     tau_grid_hyb = collect(LinRange(0.0, model_params.beta, n_tau))
@@ -59,6 +59,36 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
     n_flavors_physical = n_flavors - length(poles_energies)
     n_fock_physical = 1 << n_flavors_physical
 
+
+    # Convert hybridization function to DLR representation
+    hyb_dlr = tau2dlr(dlr_grid, hyb_input, tau_grid_hyb)
+    hyb_reconstructed = dlr2tau(dlr_grid, hyb_dlr, tau_grid_hyb)
+    hyb_error = maximum(abs.(hyb_reconstructed .- hyb_input))
+    hyb_tau = dlr2tau(dlr_grid, hyb_dlr, dlr_grid.tau)
+
+    hyb_on_DLR = DLRData(hyb_tau, hyb_dlr)
+    hyb_coeffs = hyb_dlr
+    hyb_exponents = dlr_grid.omega
+    KPlus_on_DLRtau = _generate_K_on_DLRtau(hyb_exponents, dlr_grid)
+    KMinus_on_DLRtau = _generate_K_on_DLRtau(-hyb_exponents, dlr_grid)
+    hyb_soe = SOEData(hyb_coeffs, hyb_exponents, KPlus_on_DLRtau, KMinus_on_DLRtau, hyb_on_DLR)
+
+    val = _get_val_from_SOE(hyb_soe, dlr_grid.tau, model_params.beta)
+    @assert maximum(abs.(val .- hyb_tau)) < 1e-14
+    
+    # Convert bare propagator e^{-tau H} to DLR representation
+    bare_propagator_dlr = tau2dlr(dlr_grid, bare_propagator, dlr_grid.tau)
+    bare_propagator_reconstructed = dlr2tau(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
+    bare_propagator_err = maximum(abs.(bare_propagator_reconstructed .- bare_propagator))
+
+
+    # precompute annihilation and creation operators multiplied with SOE coefficients of the hybridization function
+    ann_opts_SOE = _generate_opts_SOE(ann_opts, hyb_soe.coeffs, false)
+    cre_opts_SOE = _generate_opts_SOE(cre_opts, hyb_soe.coeffs, true)
+
+    # precompute K0_inverse
+    K0_inverse = _generate_K0_inverse(dlr_grid.omega, model_params.beta)
+
     return ModelData(
         poles_energies,
         poles_hybs,
@@ -69,13 +99,19 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
         cre_opts,
         evals,
         evecs,
-        hyb,
+        hyb_input,
         tau_grid_hyb,
         dlr_grid,
-        bare_propagator,
         E_shift,
         n_flavors_physical,
-        n_fock_physical
+        n_fock_physical,
+        hyb_error,
+        bare_propagator_err,
+        hyb_soe,
+        DLRData(bare_propagator, bare_propagator_dlr), # bare propagator
+        K0_inverse,
+        ann_opts_SOE,
+        cre_opts_SOE
     )
 end
 
@@ -85,45 +121,11 @@ end
 Create a `SolverData` object from the `ModelData` and `Params`.
 """
 function create_solver_data(model_data::ModelData)
-    # Convert hybridization function to DLR representation
-    hyb_dlr = tau2dlr(model_data.dlr_grid, model_data.hyb, model_data.tau_grid_hyb)
-    hyb_reconstructed = dlr2tau(model_data.dlr_grid, hyb_dlr, model_data.tau_grid_hyb)
-    hyb_error = maximum(abs.(hyb_reconstructed .- model_data.hyb))
-    hyb_tau = dlr2tau(model_data.dlr_grid, hyb_dlr, model_data.dlr_grid.tau)
-
-    hyb_on_DLR = DLRData(hyb_tau, hyb_dlr)
-    hyb_coeffs = hyb_dlr
-    hyb_exponents = model_data.dlr_grid.omega
-    KPlus_on_DLRtau = _generate_K_on_DLRtau(hyb_exponents, model_data.dlr_grid)
-    KMinus_on_DLRtau = _generate_K_on_DLRtau(-hyb_exponents, model_data.dlr_grid)
-    hyb_soe = SOEData(hyb_coeffs, hyb_exponents, KPlus_on_DLRtau, KMinus_on_DLRtau, hyb_on_DLR)
-
-    val = _get_val_from_SOE(hyb_soe, model_data.dlr_grid.tau, model_data.beta)
-    @assert maximum(abs.(val .- hyb_tau)) < 1e-14
-    
-    # Convert bare propagator e^{-tau H} to DLR representation
-    bare_propagator_dlr = tau2dlr(model_data.dlr_grid, model_data.bare_propagator, model_data.dlr_grid.tau)
-    bare_propagator_reconstructed = dlr2tau(model_data.dlr_grid, bare_propagator_dlr, model_data.dlr_grid.tau)
-    bare_propagator_err = maximum(abs.(bare_propagator_reconstructed .- model_data.bare_propagator))
-    
-    # precompute K0_inverse
-    K0_inverse = _generate_K0_inverse(model_data.dlr_grid.omega, model_data.beta)
-
-    # precompute annihilation and creation operators multiplied with SOE coefficients of the hybridization function
-    ann_opts_SOE = _generate_opts_SOE(model_data.ann_opts, hyb_soe.coeffs, false)
-    cre_opts_SOE = _generate_opts_SOE(model_data.cre_opts, hyb_soe.coeffs, true)
 
     calculation_data = CalculationData(
-        hyb_error,
-        bare_propagator_err,
-        hyb_soe, # hybridization function
-        DLRData(model_data.bare_propagator, bare_propagator_dlr), # bare propagator
-        DLRData(model_data.bare_propagator, bare_propagator_dlr), # bold propagator 
+        model_data.bare_propagator, # propagator
         DLRData(model_data.dlr_grid.size, model_data.n_flavors,model_data.n_flavors), # pseudo-particle self-energy
         DLRData(model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical), # physical Green's function
-        K0_inverse,
-        ann_opts_SOE,
-        cre_opts_SOE
     )
     return SolverData(model_data, calculation_data)
 end

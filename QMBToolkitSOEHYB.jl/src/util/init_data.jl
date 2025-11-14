@@ -4,13 +4,13 @@ using QMBToolkitDLR
 using LinearAlgebra
 
 """
-    create_model_data(model_params::ModelParams)
+    init_model_data(model_params::ModelParams)
 
-Create a `ModelData` object from the parameters in a `ModelParams` struct.
+init a `ModelData` object from the parameters in a `ModelParams` struct.
 This involves reading data from files to construct the Hamiltonian, operators,
 and hybridization function.
 """
-function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
+function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     ### Load pole energies and hybridizations, the file could be empty
     poles_energies = Float64[]
     poles_hybs = zeros(Float64, 0, 0)
@@ -41,11 +41,11 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
     hyb_permuted = reshape(hyb_flat, (n_orb, n_orb, n_tau))
     hyb_input = permutedims(hyb_permuted, (3, 2, 1))  # Now Delta[tau, orb_1, orb_2]
     
-    ### Create DLR grid
+    ### init DLR grid
     tau_grid_hyb = collect(LinRange(0.0, model_params.beta, n_tau))
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
     
-    ### create bare propagator
+    ### init bare propagator
     tau_grid = dlr_grid.tau
     bare_propagator = zeros(Float64, length(tau_grid), n_fock, n_fock)
     E_shift = minimum(evals)
@@ -69,8 +69,8 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
     hyb_on_DLR = DLRData(hyb_tau, hyb_dlr)
     hyb_coeffs = hyb_dlr
     hyb_exponents = dlr_grid.omega
-    KPlus_on_DLRtau = _generate_K_on_DLRtau(hyb_exponents, dlr_grid)
-    KMinus_on_DLRtau = _generate_K_on_DLRtau(-hyb_exponents, dlr_grid)
+    KPlus_on_DLRtau = _gen_K_on_DLRtau(hyb_exponents, dlr_grid)
+    KMinus_on_DLRtau = _gen_K_on_DLRtau(-hyb_exponents, dlr_grid)
     hyb_soe = SOEData(hyb_coeffs, hyb_exponents, KPlus_on_DLRtau, KMinus_on_DLRtau, hyb_on_DLR)
 
     val = _get_val_from_SOE(hyb_soe, dlr_grid.tau, model_params.beta)
@@ -83,11 +83,11 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
 
 
     # precompute annihilation and creation operators multiplied with SOE coefficients of the hybridization function
-    ann_opts_SOE = _generate_opts_SOE(ann_opts, hyb_soe.coeffs, false)
-    cre_opts_SOE = _generate_opts_SOE(cre_opts, hyb_soe.coeffs, true)
+    ann_opts_SOE = _gen_opts_SOE(ann_opts, hyb_soe.coeffs, false)
+    cre_opts_SOE = _gen_opts_SOE(cre_opts, hyb_soe.coeffs, true)
 
     # precompute K0_inverse
-    K0_inverse = _generate_K0_inverse(dlr_grid.omega, model_params.beta)
+    K0_inverse = _gen_K0_inverse(dlr_grid.omega, model_params.beta)
 
     return ModelData(
         poles_energies,
@@ -116,21 +116,21 @@ function create_model_data(model_params::ModelParams, dlr_params::DLRParams)
 end
 
 """
-    create_solver_data(model_data::ModelData, params::Params)
+    init_solver_data(model_data::ModelData, params::Params)
 
-Create a `SolverData` object from the `ModelData` and `Params`.
+init a `SolverData` object from the `ModelData` and `Params`.
 """
-function create_solver_data(model_data::ModelData)
+function init_solver_data(model_data::ModelData)
 
     calculation_data = CalculationData(
-        model_data.bare_propagator, # propagator
-        DLRData(model_data.dlr_grid.size, model_data.n_flavors,model_data.n_flavors), # pseudo-particle self-energy
+        DLRData(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # pseudo-particle propagator
+        DLRData(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # pseudo-particle self-energy
         DLRData(model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical), # physical Green's function
     )
     return SolverData(model_data, calculation_data)
 end
 
-function _generate_K0_inverse(exponents::Vector{Float64},beta::Float64)
+function _gen_K0_inverse(exponents::Vector{Float64},beta::Float64)
     K0_inverse = zeros(Float64, length(exponents))
     for (i, omega) in enumerate(exponents)
         if omega <=0
@@ -144,7 +144,7 @@ function _generate_K0_inverse(exponents::Vector{Float64},beta::Float64)
     return K0_inverse
 end
 
-function _generate_K_on_DLRtau(exponents::Vector{Float64}, dlr_grid::DLRGrid)
+function _gen_K_on_DLRtau(exponents::Vector{Float64}, dlr_grid::DLRGrid)
     tau_grid = dlr_grid.tau
     K_on_DLRtau = zeros(Float64, length(tau_grid), length(exponents))
     for (j, omega) in enumerate(exponents)
@@ -172,7 +172,7 @@ function _get_val_from_SOE(soe::SOEData, tau_grid::Vector{Float64}, beta::Float6
 end
 
 
-function _generate_opts_SOE(opts::Vector{Matrix{Float64}}, coeffs::Array{Float64,3}, is_creation::Bool)
+function _gen_opts_SOE(opts::Vector{Matrix{Float64}}, coeffs::Array{Float64,3}, is_creation::Bool)
     # coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation
     # \bar{F}^{\dagger}_{o, l} = \sum_{o'} Delta_{l, o', o} F^{\dagger}_{o'}
     # \bar{F}_{o, l} = \sum_{o'} Delta_{l, o, o'} F_{o'}

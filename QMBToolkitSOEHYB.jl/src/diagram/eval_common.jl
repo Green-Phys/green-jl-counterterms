@@ -1,13 +1,19 @@
 ### Evaluate the backbone diagrams to obtain their contributions
 
-function eval_diagram(diagram::BackBone, solver_data::SolverData)
-    if diagram.diagram_type == :propagator_diagram
-        result = _multiplication_convolution(diagram.nodes, diagram.edges, solver_data.model.dlr_grid, solver_data.model, solver_data.model.bare_propagator)
+function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, diagram_type::Symbol, diagrams::Vector{Array{BackBone,4}})
+    if diagram_type == :propagator_diagram
+        @assert length(diagrams) == solver_params.expansion.expansion_order + 1 "Number of diagram sets does not match expansion order."
+        for order in 0:solver_params.expansion.expansion_order
+            println("Evaluating propagator diagrams at order ", order)
+            eval_propagator_given_order!(solver_data, solver_params, diagrams[order+1])
+        end
+    elseif diagram_type == :green_diagram
+    else
+        error("Unknown diagram type: ", diagram_type)
     end
-    return result
 end
 
-function _multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData, propagator::DLRData)
+function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData, propagator::DLRData)
     @assert length(nodes) == length(edges) + 1 "Number of nodes must be one more than number of edges."
     # calculate the multiplication and convolution from right to left ignoring the two boundary nodes
     # |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|

@@ -1,6 +1,27 @@
 # Common utility functions for diagram generation
 
- function _generate_diagram_combinations(
+function gen_diagrams(solver_data::SolverData, solver_params::SolverParams, diagram_type::Symbol)
+    diagrams = Vector{Array{BackBone,4}}()
+    if diagram_type == :propagator_diagram
+        for order in 0:solver_params.expansion.expansion_order
+            new_diagrams = gen_propagator_given_order(order, solver_data.model.n_flavors, solver_data.model.hyb.exponents)
+            push!(diagrams, new_diagrams)
+            println("Generated ", size(new_diagrams), " propagator diagrams at order ", order)
+        end
+    elseif diagram_type == :green_diagram
+        for order in 1:solver_params.green.expansion_order
+            new_diagrams = gen_green_given_order(order, solver_data.model.n_flavors, solver_data.model.hyb.exponents)
+            push!(diagrams, new_diagrams)
+            println("Generated ", size(new_diagrams), " Green's function diagrams at order ", order)
+        end
+    else
+        error("Unknown diagram type: ", diagram_type)
+    end
+    return diagrams
+end
+
+
+function gen_diagram_combinations(
     diagram_type::Symbol,
     M::Int,
     connected_pairs::Vector{Tuple{Int,Int}},
@@ -65,31 +86,9 @@
                         error("Unrecognized hybridization direction or exponent sign")
                     end
                 end
-                diagrams[ind_x,ind_y,ind_z]=BackBone(diagram_type, sign, prefactor_Kexps, nodes, edges, external_opts_loc)
+                diagrams[ind_x, ind_y, ind_z] = BackBone(diagram_type, sign, prefactor_Kexps, nodes, edges, external_opts_loc)
             end
         end
-    end
-    return diagrams
-end
-
-
-
-function generate_diagrams(solver_data::SolverData, solver_params::SolverParams, diagram_type::Symbol)
-    diagrams = []
-    if diagram_type == :propagator_diagram
-        for order in 0:solver_params.expansion.expansion_order
-            new_diagrams = generate_propagator_diagrams(order, solver_data.model.n_flavors, solver_data.model.hyb.exponents)
-            append!(diagrams, new_diagrams)
-            println("Generated ", size(new_diagrams), " propagator diagrams at order ", order)
-        end
-    elseif diagram_type == :green_diagram
-        for order in 1:solver_params.green.expansion_order
-            new_diagrams = generate_green_diagrams(order, solver_data.model.n_flavors, solver_data.model.hyb.exponents)
-            append!(diagrams, new_diagrams)
-            println("Generated ", size(new_diagrams), " Green's function diagrams at order ", order)
-        end
-    else
-        error("Unknown diagram type: ", diagram_type)
     end
     return diagrams
 end

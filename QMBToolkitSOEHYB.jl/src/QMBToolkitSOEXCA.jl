@@ -5,7 +5,7 @@ include("solver/Data.jl")
 include("util/io.jl")
 include("util/init_data.jl")
 include("util/others.jl")
-include("solver/solver.jl")
+include("solver/solve.jl")
 include("diagram/DiagramStructure.jl")
 include("diagram/gen_common.jl")
 include("diagram/eval_common.jl")
@@ -24,11 +24,11 @@ function run(input_file::String)
     # 1. Read the input parameters
     params = read_input(input_file)
 
-    # 2. Create model data from files
-    model_data = create_model_data(params.model, params.solver.dlr)
+    # 2. Initialize model data from files
+    model_data = init_model_data(params.model, params.solver.dlr)
 
-    # 3. Create solver data
-    solver_data = create_solver_data(model_data)
+    # 3. Initialize solver data
+    solver_data = init_solver_data(model_data)
 
     # 4. Start the calculation using the parameters
     # welcome message

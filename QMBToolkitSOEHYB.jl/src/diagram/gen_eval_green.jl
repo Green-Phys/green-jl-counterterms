@@ -1,18 +1,18 @@
 # Green's function diagram
 
-function generate_green_diagrams(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64})
+function gen_green_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64})
    
     if expansion_order == 1 
-        diagrams1 = generate_green_given_topology(3, 2, nothing, 1.0, n_flavors, exponents)
+        diagrams1 = gen_green_given_topology(3, 2, nothing, 1.0, n_flavors, exponents)
         diagrams = stack([diagrams1], dims=1)
     elseif expansion_order == 2
-        diagrams1 = generate_green_given_topology(5, 3, [(4,2)], -1.0, n_flavors, exponents)
+        diagrams1 = gen_green_given_topology(5, 3, [(4,2)], -1.0, n_flavors, exponents)
         diagrams = stack([diagrams1], dims=1)
     elseif expansion_order == 3
-        diagrams1 = generate_green_given_topology(7, 3, [(6,4),(5,2)],  1.0, n_flavors, exponents)
-        diagrams2 = generate_green_given_topology(7, 4, [(6,3),(5,2)], -1.0, n_flavors, exponents)
-        diagrams3 = generate_green_given_topology(7, 5, [(6,3),(4,2)],  1.0, n_flavors, exponents)
-        diagrams4 = generate_green_given_topology(7, 4, [(6,2),(5,3)], 1.0, n_flavors, exponents)
+        diagrams1 = gen_green_given_topology(7, 3, [(6,4),(5,2)],  1.0, n_flavors, exponents)
+        diagrams2 = gen_green_given_topology(7, 4, [(6,3),(5,2)], -1.0, n_flavors, exponents)
+        diagrams3 = gen_green_given_topology(7, 5, [(6,3),(4,2)],  1.0, n_flavors, exponents)
+        diagrams4 = gen_green_given_topology(7, 4, [(6,2),(5,3)], 1.0, n_flavors, exponents)
         diagrams = stack([diagrams1, diagrams2, diagrams3, diagrams4], dims=1)
     else
         error("Unsupported expansion order for Green's function: $expansion_order")
@@ -22,7 +22,7 @@ function generate_green_diagrams(expansion_order::Int, n_flavors::Int, exponents
 end
 
 
-function generate_green_given_topology(M::Int, annihilation_pos::Int, connected_pairs::Union{Vector{Tuple{Int,Int}},Nothing}, crossing_parity::Float64, n_flavors::Int, exponents::Vector{Float64})
+function gen_green_given_topology(M::Int, annihilation_pos::Int, connected_pairs::Union{Vector{Tuple{Int,Int}},Nothing}, crossing_parity::Float64, n_flavors::Int, exponents::Vector{Float64})
     external_opts_loc = [1, annihilation_pos]
     empty_node = BackBoneNode(:empty, nothing, nothing, NoHyb())
     p = length(exponents)
@@ -44,5 +44,5 @@ function generate_green_given_topology(M::Int, annihilation_pos::Int, connected_
     base_nodes[M] = empty_node
     base_sign = -1 * crossing_parity #-1 comes from the definition of Green's function
 
-    return _generate_diagram_combinations(:green_diagram, M, connected_pairs, n_flavors, exponents, base_nodes, base_sign, external_opts_loc)
+    return gen_diagram_combinations(:green_diagram, M, connected_pairs, n_flavors, exponents, base_nodes, base_sign, external_opts_loc)
 end

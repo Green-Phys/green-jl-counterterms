@@ -2,7 +2,7 @@
 
 julia_version = "1.12.1"
 manifest_format = "2.0"
-project_hash = "0ebcccf177eac5b35444e8011e089b75da2075ac"
+project_hash = "7406f4e18246a1fc1fb51269ca01df1cf43e6827"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -72,6 +72,11 @@ deps = ["Mmap"]
 git-tree-sha1 = "9e2f36d3c96a820c678f2f1f1782582fcf685bae"
 uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 version = "1.9.1"
+
+[[deps.Distributed]]
+deps = ["Random", "Serialization", "Sockets"]
+uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+version = "1.11.0"
 
 [[deps.DocStringExtensions]]
 git-tree-sha1 = "7442a5dfe1ebb773c29cc2962a8980f47221d76c"
@@ -345,6 +350,12 @@ deps = ["Unicode"]
 uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 version = "1.11.0"
 
+[[deps.ProgressMeter]]
+deps = ["Distributed", "Printf"]
+git-tree-sha1 = "fbb92c6c56b34e1a2c4c36058f68f332bec840e7"
+uuid = "92933f4c-e287-5a05-a399-4b506db050ca"
+version = "1.11.0"
+
 [[deps.QMBToolkitDLR]]
 deps = ["Lehmann", "Printf"]
 path = "/Users/yangyu/src/QMBToolkit/QMBToolkitDLR.jl/"
@@ -358,7 +369,7 @@ uuid = "1d152fa9-cea6-4728-9c5c-b50c1b54dcac"
 version = "1.0.0-DEV"
 
 [[deps.QMBToolkitSOEXCA]]
-deps = ["DelimitedFiles", "LinearAlgebra", "Printf", "QMBToolkitDLR", "QMBToolkitED", "QuadGK", "SparseArrays", "TOML"]
+deps = ["DelimitedFiles", "HDF5", "LinearAlgebra", "Printf", "QMBToolkitDLR", "QMBToolkitED", "QuadGK", "SparseArrays", "TOML"]
 path = "."
 uuid = "c59e8169-549d-454f-b5d8-07bad43e82a7"
 version = "1.0.0-DEV"
@@ -411,6 +422,10 @@ deps = ["ConstructionBase", "Future", "MacroTools", "StaticArraysCore"]
 git-tree-sha1 = "c5391c6ace3bc430ca630251d02ea9687169ca68"
 uuid = "efcf1570-3423-57d1-acb7-fd33fddbac46"
 version = "1.1.2"
+
+[[deps.Sockets]]
+uuid = "6462fe0b-24de-5631-8697-dd941f90decc"
+version = "1.11.0"
 
 [[deps.SparseArrays]]
 deps = ["Libdl", "LinearAlgebra", "Random", "Serialization", "SuiteSparse_jll"]

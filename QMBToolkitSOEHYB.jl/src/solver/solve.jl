@@ -3,10 +3,14 @@ using QMBToolkitDLR
 using LinearAlgebra
 
 function solve(solver_data::SolverData, solver_params::SolverParams)
-    println("Solver is running with the provided solver data and parameters.")
     # gen_diagrams(solver_data, solver_params, :green_diagram)
+    println("--- Generate and evaluate propagator ---")
     diagrams = gen_diagrams(solver_data, solver_params, :propagator_diagram)
     eval_diagrams!(solver_data, solver_params, :propagator_diagram, diagrams)
+    println("Partition function Z = ", solver_data.calc.partition_function)
+    println("--- Generate and evaluate Green's function ---")
+    diagrams_green = gen_diagrams(solver_data, solver_params, :green_diagram)
+    eval_diagrams!(solver_data, solver_params, :green_diagram, diagrams_green)
 
     ## save data
     uniform_grid = collect(LinRange(0.0, solver_data.model.beta, 1001))

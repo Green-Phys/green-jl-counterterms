@@ -46,3 +46,41 @@ function gen_green_given_topology(M::Int, annihilation_pos::Int, connected_pairs
 
     return gen_diagram_combinations(:green_diagram, M, connected_pairs, n_flavors, exponents, base_nodes, base_sign, external_opts_loc)
 end
+
+
+function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBone,4})
+    n_topology = size(diagrams, 1)
+    n_directions = size(diagrams, 2)
+    n_line_flavors = size(diagrams, 3)
+    n_hyb_exponents = size(diagrams, 4)
+    @showprogress "Evaluating green diagrams" for i in 1:n_topology
+        for j in 1:n_directions
+            external_opts_loc = diagrams[i, j, 1, 1].external_opts_loc
+            @assert length(external_opts_loc) == 2 && external_opts_loc[1] == 1 "External operator locations are invalid."
+            backbone_0_to_beta_with_ann = [zeros(Float64, size(solver_data.calc.propagator.vals)) for i in 1:solver_data.model.n_flavors_physical]
+            for k in 1:n_line_flavors
+                for l in 1:n_hyb_exponents
+                    diagram = diagrams[i, j, k, l]
+                    @assert diagram.external_opts_loc == external_opts_loc "External operator locations do not match among diagrams of the same topology and direction."
+                    contrib_0_to_tau = multiplication_convolution(diagram.nodes[1:external_opts_loc[2]], diagram.edges[1:external_opts_loc[2]-1], solver_data.model.dlr_grid, solver_data.model, solver_data.calc.propagator)
+                    contrib_tau_to_beta = multiplication_convolution(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, solver_data.calc.propagator)
+                    contrib_tau_to_beta = do_reflection_tau2tau(solver_data.model.dlr_grid, contrib_tau_to_beta)
+                    prefactor = diagram.sign
+                    for (idx, Kexp) in enumerate(diagram.prefactor_Kexps)
+                        if Kexp != 0
+                            prefactor *= solver_data.model.K0_inverse[idx]^Kexp
+                        end
+                    end
+                    for ann_index in 1:solver_data.model.n_flavors_physical
+                        backbone_0_to_beta_with_ann[ann_index] .+= prefactor .* _multiplication_33(contrib_tau_to_beta, _multiplication_23(solver_data.model.ann_opts[ann_index], contrib_0_to_tau))
+                    end
+                end
+            end
+            for ann_index in 1:solver_data.model.n_flavors_physical
+                for cre_index in 1:solver_data.model.n_flavors_physical
+                    solver_data.calc.green.vals[:, ann_index, cre_index] .+= _trace_3(_multiplication_32(backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index])) ./ solver_data.calc.partition_function
+                end
+            end
+        end
+    end
+end

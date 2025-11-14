@@ -8,7 +8,7 @@ Holds the derived data for the model, such as the Hamiltonian, operators, and hy
 """
 
 mutable struct DLRData
-    vals::Array{Float64,3} # values on the DLR tau grid
+    vals::Array{Float64,3} # values on the DLR tau grid, first dimension is DLR rank r
     coeffs::Array{Float64,3}
 
     # --- Constructors ---
@@ -77,6 +77,7 @@ mutable struct CalculationData
     propagator::DLRData
     selfenergy::DLRData
     green::DLRData
+    partition_function::Float64
 end
 
 """

@@ -5,9 +5,21 @@ function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, di
         @assert length(diagrams) == solver_params.expansion.expansion_order + 1 "Number of diagram sets does not match expansion order."
         for order in 0:solver_params.expansion.expansion_order
             println("Evaluating propagator diagrams at order ", order)
-            eval_propagator_given_order!(solver_data, solver_params, diagrams[order+1])
+            eval_propagator_given_order!(solver_data, diagrams[order+1])
         end
+        # update dlr coefficients
+        solver_data.calc.propagator.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.propagator.vals, solver_data.model.dlr_grid.tau)
+        # update partition function
+        propagator_at_beta = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.propagator.coeffs, [solver_data.model.beta])[1, :, :]
+        solver_data.calc.partition_function = tr(propagator_at_beta)
     elseif diagram_type == :green_diagram
+        @assert length(diagrams) == solver_params.green.expansion_order "Number of diagram sets does not match green expansion order."
+        for order in 1:solver_params.green.expansion_order
+            println("Evaluating Green's function diagrams at order ", order)
+            eval_green_given_order!(solver_data, diagrams[order])
+        end
+        # update dlr coefficients
+        solver_data.calc.green.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)
     else
         error("Unknown diagram type: ", diagram_type)
     end
@@ -78,6 +90,17 @@ function _multiplication_23(A::Array{Float64,2}, B::Array{Float64,3})
     return C
 end
 
+function _multiplication_32(A::Array{Float64,3}, B::Array{Float64,2})
+    n_tau = size(A, 1)
+    o1 = size(A, 2)
+    o2 = size(A, 3)
+    C = zeros(Float64, n_tau, o1, o2)
+    for k in 1:n_tau
+        C[k, :, :] = A[k, :, :] * B
+    end
+    return C
+end
+
 function _multiplication_13(A::Array{Float64,1}, B::Array{Float64,3})
     n_tau = size(B, 1)
     o1 = size(B, 2)
@@ -89,4 +112,26 @@ function _multiplication_13(A::Array{Float64,1}, B::Array{Float64,3})
     return C
 end
 
+function _multiplication_33(A::Array{Float64,3}, B::Array{Float64,3})
+    n_tau = size(B, 1)
+    o1 = size(B, 2)
+    o2 = size(B, 3)
+    C = zeros(Float64, n_tau, o1, o2)
+    for k in 1:n_tau
+        C[k, :, :] = A[k, :, :] * B[k, :, :]
+    end
+    return C
+end
 
+
+function _trace_3(A::Array{Float64,3})
+    n_tau = size(A, 1)
+    o1 = size(A, 2)
+    o2 = size(A, 3)
+    @assert o1 == o2 "Matrix to be traced must be square."
+    trace_vals = zeros(Float64, n_tau)
+    for k in 1:n_tau
+        trace_vals[k] = tr(A[k, :, :])  
+    end
+    return trace_vals
+end

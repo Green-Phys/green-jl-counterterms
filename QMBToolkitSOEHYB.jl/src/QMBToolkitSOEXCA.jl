@@ -12,7 +12,7 @@ include("diagram/eval_common.jl")
 include("diagram/gen_eval_propagator.jl")
 include("diagram/gen_eval_green.jl")
 
-export run, print_diagram
+export run
 
 """
     run(input_file::String)

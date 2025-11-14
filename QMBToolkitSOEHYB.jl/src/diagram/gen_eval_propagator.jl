@@ -40,5 +40,5 @@ function generate_propagator_given_topology(M::Int, connected_pairs::Union{Vecto
     base_nodes[M] = empty_node
     base_sign = crossing_parity
 
-    return _generate_diagram_combinations(:propagator_diagram, M, connected_pairs, n_flavors, exponents, base_nodes, base_sign, external_opts_loc)
+    return generate_diagram_combinations(:propagator_diagram, M, connected_pairs, n_flavors, exponents, base_nodes, base_sign, external_opts_loc)
 end

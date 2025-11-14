@@ -2,17 +2,15 @@ module QMBToolkitSOEXCA
 
 include("util/Params.jl")
 include("solver/Data.jl")
-include("solver/solver.jl")
 include("util/io.jl")
 include("util/init_data.jl")
 include("util/others.jl")
+include("solver/solver.jl")
 include("diagram/DiagramStructure.jl")
 include("diagram/gen_common.jl")
-include("diagram/gen_green.jl")
-include("diagram/gen_propagator.jl")
-include("diagram/gen_selfenergy.jl")
-include("diagram/print_diagram.jl")
-include("diagram/eval_diagram.jl")
+include("diagram/eval_common.jl")
+include("diagram/gen_eval_propagator.jl")
+include("diagram/gen_eval_green.jl")
 
 export run, print_diagram
 

@@ -2,20 +2,20 @@
 
 function gen_diagrams(solver_data::SolverData, solver_params::SolverParams, diagram_type::Symbol)
     diagrams = Vector{Array{BackBone,4}}()
-    if diagram_type == :propagator_diagram
-        for order in 0:solver_params.expansion.expansion_order
+    if diagram_type == :propagator_diagram && !solver_params.propagator.is_bold
+        for order in 0:solver_params.propagator.expansion_order
             new_diagrams = gen_propagator_given_order(order, solver_data.model.n_flavors, solver_data.model.hyb.exponents)
             push!(diagrams, new_diagrams)
             println("Generated ", size(new_diagrams), " propagator diagrams at order ", order)
         end
     elseif diagram_type == :green_diagram
         for order in 1:solver_params.green.expansion_order
-            new_diagrams = gen_green_given_order(order, solver_data.model.n_flavors, solver_data.model.hyb.exponents)
+            new_diagrams = gen_green_given_order(order, solver_data.model.n_flavors, solver_data.model.hyb.exponents, solver_params.green.is_bold)
             push!(diagrams, new_diagrams)
             println("Generated ", size(new_diagrams), " Green's function diagrams at order ", order)
         end
     else
-        error("Unknown diagram type: ", diagram_type)
+        error("Not yet implemented")
     end
     return diagrams
 end
@@ -99,7 +99,7 @@ function gen_diagram_combinations(
                                 push!(edges[e].attached_hybs, KMinus(exponent_index))
                             end
                             prefactor_Kexps[exponent_index] += i - j -1 
-                            sign *= -1.0 # this is due to separation of backward hybridization line
+                            sign *= (-1.0)^(i-j-1) # this is due to separation of backward hybridization line
                         else
                             error("Unrecognized hybridization direction or exponent sign")
                         end

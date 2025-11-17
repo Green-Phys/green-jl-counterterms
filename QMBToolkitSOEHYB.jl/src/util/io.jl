@@ -12,8 +12,8 @@ function read_input(file_path::String)
     dict = TOML.parsefile(file_path)
 
     @assert dict["model"]["beta"] > 0 "beta must be positive"
-    @assert dict["solver"]["expansion"]["expansion_order"] >= 0 "expansion_order must be non-negative"
-    @assert dict["solver"]["green"]["expansion_order"] >= 0 "expansion_order must be non-negative"
+    @assert dict["solver"]["propagator"]["expansion_order"] >= 0 "expansion_order must be non-negative"
+    @assert dict["solver"]["green"]["expansion_order"] >= 1 "expansion_order must be at least 1"
     @assert dict["solver"]["dlr"]["rtol"] > 0 "rtol must be positive"
     @assert dict["solver"]["dlr"]["Euv"] > 0 "Euv must be positive"
 
@@ -27,12 +27,14 @@ function read_input(file_path::String)
         dict["model"]["poles_hybs_file"]
     )
 
-    expansion_params = ExpansionParams(
-        dict["solver"]["expansion"]["expansion_order"]
+    propagator_params = PropagatorParams(
+        dict["solver"]["propagator"]["expansion_order"],
+        dict["solver"]["propagator"]["is_bold"]
     )
 
     green_params = GreenParams(
-        dict["solver"]["green"]["expansion_order"]
+        dict["solver"]["green"]["expansion_order"],
+        dict["solver"]["green"]["is_bold"]
     )
 
     dlr_params = DLRParams(
@@ -41,7 +43,7 @@ function read_input(file_path::String)
     )
 
     solver_params = SolverParams(
-        expansion_params,
+        propagator_params,
         green_params,
         dlr_params,
         dict["solver"]["output_path"]
@@ -56,9 +58,7 @@ end
 Print parameters in a formatted way.
 """
 function print_parameters(params::Params)
-    println("="^40)
-    println("Input Parameters")
-    println("-"^40)
+    println("--- Input Parameters ---")
     println(" [model]")
     println("   beta: ", params.model.beta)
     println("   hopping_file: ", params.model.hopping_file)
@@ -66,13 +66,12 @@ function print_parameters(params::Params)
     println("   hybridization_file: ", params.model.hybridization_file)
     println("  [solver]")
     println("   [expansion]")
-    println("     expansion_order: ", params.solver.expansion.expansion_order)
+    println("     expansion_order: ", params.solver.propagator.expansion_order)
     println("   [green]")
     println("     expansion_order: ", params.solver.green.expansion_order)
     println("   [dlr]")
     println("     Euv: ", params.solver.dlr.Euv)
     println("     rtol: ", params.solver.dlr.rtol)
-    println("="^40)
 end
 
 """
@@ -81,9 +80,7 @@ end
 Print the contents of a `SolverData` object.
 """
 function print_init_data(solver_data::SolverData)
-    println("="^40)
-    println("Model Data")
-    println("-"^40)
+    println("--- Model Data ---")
     println(" poles energies : ", solver_data.model.poles_energies)
     println(" poles hybs : ", solver_data.model.poles_hybs)
     println(" n_flavors: ", solver_data.model.n_flavors)
@@ -116,9 +113,7 @@ function print_init_data(solver_data::SolverData)
             println("  bare_propagator[", i, ", 1, 1]: ", solver_data.model.bare_propagator.vals[i, 1, 1])
         end
     end
-    println("-"^40)
-    println("DLR Data")
-    println("-"^40)
+    println("--- DLR Data ---")
     println(" # of DLR coefficients: ", solver_data.model.dlr_grid.size)
     println(" DLR Grid Points (first 5):")
     for i in 1:min(5, solver_data.model.dlr_grid.size)
@@ -126,12 +121,11 @@ function print_init_data(solver_data::SolverData)
     end
     println(" # of tau points for DLR grid: ", length(solver_data.model.dlr_grid.tau))
     println(" DLR Tau Points (last 5):")
-    for i in max(1, length(solver_data.model.dlr_grid.tau)-4):length(solver_data.model.dlr_grid.tau)
+    for i in max(1, length(solver_data.model.dlr_grid.tau) - 4):length(solver_data.model.dlr_grid.tau)
         println("  tau[", i, "] = ", solver_data.model.dlr_grid.tau[i])
     end
     println(" Maximum reconstruction error in hybrdization function: ", solver_data.model.hyb_error)
     println(" Maximum reconstruction error in bare propagator: ", solver_data.model.bare_propagator_err)
-    println("="^40)
 end
 
 

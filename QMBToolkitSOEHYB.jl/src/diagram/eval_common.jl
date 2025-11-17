@@ -1,9 +1,9 @@
 ### Evaluate the backbone diagrams to obtain their contributions
 
 function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, diagram_type::Symbol, diagrams::Vector{Array{BackBone,4}})
-    if diagram_type == :propagator_diagram
-        @assert length(diagrams) == solver_params.expansion.expansion_order + 1 "Number of diagram sets does not match expansion order."
-        for order in 0:solver_params.expansion.expansion_order
+    if diagram_type == :propagator_diagram &&
+           !solver_params.propagator.is_bold
+        for order in 0:solver_params.propagator.expansion_order
             println("Evaluating propagator diagrams at order ", order)
             eval_propagator_given_order!(solver_data, diagrams[order+1])
         end
@@ -13,10 +13,9 @@ function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, di
         propagator_at_beta = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.propagator.coeffs, [solver_data.model.beta])[1, :, :]
         solver_data.calc.partition_function = tr(propagator_at_beta)
     elseif diagram_type == :green_diagram
-        @assert length(diagrams) == solver_params.green.expansion_order "Number of diagram sets does not match green expansion order."
         for order in 1:solver_params.green.expansion_order
             println("Evaluating Green's function diagrams at order ", order)
-            eval_green_given_order!(solver_data, diagrams[order])
+            eval_green_given_order!(solver_data, diagrams[order], solver_params.green.is_bold)
         end
         # update dlr coefficients
         solver_data.calc.green.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)

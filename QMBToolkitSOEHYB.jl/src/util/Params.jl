@@ -11,12 +11,13 @@ struct DLRParams
 end
 
 """
-    ExpansionParams
+    PropagatorParams
 
 Parameters for the propagator.
 """
-struct ExpansionParams
+struct PropagatorParams
     expansion_order::Int
+    is_bold::Bool
 end
 
 """
@@ -26,6 +27,7 @@ Parameters for the Green's function.
 """
 struct GreenParams
     expansion_order::Int
+    is_bold::Bool
 end
 
 """
@@ -34,7 +36,7 @@ end
 Parameters for the solver.
 """
 struct SolverParams
-    expansion::ExpansionParams
+    propagator::PropagatorParams
     green::GreenParams
     dlr::DLRParams
     output_path::String

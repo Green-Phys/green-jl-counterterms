@@ -1,4 +1,4 @@
-# Propagator diagram topologies for bare expansion
+# Propagator diagram for bare expansion
 using ProgressMeter
 
 function gen_propagator_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64})

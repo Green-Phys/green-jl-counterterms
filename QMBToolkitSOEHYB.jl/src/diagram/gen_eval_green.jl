@@ -1,22 +1,37 @@
-# Green's function diagram
+# Green's function diagram for both bare and bold expansion
 
-function gen_green_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64})
-   
-    if expansion_order == 1 
-        diagrams1 = gen_green_given_topology(3, 2, nothing, 1.0, n_flavors, exponents)
-        diagrams = stack([diagrams1], dims=1)
-    elseif expansion_order == 2
-        diagrams1 = gen_green_given_topology(5, 3, [(4,2)], -1.0, n_flavors, exponents)
-        diagrams = stack([diagrams1], dims=1)
-    elseif expansion_order == 3
-        diagrams1 = gen_green_given_topology(7, 3, [(6,4),(5,2)],  1.0, n_flavors, exponents)
-        diagrams2 = gen_green_given_topology(7, 4, [(6,3),(5,2)], -1.0, n_flavors, exponents)
-        diagrams3 = gen_green_given_topology(7, 5, [(6,3),(4,2)],  1.0, n_flavors, exponents)
-        diagrams4 = gen_green_given_topology(7, 4, [(6,2),(5,3)], 1.0, n_flavors, exponents)
-        diagrams = stack([diagrams1, diagrams2, diagrams3, diagrams4], dims=1)
+function gen_green_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64}, is_bold::Bool=false)
+    
+    if is_bold
+        if expansion_order == 1 
+            diagrams1 = gen_green_given_topology(3, 2, nothing, 1.0, n_flavors, exponents)
+            diagrams = stack([diagrams1], dims=1)
+        elseif expansion_order == 2
+            diagrams1 = gen_green_given_topology(5, 3, [(4,2)], -1.0, n_flavors, exponents)
+            diagrams = stack([diagrams1], dims=1)
+        elseif expansion_order == 3
+            diagrams1 = gen_green_given_topology(7, 3, [(6,4),(5,2)],  1.0, n_flavors, exponents)
+            diagrams2 = gen_green_given_topology(7, 4, [(6,3),(5,2)], -1.0, n_flavors, exponents)
+            diagrams3 = gen_green_given_topology(7, 5, [(6,3),(4,2)],  1.0, n_flavors, exponents)
+            diagrams4 = gen_green_given_topology(7, 4, [(6,2),(5,3)], 1.0, n_flavors, exponents)
+            diagrams = stack([diagrams1, diagrams2, diagrams3, diagrams4], dims=1)
+        else
+            error("Unsupported expansion order for Green's function: $expansion_order")
+            
+        end
     else
-        error("Unsupported expansion order for Green's function: $expansion_order")
-        
+        if expansion_order == 1 
+            diagrams1 = gen_green_given_topology(3, 2, nothing, 1.0, n_flavors, exponents)
+            diagrams = stack([diagrams1], dims=1)
+        elseif expansion_order == 2
+            diagrams1 = gen_green_given_topology(5, 3, [(4,2)], -1.0, n_flavors, exponents)
+            diagrams2 = gen_green_given_topology(5, 4, [(3,2)], 1.0, n_flavors, exponents)
+            diagrams3 = gen_green_given_topology(5, 2, [(4,3)], 1.0, n_flavors, exponents)
+            diagrams = stack([diagrams1, diagrams2, diagrams3], dims=1)
+        else
+            error("Unsupported expansion order for Green's function: $expansion_order")
+            
+        end
     end
     return diagrams
 end
@@ -48,21 +63,25 @@ function gen_green_given_topology(M::Int, annihilation_pos::Int, connected_pairs
 end
 
 
-function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBone,4})
+function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBone,4}, is_bold::Bool=false)
     n_topology = size(diagrams, 1)
     n_directions = size(diagrams, 2)
     n_line_flavors = size(diagrams, 3)
     n_hyb_exponents = size(diagrams, 4)
-    propagator = solver_data.calc.propagator
+    if is_bold
+        propagator = solver_data.calc.propagator
+    else
+        propagator = solver_data.model.bare_propagator
+    end
     @showprogress "Evaluating green diagrams" for i in 1:n_topology
         for j in 1:n_directions
             external_opts_loc = diagrams[i, j, 1, 1].external_opts_loc
             @assert length(external_opts_loc) == 2 && external_opts_loc[1] == 1 "External operator locations are invalid."
-            backbone_0_to_beta_with_ann = [zeros(Float64, size(solver_data.calc.propagator.vals)) for i in 1:solver_data.model.n_flavors_physical]
+            backbone_0_to_beta_with_ann = [zeros(Float64, size(propagator.vals)) for i in 1:solver_data.model.n_flavors_physical]
             for k in 1:n_line_flavors
                 for l in 1:n_hyb_exponents
                     diagram = diagrams[i, j, k, l]
-                    # print_diagram(diagram)
+                    print_diagram(diagram)
                     @assert diagram.external_opts_loc == external_opts_loc "External operator locations do not match among diagrams of the same topology and direction."
                     contrib_0_to_tau = multiplication_convolution(diagram.nodes[1:external_opts_loc[2]], diagram.edges[1:external_opts_loc[2]-1], solver_data.model.dlr_grid, solver_data.model, propagator)
                     contrib_tau_to_beta = multiplication_convolution(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, propagator)

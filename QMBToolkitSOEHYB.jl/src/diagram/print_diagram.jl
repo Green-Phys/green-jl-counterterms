@@ -62,28 +62,24 @@ function print_diagram(backbone::BackBone)
     println("Sign: ", backbone.sign)
     println("Prefactor K exponents: ", backbone.prefactor_Kexps)
 
-    nodes = backbone.nodes
-    edges = backbone.edges
+    nodes = reverse(backbone.nodes)
+    edges = reverse(backbone.edges)
     M = length(nodes)
 
     if M == 0
         return
     end
     
-    external_opts_loc = backbone.external_opts_loc
+    external_opts_loc = [M-i+1 for i in backbone.external_opts_loc]  # adjust for reversed nodes
     node_infos = [
         format_node(
             nodes[i],
             external_opts_loc !== nothing && i in external_opts_loc,
-            external_opts_loc !== nothing && i == external_opts_loc[1]
+            external_opts_loc !== nothing && i == external_opts_loc[2]
         ) for i in 1:M
     ]
     node_strs = [info[1] for info in node_infos]
     node_widths = [max(1, length(s)) for s in node_strs]
-
-    node_infos = reverse(node_infos)
-    node_strs = reverse(node_strs)
-    node_widths = reverse(node_widths)
     
     # Determine constant edge length
     max_half_width_sum = 0

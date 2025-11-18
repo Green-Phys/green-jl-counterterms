@@ -23,6 +23,13 @@ This is a Julia project. The following commands can be used to work with it:
     using QMBToolkitSOEXCA
     ```
 
+*   **Run the solver:**
+    The main entry point of the solver is the `run` function, which takes an input file as an argument.
+    ```julia
+    using QMBToolkitSOEXCA
+    run("path/to/your/input.toml")
+    ```
+
 ## Development Conventions
 
 *   The project follows the standard Julia package structure.
@@ -30,3 +37,22 @@ This is a Julia project. The following commands can be used to work with it:
 *   Tests are located in the `test` directory.
 *   The main project file is `src/QMBToolkitSOEXCA.jl`.
 *   The project uses `Test.jl` for testing.
+*   The main entry point is the `run` function in `src/QMBToolkitSOEXCA.jl`.
+*   The core solver logic is located in `src/solver/solve.jl`.
+*   Diagram generation and evaluation logic is in the `src/diagram` directory.
+*   Utility functions are in the `src/util` directory.
+
+## Dependencies
+
+The project has the following dependencies:
+
+*   DelimitedFiles
+*   HDF5
+*   LinearAlgebra
+*   Printf
+*   ProgressMeter
+*   QMBToolkitDLR
+*   QMBToolkitED
+*   QuadGK
+*   SparseArrays
+*   TOML

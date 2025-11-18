@@ -4,7 +4,7 @@ using LinearAlgebra
 
 function solve(solver_data::SolverData, solver_params::SolverParams)
     # gen_diagrams(solver_data, solver_params, :green_diagram)
-    if solver_params.green.is_bold || !solver_params.propagator.is_bold && !solver_params.green.is_bold
+    if solver_params.propagator.is_bold && solver_params.green.is_bold || !solver_params.propagator.is_bold && !solver_params.green.is_bold
         println("--- Start calculation ---")
     else
         error("Invalid combination of boldness settings:" *

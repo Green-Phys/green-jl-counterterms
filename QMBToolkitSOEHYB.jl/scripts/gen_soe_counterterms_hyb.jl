@@ -28,7 +28,7 @@ function _write_hyb_weight(hyb_weight::Array{Float64, 3}, file_out::String)
                 for k in 1:n_orb
                     val = hyb_weight[i, j, k]
                     @printf(io, "%d %d %d %.18e\n", 
-                            i, j, k, val)
+                            i-1, j-1, k-1, val)
                 end
             end
         end
@@ -429,7 +429,6 @@ function main()
         @printf(io, "%.18e   %.18e\n", counterterms_error, error_remain)
     end
     
-
     println("--- Finished ---")
 
 end

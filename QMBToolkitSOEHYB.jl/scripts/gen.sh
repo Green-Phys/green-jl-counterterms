@@ -9,7 +9,7 @@ U=2.0
 J=0.2
 Uprime=$(echo "$U-2.0*$J" | bc -l)
 mu=$(echo "(3.0 * $U - 5.0 * $J - 3.0) / 2.0" | bc -l) 
-output_dir="../examples/spinless_semi_circular/beta10/ESPRI2_DLR-3"
+output_dir="../examples/spinless_semicircular/beta10/ESPRI3_DLR-3"
 
 mkdir -p $output_dir
 
@@ -32,7 +32,7 @@ dlr_eps_hybridization=1e-3
 hyb_type="SemiCircular"
 hopping_file="${output_dir}/hopping.txt"
 soe_subroutine_counterterms="ESPRIT"
-n_soe_counterterms=2
+n_soe_counterterms=3
 soe_subroutine_hyb="DLR"
 n_soe_hybridization=7
 

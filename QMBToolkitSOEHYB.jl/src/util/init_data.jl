@@ -11,16 +11,6 @@ This involves reading data from files to construct the Hamiltonian, operators,
 and hybridization function.
 """
 function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
-    ### Load pole energies and hybridizations, the file could be empty
-    poles_energies = Float64[]
-    poles_hybs = zeros(Float64, 0, 0)
-    if isfile(model_params.file_path*model_params.poles_energies_file) && filesize(model_params.file_path*model_params.poles_energies_file) > 0
-        poles_energies = readdlm(model_params.file_path*model_params.poles_energies_file)[:, 1]
-    end
-    if isfile(model_params.file_path*model_params.poles_hybs_file) && filesize(model_params.file_path*model_params.poles_hybs_file) > 0
-        poles_hybs = readdlm(model_params.file_path*model_params.poles_hybs_file)
-        @assert size(poles_hybs, 1) == length(poles_energies) "Number of rows in poles_hybs must match number of pole energies."
-    end
 
     ### Load local Hamiltonian data
     H, ann_opts = QMBToolkitED.build_hamiltonian(model_params.file_path*model_params.hopping_file, model_params.file_path*model_params.interaction_file)
@@ -29,20 +19,8 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     n_fock = 1 << n_flavors
     cre_opts = vec([Matrix{Float64}(adjoint(c)) for c in ann_opts])
     evals, evecs = QMBToolkitED.solve_hamiltonian(H)
-
-    ### Load hybridization function data
-    hyb_data = readdlm(model_params.file_path*model_params.hybridization_file)
-    @assert size(hyb_data, 2) == 5  # ind_tau, orb_1, orb_2, ReDelta, ImDelta
-    n_orb = Int(maximum(hyb_data[:, 2:3])) + 1
-    n_tau = Int(maximum(hyb_data[:, 1])) + 1
-    @assert size(hyb_data, 1) == n_tau * n_orb * n_orb
-    @assert n_orb == n_flavors "Number of orbitals in hybridization function must match number of flavors from local Hamiltonian."
-    hyb_flat = hyb_data[:, 4]
-    hyb_permuted = reshape(hyb_flat, (n_orb, n_orb, n_tau))
-    hyb_input = permutedims(hyb_permuted, (3, 2, 1))  # Now Delta[tau, orb_1, orb_2]
     
     ### init DLR grid
-    tau_grid_hyb = collect(LinRange(0.0, model_params.beta, n_tau))
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
     
     ### init bare propagator
@@ -54,27 +32,30 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
         U_tau = exp.(-tau .* evals_shifted)
         bare_propagator[k, :, :] = evecs * Diagonal(U_tau) * adjoint(evecs)
     end
+   
+    ### Load hybridization function data
+    hyb_poles = readdlm(model_params.file_path*model_params.hybridization_poles_file)
+    hyb_poles = vec(hyb_poles)
+    hyb_weights_orig = readdlm(model_params.file_path*model_params.hybridization_weights_file)
+    @assert size(hyb_weights_orig, 2) == 4  # ind_poles, orb_1, orb_2, weights
+    n_poles = Int(maximum(hyb_weights_orig[:, 1])) + 1
+    n_flavors_physical = Int(maximum(hyb_weights_orig[:, 2:3])) + 1
+    @assert size(hyb_weights_orig, 1) == n_poles * n_flavors_physical * n_flavors_physical
+    hyb_weights_flat = hyb_weights_orig[:, 4]
+    hyb_weights_permuted = reshape(hyb_weights_flat, (n_flavors_physical, n_flavors_physical, n_poles))
+    hyb_weights_physical = permutedims(hyb_weights_permuted, (3, 2, 1))  # Now Delta[tau, orb_1, orb_2]
 
-    ### Derived quantities
-    n_flavors_physical = n_flavors - length(poles_energies)
-    n_fock_physical = 1 << n_flavors_physical
-
+    # hyb_weights contains both hyb_weights physical and those for counterterms (zeros)
+    hyb_weights = zeros(Float64, n_poles, n_flavors, n_flavors)
+    hyb_weights[:, 1:n_flavors_physical, 1:n_flavors_physical] = hyb_weights_physical
 
     # Convert hybridization function to DLR representation
-    hyb_dlr = tau2dlr(dlr_grid, hyb_input, tau_grid_hyb)
-    hyb_reconstructed = dlr2tau(dlr_grid, hyb_dlr, tau_grid_hyb)
-    hyb_error = maximum(abs.(hyb_reconstructed .- hyb_input))
-    hyb_tau = dlr2tau(dlr_grid, hyb_dlr, dlr_grid.tau)
+    KPlus_on_DLRtau = _gen_K_on_DLRtau(hyb_poles, dlr_grid)
+    KMinus_on_DLRtau = _gen_K_on_DLRtau(-hyb_poles, dlr_grid)
+    hyb_soe = SOEData(hyb_weights, hyb_poles, KPlus_on_DLRtau, KMinus_on_DLRtau)
 
-    hyb_on_DLR = DLRData(hyb_tau, hyb_dlr)
-    hyb_coeffs = hyb_dlr
-    hyb_exponents = dlr_grid.omega
-    KPlus_on_DLRtau = _gen_K_on_DLRtau(hyb_exponents, dlr_grid)
-    KMinus_on_DLRtau = _gen_K_on_DLRtau(-hyb_exponents, dlr_grid)
-    hyb_soe = SOEData(hyb_coeffs, hyb_exponents, KPlus_on_DLRtau, KMinus_on_DLRtau, hyb_on_DLR)
-
-    val = _get_val_from_SOE(hyb_soe, dlr_grid.tau, model_params.beta)
-    @assert maximum(abs.(val .- hyb_tau)) < 1e-14
+    ### Derived quantities
+    n_fock_physical = 1 << n_flavors_physical
     
     # Convert bare propagator e^{-tau H} to DLR representation
     bare_propagator_dlr = tau2dlr(dlr_grid, bare_propagator, dlr_grid.tau)
@@ -90,8 +71,6 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     K0_inverse = _gen_K0_inverse(dlr_grid.omega, model_params.beta)
 
     return ModelData(
-        poles_energies,
-        poles_hybs,
         model_params.beta,
         n_flavors,
         n_fock,
@@ -99,13 +78,10 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
         cre_opts,
         evals,
         evecs,
-        hyb_input,
-        tau_grid_hyb,
         dlr_grid,
         E_shift,
         n_flavors_physical,
         n_fock_physical,
-        hyb_error,
         bare_propagator_err,
         hyb_soe,
         DLRData(bare_propagator, bare_propagator_dlr), # bare propagator
@@ -154,22 +130,6 @@ function _gen_K_on_DLRtau(exponents::Vector{Float64}, dlr_grid::DLRGrid)
         end
     end
     return K_on_DLRtau
-end
-
-function _get_val_from_SOE(soe::SOEData, tau_grid::Vector{Float64}, beta::Float64)
-    # sum_{i} coeffs[i] * K(tau, exponents[i]), different matrix element share the same exponents
-    n_tau = length(tau_grid)
-    p = size(soe.coeffs, 1)
-    o1 = size(soe.coeffs, 2)
-    o2 = size(soe.coeffs, 3)
-    val = zeros(Float64, n_tau, o1, o2)
-    for (k, tau) in enumerate(tau_grid)
-        for j in 1:p
-            K_val = kernel_tau(tau, soe.exponents[j], beta)
-            val[k, :, :] .+= soe.coeffs[j, :, :] * K_val
-        end
-    end
-    return val
 end
 
 

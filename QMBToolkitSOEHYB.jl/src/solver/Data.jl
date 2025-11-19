@@ -39,12 +39,9 @@ mutable struct SOEData # the value is recovered by sum_{i} coeffs[i] * K(tau, ex
     exponents::Vector{Float64} # SOE exponents, shape: (p,)
     KPlus_on_DLRtau::Array{Float64,2} # K(tau_k, exponent_i) on the DLR tau grid
     KMinus_on_DLRtau::Array{Float64,2} # K(tau_k, -exponent_i) on the DLR tau grid
-    val_on_DLR::DLRData
 end
 
 struct ModelData
-    poles_energies::Vector{Float64}
-    poles_hybs::Matrix{Float64}
     beta::Float64
     n_flavors::Int
     n_fock::Int # 2^n_flavors
@@ -52,13 +49,10 @@ struct ModelData
     cre_opts::Vector{Matrix{Float64}}
     evals::Vector{Float64}
     evecs::Matrix{ComplexF64}
-    hyb_input::Array{Float64,3}
-    tau_grid_hyb::Array{Float64,1}
     dlr_grid::DLRGrid
     E_shift::Float64
     n_flavors_physical::Int
     n_fock_physical::Int
-    hyb_error::Float64
     bare_propagator_err::Float64
     hyb::SOEData
     bare_propagator::DLRData

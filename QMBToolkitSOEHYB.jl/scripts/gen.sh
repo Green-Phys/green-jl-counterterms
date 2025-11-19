@@ -8,8 +8,9 @@ t=0.0
 U=2.0 
 J=0.2
 Uprime=$(echo "$U-2.0*$J" | bc -l)
-mu=$(echo "(3.0 * $U - 5.0 * $J - 3.0) / 2.0" | bc -l) 
-output_dir="../examples/spinless_semicircular/beta10/ESPRI3_DLR-3"
+# mu=$(echo "(3.0 * $U - 5.0 * $J - 3.0) / 2.0" | bc -l) 
+mu=0.0
+output_dir="../examples/spinless_semicircular/beta10/ESPRIT3_DLR-3"
 
 mkdir -p $output_dir
 

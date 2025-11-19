@@ -22,9 +22,8 @@ function read_input(file_path::String)
         dict["model"]["file_path"],
         dict["model"]["hopping_file"],
         dict["model"]["interaction_file"],
-        dict["model"]["hybridization_file"],
-        dict["model"]["poles_energies_file"],
-        dict["model"]["poles_hybs_file"]
+        dict["model"]["hybridization_poles_file"],
+        dict["model"]["hybridization_weights_file"]
     )
 
     propagator_params = PropagatorParams(
@@ -63,7 +62,8 @@ function print_parameters(params::Params)
     println("   beta: ", params.model.beta)
     println("   hopping_file: ", params.model.hopping_file)
     println("   interaction_file: ", params.model.interaction_file)
-    println("   hybridization_file: ", params.model.hybridization_file)
+    println("   hybridization_poles_file: ", params.model.hybridization_poles_file)
+    println("   hybridization_weights_file: ", params.model.hybridization_weights_file)
     println("  [solver]")
     println("   [expansion]")
     println("     expansion_order: ", params.solver.propagator.expansion_order)
@@ -81,8 +81,6 @@ Print the contents of a `SolverData` object.
 """
 function print_init_data(solver_data::SolverData)
     println("--- Model Data ---")
-    println(" poles energies : ", solver_data.model.poles_energies)
-    println(" poles hybs : ", solver_data.model.poles_hybs)
     println(" n_flavors: ", solver_data.model.n_flavors)
     println(" n_fock: ", solver_data.model.n_fock)
     println(" n_flavors_physical: ", solver_data.model.n_flavors_physical)
@@ -93,20 +91,14 @@ function print_init_data(solver_data::SolverData)
             println("  evals[", i, "]: ", solver_data.model.evals[i])
         end
     end
-    Z_loc = sum(exp.(-solver_data.model.evals .* solver_data.model.beta))
-    Z_poles = compute_Z_noninteracting(solver_data.model.beta, solver_data.model.poles_energies)
-    Z_Bethe = compute_Z_Bethe(solver_data.model.beta)^2
-    remaining_percentage = 100 * (1 - Z_loc / (Z_poles * Z_Bethe))
-    println(" Partition Function for Local Hamiltonian: Z = ", Z_loc)
-    println(" Target impurity partition function for Bethe lattice: Z_Bethe = ", Z_Bethe)
-    println(" Partition function for poles: Z_poles = ", Z_poles)
-    println(" Remaining partition function (%): 1 - Z_loc / (Z_poles * Z_Bethe) = ", @sprintf("%.2f", remaining_percentage), "%")
-    println(" Hybridization Function (first 5 tau slices out of ", size(solver_data.model.hyb_input, 1), "):")
-    if size(solver_data.model.hyb_input, 1) >= 5
-        for i in 1:5
-            println("  hyb_input[", i, ", 1, 1]: ", solver_data.model.hyb_input[i, 1, 1])
-        end
-    end
+    # Z_loc = sum(exp.(-solver_data.model.evals .* solver_data.model.beta))
+    # Z_poles = compute_Z_noninteracting(solver_data.model.beta, solver_data.model.poles_energies)
+    # Z_Bethe = compute_Z_Bethe(solver_data.model.beta)^2
+    # remaining_percentage = 100 * (1 - Z_loc / (Z_poles * Z_Bethe))
+    # println(" Partition Function for Local Hamiltonian: Z = ", Z_loc)
+    # println(" Target impurity partition function for Bethe lattice: Z_Bethe = ", Z_Bethe)
+    # println(" Partition function for poles: Z_poles = ", Z_poles)
+    # println(" Remaining partition function (%): 1 - Z_loc / (Z_poles * Z_Bethe) = ", @sprintf("%.2f", remaining_percentage), "%")
     println(" Bare Propagator (first :5 tau slices out of ", size(solver_data.model.bare_propagator.vals, 1), "):")
     if size(solver_data.model.bare_propagator.vals, 1) >= 5
         for i in 1:5
@@ -124,7 +116,6 @@ function print_init_data(solver_data::SolverData)
     for i in max(1, length(solver_data.model.dlr_grid.tau) - 4):length(solver_data.model.dlr_grid.tau)
         println("  tau[", i, "] = ", solver_data.model.dlr_grid.tau[i])
     end
-    println(" Maximum reconstruction error in hybrdization function: ", solver_data.model.hyb_error)
     println(" Maximum reconstruction error in bare propagator: ", solver_data.model.bare_propagator_err)
 end
 

@@ -20,17 +20,30 @@ function gen_green_given_order(expansion_order::Int, n_flavors::Int, exponents::
             
         end
     else
+        # if expansion_order == 1 
+        #     diagrams1 = gen_green_given_topology(3, 2, nothing, 1.0, n_flavors, exponents)
+        #     diagrams = stack([diagrams1], dims=1)
+        # elseif expansion_order == 2
+        #     diagrams1 = gen_green_given_topology(5, 3, [(4,2)], -1.0, n_flavors, exponents)
+        #     diagrams2 = gen_green_given_topology(5, 4, [(3,2)], 1.0, n_flavors, exponents)
+        #     diagrams3 = gen_green_given_topology(5, 2, [(4,3)], 1.0, n_flavors, exponents)
+        #     diagrams = stack([diagrams1, diagrams2, diagrams3], dims=1)
+        # else
+        #     error("Unsupported expansion order for Green's function: $expansion_order")
+            
+        # end
         if expansion_order == 1 
             diagrams1 = gen_green_given_topology(3, 2, nothing, 1.0, n_flavors, exponents)
             diagrams = stack([diagrams1], dims=1)
-        elseif expansion_order == 2
-            diagrams1 = gen_green_given_topology(5, 3, [(4,2)], -1.0, n_flavors, exponents)
-            diagrams2 = gen_green_given_topology(5, 4, [(3,2)], 1.0, n_flavors, exponents)
-            diagrams3 = gen_green_given_topology(5, 2, [(4,3)], 1.0, n_flavors, exponents)
-            diagrams = stack([diagrams1, diagrams2, diagrams3], dims=1)
         else
-            error("Unsupported expansion order for Green's function: $expansion_order")
-            
+            pairings_with_crossings = _generate_pairings_with_hole(expansion_order)
+            diagrams_list = Vector{Array{BackBone,3}}()
+            for (pairing, annihilation_pos, crossing_count) in pairings_with_crossings
+                crossing_parity = (-1.0)^crossing_count
+                new_diagrams = gen_green_given_topology(2 * expansion_order + 1, annihilation_pos, pairing, crossing_parity, n_flavors, exponents)
+                push!(diagrams_list, new_diagrams)
+            end
+            diagrams = stack(diagrams_list, dims=1)
         end
     end
     return diagrams
@@ -104,4 +117,74 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
             end
         end
     end
+end
+
+
+function _generate_pairings_with_hole(N::Int)
+    # Points: 2, 3, ..., 2N
+    all_points = collect(2:(2 * N))
+    
+    # 1. Internal Crossings (Arch vs Arch)
+    function count_internal_crossings(pairs)
+        crossings = 0
+        n = length(pairs)
+        for i in 1:n
+            for j in (i + 1):n
+                # pairs[i] is the "outer" pair (larger start index)
+                v_large = pairs[i][2]
+                u_small = pairs[j][1]
+                v_small = pairs[j][2]
+                
+                # Crossing: one leg of larger pair falls inside smaller pair
+                if v_small < v_large < u_small
+                    crossings += 1
+                end
+            end
+        end
+        return crossings
+    end
+
+    # 2. Recursive Solver (Same as before)
+    function recurse_pairs(pool)
+        if isempty(pool)
+            return [Tuple{Int, Int}[]]
+        end
+
+        u = pool[end] # Max element
+        remaining_candidates = pool[1:end-1]
+        local_results = Vector{Tuple{Int, Int}}[]
+
+        for (i, v) in enumerate(remaining_candidates)
+            new_pool = deleteat!(copy(remaining_candidates), i)
+            sub_paths = recurse_pairs(new_pool)
+            
+            for path in sub_paths
+                push!(local_results, vcat([(u, v)], path))
+            end
+        end
+        return local_results
+    end
+
+    final_output = []
+
+    for annihilation_pos in all_points
+        # Remove the hole from the pool
+        current_pool = filter(x -> x != annihilation_pos, all_points)
+        
+        pairings = recurse_pairs(current_pool)
+        
+        # 3. External Contribution: Count points smaller than annihilation_pos
+        # Since points are 2, 3... this is simply (annihilation_pos - 2)
+        # But we use a generic count for robustness.
+        external_crossings = count(p -> p < annihilation_pos, all_points)
+
+        for pairs in pairings
+            internal_crossings = count_internal_crossings(pairs)
+            total_crossings = internal_crossings + external_crossings
+            
+            push!(final_output, (pairs, annihilation_pos, total_crossings))
+        end
+    end
+
+    return final_output
 end

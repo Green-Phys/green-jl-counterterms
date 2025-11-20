@@ -3,19 +3,32 @@ using ProgressMeter
 
 function gen_propagator_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64})
 
+    # if expansion_order == 0
+    #     diagrams1 = gen_propagator_given_topology(2, nothing, 1.0, n_flavors, exponents)
+    #     diagrams = stack([diagrams1], dims=1)
+    # elseif expansion_order == 1
+    #     diagrams1 = gen_propagator_given_topology(4, [(3, 2)], 1.0, n_flavors, exponents)
+    #     diagrams = stack([diagrams1], dims=1)
+    # elseif expansion_order == 2
+    #     diagrams1 = gen_propagator_given_topology(6, [(5, 4), (3, 2)], 1.0, n_flavors, exponents)
+    #     diagrams2 = gen_propagator_given_topology(6, [(5, 3), (4, 2)], -1.0, n_flavors, exponents)
+    #     diagrams3 = gen_propagator_given_topology(6, [(5, 2), (4, 3)], 1.0, n_flavors, exponents)
+    #     diagrams = stack([diagrams1, diagrams2, diagrams3], dims=1)
+    # else
+    #     error("Unsupported expansion order for Green's function: $expansion_order")
+    # end
     if expansion_order == 0
         diagrams1 = gen_propagator_given_topology(2, nothing, 1.0, n_flavors, exponents)
         diagrams = stack([diagrams1], dims=1)
-    elseif expansion_order == 1
-        diagrams1 = gen_propagator_given_topology(4, [(3, 2)], 1.0, n_flavors, exponents)
-        diagrams = stack([diagrams1], dims=1)
-    elseif expansion_order == 2
-        diagrams1 = gen_propagator_given_topology(6, [(5, 4), (3, 2)], 1.0, n_flavors, exponents)
-        diagrams2 = gen_propagator_given_topology(6, [(5, 3), (4, 2)], -1.0, n_flavors, exponents)
-        diagrams3 = gen_propagator_given_topology(6, [(5, 2), (4, 3)], 1.0, n_flavors, exponents)
-        diagrams = stack([diagrams1, diagrams2, diagrams3], dims=1)
     else
-        error("Unsupported expansion order for Green's function: $expansion_order")
+        pairings_with_crossings = _generate_pairings(expansion_order)
+        diagrams_list = Vector{Array{BackBone,3}}()
+        for (pairing, crossing_count) in pairings_with_crossings
+            crossing_parity = (-1.0)^crossing_count
+            new_diagrams = gen_propagator_given_topology(2 + 2 * expansion_order, pairing, crossing_parity, n_flavors, exponents)
+            push!(diagrams_list, new_diagrams)
+        end
+        diagrams = stack(diagrams_list, dims=1)
     end
     return diagrams
 end
@@ -58,4 +71,64 @@ function eval_propagator_given_order!(solver_data::SolverData, diagrams::Array{B
         end
         solver_data.calc.propagator.vals += prefactor .* backbone_0_to_tau
     end
+end
+
+
+function _generate_pairings(N::Int)
+    # The set of points: 2, 3, ..., 2N+1
+    points = collect(2:(2 * N + 1))
+    
+    # Helper to count crossings for a completed list of pairs
+    function count_crossings(pairs)
+        crossings = 0
+        n = length(pairs)
+        for i in 1:n
+            for j in (i + 1):n
+                # pairs[i] = (u_large, v_large)
+                # pairs[j] = (u_small, v_small)
+                # We know u_large > u_small because the list is sorted.
+                
+                v_large = pairs[i][2]
+                u_small = pairs[j][1]
+                v_small = pairs[j][2]
+                
+                # Condition for crossing:
+                # The endpoint of the larger "arch" (v_large) falls inside 
+                # the smaller "arch" (between v_small and u_small).
+                if v_small < v_large < u_small
+                    crossings += 1
+                end
+            end
+        end
+        return crossings
+    end
+
+    # Helper for recursion (Same as before)
+    function recurse_pairs(pool)
+        if isempty(pool)
+            return [Tuple{Int, Int}[]]
+        end
+
+        u = pool[end] 
+        remaining_candidates = pool[1:end-1]
+        
+        results = Vector{Tuple{Int, Int}}[]
+
+        for (i, v) in enumerate(remaining_candidates)
+            new_pool = deleteat!(copy(remaining_candidates), i)
+            sub_paths = recurse_pairs(new_pool)
+            
+            for path in sub_paths
+                # Prepend current pair
+                push!(results, vcat([(u, v)], path))
+            end
+        end
+        return results
+    end
+
+    # Generate all configurations
+    all_configs = recurse_pairs(points)
+    
+    # Map to (configuration, crossing_count)
+    return map(config -> (config, count_crossings(config)), all_configs)
 end

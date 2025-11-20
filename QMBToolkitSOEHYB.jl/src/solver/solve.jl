@@ -12,6 +12,12 @@ function solve(solver_data::SolverData, solver_params::SolverParams)
               "green.is_bold=$(solver_params.green.is_bold).")
     end
 
+    if solver_params.propagator.expansion_order != solver_params.green.expansion_order-1
+        error("For non-bold expansion, propagator expansion order must be one less than green expansion order." *
+              " Got propagator.expansion_order=$(solver_params.propagator.expansion_order), " *
+              "green.expansion_order=$(solver_params.green.expansion_order).")
+    end
+
     println("--- Generate and evaluate propagator ---")
     println("Use bold expansion for the propagator: ", solver_params.propagator.is_bold)
     if solver_params.propagator.is_bold

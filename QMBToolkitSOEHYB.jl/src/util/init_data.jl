@@ -68,7 +68,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     cre_opts_SOE = _gen_opts_SOE(cre_opts, hyb_soe.coeffs, true)
 
     # precompute K0_inverse
-    K0_inverse = _gen_K0_inverse(dlr_grid.omega, model_params.beta)
+    K0_inverse = _gen_K0_inverse(hyb_poles, model_params.beta)
 
     return ModelData(
         model_params.beta,

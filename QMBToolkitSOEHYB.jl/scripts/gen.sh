@@ -10,7 +10,7 @@ J=0.2
 Uprime=$(echo "$U-2.0*$J" | bc -l)
 # mu=$(echo "(3.0 * $U - 5.0 * $J - 3.0) / 2.0" | bc -l) 
 mu=0.0
-output_dir="../examples/spinless_semicircular/beta10/ESPRIT3_DLR-3"
+output_dir="../examples/spinless_semicircular/beta10/ESPRIT0_DLR-12"
 
 mkdir -p $output_dir
 
@@ -29,11 +29,11 @@ beta=10
 n_tau=1000
 n_matsubara=1000
 dlr_eps_counterterms=1e-3
-dlr_eps_hybridization=1e-3
+dlr_eps_hybridization=1e-12
 hyb_type="SemiCircular"
 hopping_file="${output_dir}/hopping.txt"
 soe_subroutine_counterterms="ESPRIT"
-n_soe_counterterms=3
+n_soe_counterterms=0
 soe_subroutine_hyb="DLR"
 n_soe_hybridization=7
 

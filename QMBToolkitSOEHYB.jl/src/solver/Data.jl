@@ -16,7 +16,7 @@ mutable struct DLRData
     function DLRData(vals::Array{Float64,3}, coeffs::Array{Float64,3})
         return new(vals, coeffs)
     end
-s
+
     function DLRData(r::Int, flavor1::Int, flavor2::Int)
         vals = zeros(Float64, r, flavor1, flavor2)
         coeffs = zeros(Float64, r, flavor1, flavor2)

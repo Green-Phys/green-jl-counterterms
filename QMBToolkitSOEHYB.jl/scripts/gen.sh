@@ -24,7 +24,7 @@ julia gen_interaction_hopping.jl \
     --mu $mu \
     --output_dir $output_dir
 
-# get SOE for counterterms and hybrdization function
+# get SOE for counterterms and hybridization function
 beta=10
 n_tau=1000
 n_matsubara=1000

@@ -20,18 +20,6 @@ function gen_green_given_order(expansion_order::Int, n_flavors::Int, exponents::
             
         end
     else
-        # if expansion_order == 1 
-        #     diagrams1 = gen_green_given_topology(3, 2, nothing, 1.0, n_flavors, exponents)
-        #     diagrams = stack([diagrams1], dims=1)
-        # elseif expansion_order == 2
-        #     diagrams1 = gen_green_given_topology(5, 3, [(4,2)], -1.0, n_flavors, exponents)
-        #     diagrams2 = gen_green_given_topology(5, 4, [(3,2)], 1.0, n_flavors, exponents)
-        #     diagrams3 = gen_green_given_topology(5, 2, [(4,3)], 1.0, n_flavors, exponents)
-        #     diagrams = stack([diagrams1, diagrams2, diagrams3], dims=1)
-        # else
-        #     error("Unsupported expansion order for Green's function: $expansion_order")
-            
-        # end
         if expansion_order == 1 
             diagrams1 = gen_green_given_topology(3, 2, nothing, 1.0, n_flavors, exponents)
             diagrams = stack([diagrams1], dims=1)
@@ -144,7 +132,7 @@ function _generate_pairings_with_hole(N::Int)
         return crossings
     end
 
-    # 2. Recursive Solver (Same as before)
+    # 2. Recursive Solver
     function recurse_pairs(pool)
         if isempty(pool)
             return [Tuple{Int, Int}[]]

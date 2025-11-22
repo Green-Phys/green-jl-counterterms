@@ -91,14 +91,6 @@ function print_init_data(solver_data::SolverData)
             println("  evals[", i, "]: ", solver_data.model.evals[i])
         end
     end
-    # Z_loc = sum(exp.(-solver_data.model.evals .* solver_data.model.beta))
-    # Z_poles = compute_Z_noninteracting(solver_data.model.beta, solver_data.model.poles_energies)
-    # Z_Bethe = compute_Z_Bethe(solver_data.model.beta)^2
-    # remaining_percentage = 100 * (1 - Z_loc / (Z_poles * Z_Bethe))
-    # println(" Partition Function for Local Hamiltonian: Z = ", Z_loc)
-    # println(" Target impurity partition function for Bethe lattice: Z_Bethe = ", Z_Bethe)
-    # println(" Partition function for poles: Z_poles = ", Z_poles)
-    # println(" Remaining partition function (%): 1 - Z_loc / (Z_poles * Z_Bethe) = ", @sprintf("%.2f", remaining_percentage), "%")
     println(" Bare Propagator (first :5 tau slices out of ", size(solver_data.model.bare_propagator.vals, 1), "):")
     if size(solver_data.model.bare_propagator.vals, 1) >= 5
         for i in 1:5

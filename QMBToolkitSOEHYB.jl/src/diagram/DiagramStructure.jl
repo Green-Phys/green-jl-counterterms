@@ -7,11 +7,11 @@
 """
     BackBone of M nodes and M-1 edges:
     |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
-    We assume it accompanies of L decomposed hbyridization functions:
+    We assume it accompanies of L decomposed hybridization functions:
     - Propagator diagram of the bare expansion: L = (M-2)/2
-    - Self-energy diagram of the bold expansion: L = (M-2)/2 # there is one undecomposed hybrdization line connected to 0
+    - Self-energy diagram of the bold expansion: L = (M-2)/2 # there is one undecomposed hybridization line connected to 0
     - Green's function diagram: L = (M-3)/2
-    We assme each of the L decomposed hybrdization functions can be in p states
+    We assume each of the L decomposed hybridization functions can be in p states
 """
 
 abstract type HybridizationState end

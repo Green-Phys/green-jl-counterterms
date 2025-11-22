@@ -50,8 +50,10 @@ function gen_diagram_combinations(
                     hyb_direction = hyb_directions[idx]
                     flavor_index = flavor_indices[idx]
                     exponent_index = exponent_indices[idx]
-                    if i-j==1 # TODO: this can be improved by attach Delta to the edge? seemly change np to n^2
-                        # directly connected, no edge in between
+                    # Special case: directly connected nodes (no edge in between)
+                    # NOTE: This could potentially be optimized by attaching Delta to the edge directly,
+                    # which would change scaling from n^p to n^2, but requires further investigation
+                    if i-j==1
                         if hyb_direction == :forward 
                             # cdag with bar at node i, c at node j, the edge in between has KPlus
                             nodes[i] = BackBoneNode(:cdag, flavor_index, exponent_index, NoHyb())

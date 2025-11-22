@@ -2,6 +2,9 @@
 using QMBToolkitDLR
 using LinearAlgebra
 
+# Output grid configuration
+const DEFAULT_OUTPUT_GRID_POINTS = 1001  # Number of uniform grid points for output
+
 function solve(solver_data::SolverData, solver_params::SolverParams)
     # gen_diagrams(solver_data, solver_params, :green_diagram)
     if solver_params.propagator.is_bold && solver_params.green.is_bold || !solver_params.propagator.is_bold && !solver_params.green.is_bold
@@ -34,7 +37,7 @@ function solve(solver_data::SolverData, solver_params::SolverParams)
 
 
     ## save data
-    uniform_grid = collect(LinRange(0.0, solver_data.model.beta, 1001))
+    uniform_grid = collect(LinRange(0.0, solver_data.model.beta, DEFAULT_OUTPUT_GRID_POINTS))
     green_tau = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.green.coeffs, uniform_grid)
     println("First 4 tau points:")
     println(uniform_grid[1:4])

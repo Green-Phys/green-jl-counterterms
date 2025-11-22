@@ -28,6 +28,7 @@ Parameters for the Green's function.
 struct GreenParams
     expansion_order::Int
     is_bold::Bool
+    save_linear_size::Int
 end
 
 """

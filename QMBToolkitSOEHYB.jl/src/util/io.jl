@@ -4,6 +4,21 @@ using Printf
 using HDF5
 
 """
+    resolve_path(path::String, input_file_dir::String)
+
+Resolve a path relative to the input file directory.
+If the path is absolute, return it as-is.
+If the path is relative, join it with the input file directory.
+"""
+function resolve_path(path::String, input_file_dir::String)
+    if isabspath(path)
+        return path
+    else
+        return joinpath(input_file_dir, path)
+    end
+end
+
+"""
     read_input(file_path::String)
 
 Read input parameters from a TOML file.
@@ -17,9 +32,24 @@ function read_input(file_path::String)
     @assert dict["solver"]["dlr"]["rtol"] > 0 "rtol must be positive"
     @assert dict["solver"]["dlr"]["Euv"] > 0 "Euv must be positive"
 
+    # Get the directory containing the input file for resolving relative paths
+    input_dir = dirname(abspath(file_path))
+
+    # Resolve paths relative to input file directory
+    model_file_path = resolve_path(dict["model"]["file_path"], input_dir)
+    output_path = resolve_path(dict["solver"]["output_path"], input_dir)
+
+    # Ensure paths end with directory separator for proper concatenation
+    if !endswith(model_file_path, "/")
+        model_file_path = model_file_path * "/"
+    end
+    if !endswith(output_path, "/")
+        output_path = output_path * "/"
+    end
+
     model_params = ModelParams(
         dict["model"]["beta"],
-        dict["model"]["file_path"],
+        model_file_path,
         dict["model"]["hopping_file"],
         dict["model"]["interaction_file"],
         dict["model"]["hybridization_poles_file"],
@@ -33,7 +63,8 @@ function read_input(file_path::String)
 
     green_params = GreenParams(
         dict["solver"]["green"]["expansion_order"],
-        dict["solver"]["green"]["is_bold"]
+        dict["solver"]["green"]["is_bold"],
+        dict["solver"]["green"]["save_linear_size"]
     )
 
     dlr_params = DLRParams(
@@ -45,7 +76,7 @@ function read_input(file_path::String)
         propagator_params,
         green_params,
         dlr_params,
-        dict["solver"]["output_path"]
+        output_path
     )
 
     return Params(model_params, solver_params)
@@ -113,11 +144,35 @@ end
 
 
 """
-    Save Green's function to a h5 file.
+    save_green_function(green_tau_linear, tau_linear, green_tau_dlr, tau_dlr, green_dlr_coeffs, file_path)
+
+Save Green's function data to an HDF5 file.
+
+Saves both linear grid and DLR grid representations in organized groups:
+- /linear_grid/green_tau: Green's function on uniform linear grid
+- /linear_grid/tau: Uniform linear tau grid
+- /dlr_grid/green_tau: Green's function on DLR tau grid
+- /dlr_grid/tau: DLR tau grid points
+- /dlr_grid/coeffs: DLR expansion coefficients
 """
-function save_green_function(green_tau::Array{Float64,3}, tau_grid::Array{Float64,1}, file_path::String)
+function save_green_function(
+    green_tau_linear::Array{Float64,3},
+    tau_linear::Array{Float64,1},
+    green_tau_dlr::Array{Float64,3},
+    tau_dlr::Array{Float64,1},
+    green_dlr_coeffs::Array{Float64,3},
+    file_path::String
+)
     h5open(file_path, "w") do file
-        write(file, "green_tau", green_tau)
-        write(file, "tau_grid", tau_grid)
+        # Save linear grid data
+        linear_group = create_group(file, "linear_grid")
+        linear_group["green_tau"] = green_tau_linear
+        linear_group["tau"] = tau_linear
+
+        # Save DLR grid data
+        dlr_group = create_group(file, "dlr_grid")
+        dlr_group["green_tau"] = green_tau_dlr
+        dlr_group["tau"] = tau_dlr
+        dlr_group["coeffs"] = green_dlr_coeffs
     end
 end

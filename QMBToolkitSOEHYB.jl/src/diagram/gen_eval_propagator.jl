@@ -49,12 +49,7 @@ function eval_propagator_given_order!(solver_data::SolverData, diagrams::Array{B
     @showprogress "Evaluating propagator diagrams" for (i, diagram) in enumerate(diagrams_flat)
         # print_diagram(diagram)
         backbone_0_to_tau = multiplication_convolution(diagram.nodes, diagram.edges, solver_data.model.dlr_grid, solver_data.model, solver_data.model.bare_propagator)
-        prefactor = diagram.sign
-        for (idx, Kexp) in enumerate(diagram.prefactor_Kexps)
-            if Kexp != 0
-                prefactor *= solver_data.model.K0_inverse[idx]^Kexp
-            end
-        end
+        prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
         solver_data.calc.propagator.vals += prefactor .* backbone_0_to_tau
     end
 end
@@ -64,57 +59,9 @@ function _generate_pairings(N::Int)
     # The set of points: 2, 3, ..., 2N+1
     points = collect(2:(2*N+1))
 
-    # Helper to count crossings for a completed list of pairs
-    function count_crossings(pairs)
-        crossings = 0
-        n = length(pairs)
-        for i in 1:n
-            for j in (i+1):n
-                # pairs[i] = (u_large, v_large)
-                # pairs[j] = (u_small, v_small)
-                # We know u_large > u_small because the list is sorted.
-
-                v_large = pairs[i][2]
-                u_small = pairs[j][1]
-                v_small = pairs[j][2]
-
-                # Condition for crossing:
-                # The endpoint of the larger "arch" (v_large) falls inside 
-                # the smaller "arch" (between v_small and u_small).
-                if v_small < v_large < u_small
-                    crossings += 1
-                end
-            end
-        end
-        return crossings
-    end
-
-    # Helper for recursion (Same as before)
-    function recurse_pairs(pool)
-        if isempty(pool)
-            return [Tuple{Int,Int}[]]
-        end
-
-        u = pool[end]
-        remaining_candidates = pool[1:end-1]
-
-        results = Vector{Tuple{Int,Int}}[]
-
-        for (i, v) in enumerate(remaining_candidates)
-            new_pool = deleteat!(copy(remaining_candidates), i)
-            sub_paths = recurse_pairs(new_pool)
-
-            for path in sub_paths
-                # Prepend current pair
-                push!(results, vcat([(u, v)], path))
-            end
-        end
-        return results
-    end
-
-    # Generate all configurations
+    # Generate all configurations using shared recurse_pairs function
     all_configs = recurse_pairs(points)
 
-    # Map to (configuration, crossing_count)
-    return map(config -> (config, count_crossings(config)), all_configs)
+    # Map to (configuration, crossing_count) using shared count_pair_crossings function
+    return map(config -> (config, count_pair_crossings(config)), all_configs)
 end

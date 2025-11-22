@@ -34,11 +34,7 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
         edge = edges[i]
         if i == 1
             for hyb in edge.attached_hybs
-                if hyb isa KPlus
-                    result = _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, hyb.l], result)
-                elseif hyb isa KMinus
-                    result = _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, hyb.l], result)
-                end
+                result = apply_hybridization(hyb, result, model_data)
             end
         end
         # multiply with the next node operator
@@ -56,21 +52,13 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
             result = _multiplication_23(op_matrix, result)
         end
 
-        if node.attached_hyb isa KPlus
-            result = _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, node.attached_hyb.l], result)
-        elseif node.attached_hyb isa KMinus
-            result = _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, node.attached_hyb.l], result)
-        end
+        result = apply_hybridization(node.attached_hyb, result, model_data)
 
         # calculate the convolution with the next edge
         edge_plus1 = edges[i+1]
         to_be_convoluted = copy(propagator.vals)
         for hyb in edge_plus1.attached_hybs
-            if hyb isa KPlus
-                to_be_convoluted = _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, hyb.l], to_be_convoluted)
-            elseif hyb isa KMinus
-                to_be_convoluted = _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, hyb.l], to_be_convoluted)
-            end
+            to_be_convoluted = apply_hybridization(hyb, to_be_convoluted, model_data)
         end
 
         result = do_convolution_dlr2tau(dlr_grid, tau2dlr(dlr_grid, to_be_convoluted, dlr_grid.tau), tau2dlr(dlr_grid, result, dlr_grid.tau))
@@ -130,7 +118,27 @@ function _trace_3(A::Array{Float64,3})
     @assert o1 == o2 "Matrix to be traced must be square."
     trace_vals = zeros(Float64, n_tau)
     for k in 1:n_tau
-        trace_vals[k] = tr(A[k, :, :])  
+        trace_vals[k] = tr(A[k, :, :])
     end
     return trace_vals
+end
+
+
+"""
+    apply_hybridization(hyb::HybridizationState, result::Array{Float64,3}, model_data::ModelData)
+
+Apply a hybridization function multiplication to the result array.
+
+For KPlus hybridizations, multiplies by KPlus_on_DLRtau.
+For KMinus hybridizations, multiplies by KMinus_on_DLRtau.
+For NoHyb or DeltaHyb, returns the result unchanged.
+"""
+function apply_hybridization(hyb::HybridizationState, result::Array{Float64,3}, model_data::ModelData)
+    if hyb isa KPlus
+        return _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, hyb.l], result)
+    elseif hyb isa KMinus
+        return _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, hyb.l], result)
+    else
+        return result
+    end
 end

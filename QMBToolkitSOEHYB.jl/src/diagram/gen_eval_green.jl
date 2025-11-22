@@ -87,12 +87,7 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
                     contrib_0_to_tau = multiplication_convolution(diagram.nodes[1:external_opts_loc[2]], diagram.edges[1:external_opts_loc[2]-1], solver_data.model.dlr_grid, solver_data.model, propagator)
                     contrib_tau_to_beta = multiplication_convolution(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, propagator)
                     contrib_tau_to_beta = do_reflection_tau2tau(solver_data.model.dlr_grid, contrib_tau_to_beta)
-                    prefactor = diagram.sign
-                    for (idx, Kexp) in enumerate(diagram.prefactor_Kexps)
-                        if Kexp != 0
-                            prefactor *= solver_data.model.K0_inverse[idx]^Kexp
-                        end
-                    end
+                    prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
                     for ann_index in 1:solver_data.model.n_flavors_physical
                         backbone_0_to_beta_with_ann[ann_index] .+= prefactor .* _multiplication_33(contrib_tau_to_beta, _multiplication_23(solver_data.model.ann_opts[ann_index], contrib_0_to_tau))
                     end
@@ -111,65 +106,25 @@ end
 function _generate_pairings_with_hole(N::Int)
     # Points: 2, 3, ..., 2N
     all_points = collect(2:(2 * N))
-    
-    # 1. Internal Crossings (Arch vs Arch)
-    function count_internal_crossings(pairs)
-        crossings = 0
-        n = length(pairs)
-        for i in 1:n
-            for j in (i + 1):n
-                # pairs[i] is the "outer" pair (larger start index)
-                v_large = pairs[i][2]
-                u_small = pairs[j][1]
-                v_small = pairs[j][2]
-                
-                # Crossing: one leg of larger pair falls inside smaller pair
-                if v_small < v_large < u_small
-                    crossings += 1
-                end
-            end
-        end
-        return crossings
-    end
-
-    # 2. Recursive Solver
-    function recurse_pairs(pool)
-        if isempty(pool)
-            return [Tuple{Int, Int}[]]
-        end
-
-        u = pool[end] # Max element
-        remaining_candidates = pool[1:end-1]
-        local_results = Vector{Tuple{Int, Int}}[]
-
-        for (i, v) in enumerate(remaining_candidates)
-            new_pool = deleteat!(copy(remaining_candidates), i)
-            sub_paths = recurse_pairs(new_pool)
-            
-            for path in sub_paths
-                push!(local_results, vcat([(u, v)], path))
-            end
-        end
-        return local_results
-    end
 
     final_output = []
 
     for annihilation_pos in all_points
         # Remove the hole from the pool
         current_pool = filter(x -> x != annihilation_pos, all_points)
-        
+
         pairings = recurse_pairs(current_pool)
-        
-        # 3. External Contribution: Count points smaller than annihilation_pos
+
+        # External Contribution: Count points smaller than annihilation_pos
         # Since points are 2, 3... this is simply (annihilation_pos - 2)
         # But we use a generic count for robustness.
         external_crossings = count(p -> p < annihilation_pos, all_points)
 
         for pairs in pairings
-            internal_crossings = count_internal_crossings(pairs)
+            # Internal crossings (arch vs arch) using shared function
+            internal_crossings = count_pair_crossings(pairs)
             total_crossings = internal_crossings + external_crossings
-            
+
             push!(final_output, (pairs, annihilation_pos, total_crossings))
         end
     end

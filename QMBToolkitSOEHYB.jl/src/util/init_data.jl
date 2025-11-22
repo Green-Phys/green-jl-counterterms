@@ -3,6 +3,9 @@ using DelimitedFiles
 using QMBToolkitDLR
 using LinearAlgebra
 
+# Constants for file format validation
+const HYB_WEIGHTS_EXPECTED_COLS = 4  # Expected columns: ind_poles, orb_1, orb_2, weights
+
 """
     init_model_data(model_params::ModelParams)
 
@@ -37,7 +40,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     hyb_poles = readdlm(model_params.file_path*model_params.hybridization_poles_file)
     hyb_poles = vec(hyb_poles)
     hyb_weights_orig = readdlm(model_params.file_path*model_params.hybridization_weights_file)
-    @assert size(hyb_weights_orig, 2) == 4  # ind_poles, orb_1, orb_2, weights
+    @assert size(hyb_weights_orig, 2) == HYB_WEIGHTS_EXPECTED_COLS "Hybridization weights file must have $(HYB_WEIGHTS_EXPECTED_COLS) columns: ind_poles, orb_1, orb_2, weights"
     n_poles = Int(maximum(hyb_weights_orig[:, 1])) + 1
     n_flavors_physical = Int(maximum(hyb_weights_orig[:, 2:3])) + 1
     @assert size(hyb_weights_orig, 1) == n_poles * n_flavors_physical * n_flavors_physical

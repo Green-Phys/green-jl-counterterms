@@ -97,12 +97,12 @@ end
 
 
 """
-    calculate_total_width(node_center_pos::Vector{Int}, node_infos::Vector{Tuple})
+    calculate_total_width(node_center_pos::Vector{Int}, node_infos)
 
 Calculate the total width needed for the diagram and adjust positions if needed.
 Returns (node_center_pos, total_width, min_overall_coord).
 """
-function calculate_total_width(node_center_pos::Vector{Int}, node_infos::Vector{Tuple})
+function calculate_total_width(node_center_pos::Vector{Int}, node_infos)
     M = length(node_center_pos)
     node_center_pos = copy(node_center_pos)  # Don't modify input
 
@@ -149,7 +149,7 @@ end
 Draw nodes and their markers on the diagram lines.
 """
 function draw_nodes!(line2::Vector{Char}, line3::Vector{Char},
-                     node_center_pos::Vector{Int}, node_infos::Vector{Tuple},
+                     node_center_pos::Vector{Int}, node_infos,
                      node_strs::Vector{String}, min_overall_coord::Int)
     M = length(node_center_pos)
     for i in 1:M

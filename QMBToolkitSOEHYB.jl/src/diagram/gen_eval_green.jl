@@ -87,12 +87,7 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
                     contrib_0_to_tau = multiplication_convolution(diagram.nodes[1:external_opts_loc[2]], diagram.edges[1:external_opts_loc[2]-1], solver_data.model.dlr_grid, solver_data.model, propagator)
                     contrib_tau_to_beta = multiplication_convolution(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, propagator)
                     contrib_tau_to_beta = do_reflection_tau2tau(solver_data.model.dlr_grid, contrib_tau_to_beta)
-                    prefactor = diagram.sign
-                    for (idx, Kexp) in enumerate(diagram.prefactor_Kexps)
-                        if Kexp != 0
-                            prefactor *= solver_data.model.K0_inverse[idx]^Kexp
-                        end
-                    end
+                    prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
                     for ann_index in 1:solver_data.model.n_flavors_physical
                         backbone_0_to_beta_with_ann[ann_index] .+= prefactor .* _multiplication_33(contrib_tau_to_beta, _multiplication_23(solver_data.model.ann_opts[ann_index], contrib_0_to_tau))
                     end

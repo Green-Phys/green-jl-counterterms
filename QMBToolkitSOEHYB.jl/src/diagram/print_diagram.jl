@@ -70,7 +70,7 @@ function print_diagram(backbone::BackBone)
         return
     end
     
-    external_opts_loc = [M-i+1 for i in backbone.external_opts_loc]  # adjust for reversed nodes
+    external_opts_loc = backbone.external_opts_loc === nothing ? nothing : [M-i+1 for i in backbone.external_opts_loc]
     node_infos = [
         format_node(
             nodes[i],

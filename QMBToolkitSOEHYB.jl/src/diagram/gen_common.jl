@@ -99,7 +99,7 @@ function gen_diagram_combinations(
                                 push!(edges[e].attached_hybs, KMinus(exponent_index))
                             end
                             prefactor_Kexps[exponent_index] += i - j -1 
-                            sign *= (-1.0)^(i-j-1) # this is due to separation of backward hybridization line
+                            sign *= -1.0 # this is due to separation of backward hybridization line
                         else
                             error("Unrecognized hybridization direction or exponent sign")
                         end

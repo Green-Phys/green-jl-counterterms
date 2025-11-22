@@ -76,22 +76,22 @@ end
 
 function _generate_pairings(N::Int)
     # The set of points: 2, 3, ..., 2N+1
-    points = collect(2:(2 * N + 1))
-    
+    points = collect(2:(2*N+1))
+
     # Helper to count crossings for a completed list of pairs
     function count_crossings(pairs)
         crossings = 0
         n = length(pairs)
         for i in 1:n
-            for j in (i + 1):n
+            for j in (i+1):n
                 # pairs[i] = (u_large, v_large)
                 # pairs[j] = (u_small, v_small)
                 # We know u_large > u_small because the list is sorted.
-                
+
                 v_large = pairs[i][2]
                 u_small = pairs[j][1]
                 v_small = pairs[j][2]
-                
+
                 # Condition for crossing:
                 # The endpoint of the larger "arch" (v_large) falls inside 
                 # the smaller "arch" (between v_small and u_small).
@@ -106,18 +106,18 @@ function _generate_pairings(N::Int)
     # Helper for recursion (Same as before)
     function recurse_pairs(pool)
         if isempty(pool)
-            return [Tuple{Int, Int}[]]
+            return [Tuple{Int,Int}[]]
         end
 
-        u = pool[end] 
+        u = pool[end]
         remaining_candidates = pool[1:end-1]
-        
-        results = Vector{Tuple{Int, Int}}[]
+
+        results = Vector{Tuple{Int,Int}}[]
 
         for (i, v) in enumerate(remaining_candidates)
             new_pool = deleteat!(copy(remaining_candidates), i)
             sub_paths = recurse_pairs(new_pool)
-            
+
             for path in sub_paths
                 # Prepend current pair
                 push!(results, vcat([(u, v)], path))
@@ -128,7 +128,7 @@ function _generate_pairings(N::Int)
 
     # Generate all configurations
     all_configs = recurse_pairs(points)
-    
+
     # Map to (configuration, crossing_count)
     return map(config -> (config, count_crossings(config)), all_configs)
 end

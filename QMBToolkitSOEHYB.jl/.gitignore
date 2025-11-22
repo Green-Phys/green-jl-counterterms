@@ -5,3 +5,8 @@
 /docs/build/
 /auxiliary/
 /examples/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride

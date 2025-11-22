@@ -111,3 +111,33 @@ function gen_diagram_combinations(
     end
     return diagrams
 end
+
+
+"""
+    recurse_pairs(pool::Vector{Int})
+
+Generate all valid pairings of elements in the pool.
+Takes the maximum element and recursively pairs it with all other elements,
+then recursively processes the remaining pool.
+
+Returns a vector of pairing configurations, where each configuration is a vector of (larger, smaller) tuples.
+"""
+function recurse_pairs(pool::Vector{Int})
+    if isempty(pool)
+        return [Tuple{Int,Int}[]]
+    end
+
+    u = pool[end]  # Maximum element
+    remaining_candidates = pool[1:end-1]
+    results = Vector{Tuple{Int,Int}}[]
+
+    for (i, v) in enumerate(remaining_candidates)
+        new_pool = deleteat!(copy(remaining_candidates), i)
+        sub_paths = recurse_pairs(new_pool)
+
+        for path in sub_paths
+            push!(results, vcat([(u, v)], path))
+        end
+    end
+    return results
+end

@@ -122,7 +122,7 @@ function _generate_pairings_with_hole(N::Int)
                 v_large = pairs[i][2]
                 u_small = pairs[j][1]
                 v_small = pairs[j][2]
-                
+
                 # Crossing: one leg of larger pair falls inside smaller pair
                 if v_small < v_large < u_small
                     crossings += 1
@@ -130,27 +130,6 @@ function _generate_pairings_with_hole(N::Int)
             end
         end
         return crossings
-    end
-
-    # 2. Recursive Solver
-    function recurse_pairs(pool)
-        if isempty(pool)
-            return [Tuple{Int, Int}[]]
-        end
-
-        u = pool[end] # Max element
-        remaining_candidates = pool[1:end-1]
-        local_results = Vector{Tuple{Int, Int}}[]
-
-        for (i, v) in enumerate(remaining_candidates)
-            new_pool = deleteat!(copy(remaining_candidates), i)
-            sub_paths = recurse_pairs(new_pool)
-            
-            for path in sub_paths
-                push!(local_results, vcat([(u, v)], path))
-            end
-        end
-        return local_results
     end
 
     final_output = []

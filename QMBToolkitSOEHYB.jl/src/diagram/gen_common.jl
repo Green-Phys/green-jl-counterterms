@@ -15,7 +15,8 @@ function gen_diagrams(solver_data::SolverData, solver_params::SolverParams, diag
             println("Generated ", size(new_diagrams), " Green's function diagrams at order ", order)
         end
     else
-        error("Not yet implemented")
+        # Only remaining case: propagator_diagram with is_bold=true
+        error("Bold propagator diagram generation not yet implemented. Set propagator.is_bold=false in the input file.")
     end
     return diagrams
 end

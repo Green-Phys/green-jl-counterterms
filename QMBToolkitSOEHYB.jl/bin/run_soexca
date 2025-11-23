@@ -1,19 +1,24 @@
-#!/usr/bin/env julia --project=@.
+#!/usr/bin/env bash
 
-# Add the project's src directory to the load path
-# This assumes the script is in a `bin` directory at the project root
-push!(LOAD_PATH, joinpath(@__DIR__, "..", "src"))
+# QMBToolkitSOEXCA MPI-enabled runner script
+# Usage: ./run_soexca <input_file.toml> [number_of_processes]
 
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 <input_file.toml> [number_of_processes]"
+    echo "  input_file.toml: Path to the input configuration file"
+    echo "  number_of_processes: Number of MPI processes (default: 1)"
+    exit 1
+fi
+
+INPUT_FILE="$1"
+NPROCS="${2:-1}"
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Run with mpiexecjl
+~/.julia/bin/mpiexecjl -n "$NPROCS" julia --project="$PROJECT_DIR" -e "
 using QMBToolkitSOEXCA
-
-# Check for command-line arguments
-if length(ARGS) != 1
-    println(stderr, "Usage: ./run_soexca <input_file.toml>")
-    exit(1)
-end
-
-# Get the input file from the command-line arguments
-input_file = ARGS[1]
-
-# Run the solver
-QMBToolkitSOEXCA.run(input_file)
+QMBToolkitSOEXCA.run(\"$INPUT_FILE\")
+"

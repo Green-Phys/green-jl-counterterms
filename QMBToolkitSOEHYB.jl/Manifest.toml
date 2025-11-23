@@ -2,7 +2,7 @@
 
 julia_version = "1.12.1"
 manifest_format = "2.0"
-project_hash = "7406f4e18246a1fc1fb51269ca01df1cf43e6827"
+project_hash = "68c0e54c0e4d529eb8afe42a915a6f372560d47b"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -120,12 +120,10 @@ deps = ["Compat", "HDF5_jll", "Libdl", "MPIPreferences", "Mmap", "Preferences", 
 git-tree-sha1 = "e856eef26cf5bf2b0f95f8f4fc37553c72c8641c"
 uuid = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
 version = "0.17.2"
+weakdeps = ["MPI"]
 
     [deps.HDF5.extensions]
     MPIExt = "MPI"
-
-    [deps.HDF5.weakdeps]
-    MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 
 [[deps.HDF5_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LazyArtifacts", "LibCURL_jll", "Libdl", "MPICH_jll", "MPIPreferences", "MPItrampoline_jll", "MicrosoftMPI_jll", "OpenMPI_jll", "OpenSSL_jll", "TOML", "Zlib_jll", "libaec_jll"]
@@ -226,6 +224,20 @@ version = "0.3.29"
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 version = "1.11.0"
 
+[[deps.MPI]]
+deps = ["Distributed", "DocStringExtensions", "Libdl", "MPICH_jll", "MPIPreferences", "MPItrampoline_jll", "MicrosoftMPI_jll", "OpenMPI_jll", "PkgVersion", "PrecompileTools", "Requires", "Serialization", "Sockets"]
+git-tree-sha1 = "a61ecf714d71064b766d481ef43c094d4c6e3c52"
+uuid = "da04e1cc-30fd-572f-bb4f-1f8673147195"
+version = "0.20.23"
+
+    [deps.MPI.extensions]
+    AMDGPUExt = "AMDGPU"
+    CUDAExt = "CUDA"
+
+    [deps.MPI.weakdeps]
+    AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
+    CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+
 [[deps.MPICH_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Hwloc_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "MPIPreferences", "TOML"]
 git-tree-sha1 = "9341048b9f723f2ae2a72a5269ac2f15f80534dc"
@@ -315,6 +327,12 @@ version = "1.12.0"
     [deps.Pkg.weakdeps]
     REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 
+[[deps.PkgVersion]]
+deps = ["Pkg"]
+git-tree-sha1 = "f9501cc0430a26bc3d156ae1b5b0c1b47af4d6da"
+uuid = "eebad327-c553-4316-9ea0-9fa01ccd7688"
+version = "0.3.3"
+
 [[deps.Polynomials]]
 deps = ["LinearAlgebra", "OrderedCollections", "RecipesBase", "Requires", "Setfield", "SparseArrays"]
 git-tree-sha1 = "972089912ba299fba87671b025cd0da74f5f54f7"
@@ -369,7 +387,7 @@ uuid = "1d152fa9-cea6-4728-9c5c-b50c1b54dcac"
 version = "1.0.0-DEV"
 
 [[deps.QMBToolkitSOEXCA]]
-deps = ["DelimitedFiles", "HDF5", "LinearAlgebra", "Printf", "QMBToolkitDLR", "QMBToolkitED", "QuadGK", "SparseArrays", "TOML"]
+deps = ["DelimitedFiles", "HDF5", "LinearAlgebra", "Printf", "ProgressMeter", "QMBToolkitDLR", "QMBToolkitED", "QuadGK", "SparseArrays", "TOML"]
 path = "."
 uuid = "c59e8169-549d-454f-b5d8-07bad43e82a7"
 version = "1.0.0-DEV"

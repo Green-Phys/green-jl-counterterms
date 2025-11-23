@@ -1,10 +1,14 @@
 ### Evaluate the backbone diagrams to obtain their contributions
+using MPI
 
-function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, diagram_type::Symbol, diagrams::Vector{Array{BackBone,4}})
+function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, diagram_type::Symbol, diagrams::Vector{Array{BackBone,4}}, comm::MPI.Comm)
+    rank = MPI.Comm_rank(comm)
     if diagram_type == :propagator_diagram &&
            !solver_params.propagator.is_bold
         for order in 0:solver_params.propagator.expansion_order
-            println("Evaluating propagator diagrams at order ", order)
+            if rank == 0
+                println("Evaluating propagator diagrams at order ", order)
+            end
             eval_propagator_given_order!(solver_data, diagrams[order+1])
         end
         # update dlr coefficients
@@ -14,7 +18,9 @@ function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, di
         solver_data.calc.partition_function = tr(propagator_at_beta)
     elseif diagram_type == :green_diagram
         for order in 1:solver_params.green.expansion_order
-            println("Evaluating Green's function diagrams at order ", order)
+            if rank == 0
+                println("Evaluating Green's function diagrams at order ", order)
+            end
             eval_green_given_order!(solver_data, diagrams[order], solver_params.green.is_bold)
         end
         # update dlr coefficients

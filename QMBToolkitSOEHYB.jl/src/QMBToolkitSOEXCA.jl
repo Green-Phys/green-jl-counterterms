@@ -1,5 +1,7 @@
 module QMBToolkitSOEXCA
 
+using MPI
+
 include("util/Params.jl")
 include("solver/Data.jl")
 include("util/io.jl")
@@ -23,6 +25,22 @@ Main entry point for the solver. Reads parameters from the input file
 and starts the calculation.
 """
 function run(input_file::String)
+    # Initialize MPI
+    MPI.Init()
+    comm = MPI.COMM_WORLD
+    rank = MPI.Comm_rank(comm)
+    size = MPI.Comm_size(comm)
+
+    # Only rank 0 prints output
+    if rank == 0
+        println("========================================")
+        println("  QMBToolkitSOEXCA Solver Starting Up  ")
+        println("========================================")
+        println("MPI Configuration:")
+        println("  Number of processes: $size")
+        println()
+    end
+
     # 1. Read the input parameters
     params = read_input(input_file)
 
@@ -32,17 +50,16 @@ function run(input_file::String)
     # 3. Initialize solver data
     solver_data = init_solver_data(model_data)
 
+    if rank == 0
+        print_parameters(params)
+        print_init_data(solver_data)
+    end
+
     # 4. Start the calculation using the parameters
-    # welcome message
-    println("========================================")
-    println("  QMBToolkitSOEXCA Solver Starting Up  ")
-    println("========================================")
-    println()
-    print_parameters(params)
-    print_init_data(solver_data)
-    
-    # In the future, you would call your main solver function here, e.g.:
-    solve(solver_data, params.solver)
+    solve(solver_data, params.solver, comm)
+
+    # Finalize MPI
+    MPI.Finalize()
 end
 
 end

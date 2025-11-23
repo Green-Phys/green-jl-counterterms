@@ -176,3 +176,140 @@ function save_green_function(
         dlr_group["coeffs"] = green_dlr_coeffs
     end
 end
+
+
+"""
+    save_results(solver_data::SolverData, solver_params::SolverParams)
+
+Process Green's function data and save to HDF5 file. Returns nothing.
+Prints summary information about the results.
+"""
+function save_results(solver_data::SolverData, solver_params::SolverParams)
+    println()
+    println("--- Post-processing and saving data ---")
+
+    # Linear grid
+    uniform_grid = collect(LinRange(0.0, solver_data.model.beta, solver_params.green.save_linear_size))
+    green_tau_linear = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.green.coeffs, uniform_grid)
+
+    # DLR grid
+    dlr_tau_grid = solver_data.model.dlr_grid.tau
+    green_tau_dlr = solver_data.calc.green.vals
+    green_dlr_coeffs = solver_data.calc.green.coeffs
+
+    # Print summary
+    println("First 4 linear grid tau points:")
+    println(uniform_grid[1:4])
+    println("Green's function G[1:4, 1,1] on linear grid:")
+    println(green_tau_linear[1:4, 1, 1])
+    println("Head + Tail (linear grid):")
+    println(green_tau_linear[1, 1, 1] + green_tau_linear[end, 1, 1])
+
+    # Save both linear and DLR grid data
+    output_file = solver_params.output_path * "sim.h5"
+    save_green_function(
+        green_tau_linear, uniform_grid,
+        green_tau_dlr, dlr_tau_grid, green_dlr_coeffs,
+        output_file
+    )
+    println("Saved Green's function (linear grid and DLR grid) to: ", output_file)
+end
+
+
+"""
+    print_timing_summary(nprocs, t_gen_prop_wall, t_eval_prop_wall, t_eval_prop_total,
+                        t_gen_green_wall, t_eval_green_wall, t_eval_green_total)
+
+Print a formatted timing summary table showing wall times, percentages, and CPU times
+for diagram generation and evaluation operations.
+"""
+function print_timing_summary(
+    nprocs::Int,
+    t_gen_prop_wall::Float64,
+    t_eval_prop_wall::Float64,
+    t_eval_prop_total::Float64,
+    t_gen_green_wall::Float64,
+    t_eval_green_wall::Float64,
+    t_eval_green_total::Float64
+)
+    println()
+    println("========================================")
+    println("         TIMING SUMMARY")
+    println("========================================")
+    println("Number of MPI processes: $nprocs")
+    println()
+
+    # Calculate total time
+    total_wall = t_gen_prop_wall + t_eval_prop_wall + t_gen_green_wall + t_eval_green_wall
+
+    # Print table header
+    println("Operation                              | Wall Time (s) | % Total | CPU Time (s)")
+    println("---------------------------------------+---------------+---------+-------------")
+
+    # Propagator generation
+    prop_gen_pct = 100.0 * t_gen_prop_wall / total_wall
+    @printf("Propagator diagram generation          | %13.3f | %6.1f%% | %s\n",
+            t_gen_prop_wall, prop_gen_pct, "-")
+
+    # Propagator evaluation
+    prop_eval_pct = 100.0 * t_eval_prop_wall / total_wall
+    @printf("Propagator diagram evaluation          | %13.3f | %6.1f%% | %11.3f\n",
+            t_eval_prop_wall, prop_eval_pct, t_eval_prop_total)
+
+    # Green's function generation
+    green_gen_pct = 100.0 * t_gen_green_wall / total_wall
+    @printf("Green's function diagram generation    | %13.3f | %6.1f%% | %s\n",
+            t_gen_green_wall, green_gen_pct, "-")
+
+    # Green's function evaluation
+    green_eval_pct = 100.0 * t_eval_green_wall / total_wall
+    @printf("Green's function diagram evaluation    | %13.3f | %6.1f%% | %11.3f\n",
+            t_eval_green_wall, green_eval_pct, t_eval_green_total)
+
+    println("---------------------------------------+---------------+---------+-------------")
+    @printf("TOTAL                                  | %13.3f | %6.1f%% | %11.3f\n",
+            total_wall, 100.0, t_eval_prop_total + t_eval_green_total)
+
+    println()
+    println("Parallel Performance Metrics:")
+    println("---------------------------------------")
+
+    # CPU Time / Wall Time ratio interpretation:
+    # - With 1 process: ratio = 1.0 (baseline)
+    # - With N processes working efficiently: ratio = N (each process busy)
+    # - With N processes doing redundant work: ratio = N (but wall time doesn't decrease)
+    #
+    # The key is to compare wall times between runs with different N:
+    # - Good parallelization: wall_time(N) ≈ wall_time(1) / N
+    # - No parallelization: wall_time(N) ≈ wall_time(1)
+
+    prop_ratio = t_eval_prop_total / t_eval_prop_wall
+    green_ratio = t_eval_green_total / t_eval_green_wall
+    total_eval_cpu = t_eval_prop_total + t_eval_green_total
+    total_eval_wall = t_eval_prop_wall + t_eval_green_wall
+    total_ratio = total_eval_cpu / total_eval_wall
+
+    println("  Propagator evaluation:")
+    @printf("    CPU Time / Wall Time = %.3f (expected ≈ %.1f for %d processes)\n",
+            prop_ratio, Float64(nprocs), nprocs)
+
+    println("  Green's function evaluation:")
+    @printf("    CPU Time / Wall Time = %.3f (expected ≈ %.1f for %d processes)\n",
+            green_ratio, Float64(nprocs), nprocs)
+
+    println("  Overall evaluation:")
+    @printf("    CPU Time / Wall Time = %.3f (expected ≈ %.1f for %d processes)\n",
+            total_ratio, Float64(nprocs), nprocs)
+
+    println()
+    println("Notes:")
+    println("  - Wall Time: elapsed real time for the operation")
+    println("  - CPU Time: sum of CPU time across all $nprocs MPI ranks (for evaluation only)")
+    println("  - CPU Time / Wall Time ratio:")
+    println("    * Expected ≈ $nprocs when all processes are working")
+    println("    * To assess parallel efficiency, compare wall times across different runs:")
+    println("      - Good scaling: Wall_time(N) ≈ Wall_time(1) / N")
+    println("      - No scaling: Wall_time(N) ≈ Wall_time(1)")
+    println("========================================")
+    println("--- Finish calculation ---")
+end

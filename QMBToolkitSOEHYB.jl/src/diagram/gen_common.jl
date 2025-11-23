@@ -1,18 +1,24 @@
 # Common utility functions for diagram generation
+using MPI
 
-function gen_diagrams(solver_data::SolverData, solver_params::SolverParams, diagram_type::Symbol)
+function gen_diagrams(solver_data::SolverData, solver_params::SolverParams, diagram_type::Symbol, comm::MPI.Comm)
+    rank = MPI.Comm_rank(comm)
     diagrams = Vector{Array{BackBone,4}}()
     if diagram_type == :propagator_diagram && !solver_params.propagator.is_bold
         for order in 0:solver_params.propagator.expansion_order
             new_diagrams = gen_propagator_given_order(order, solver_data.model.n_flavors, solver_data.model.hyb.exponents)
             push!(diagrams, new_diagrams)
-            println("Generated ", size(new_diagrams), " propagator diagrams at order ", order)
+            if rank == 0
+                println("Generated ", size(new_diagrams), " propagator diagrams at order ", order)
+            end
         end
     elseif diagram_type == :green_diagram
         for order in 1:solver_params.green.expansion_order
             new_diagrams = gen_green_given_order(order, solver_data.model.n_flavors, solver_data.model.hyb.exponents, solver_params.green.is_bold)
             push!(diagrams, new_diagrams)
-            println("Generated ", size(new_diagrams), " Green's function diagrams at order ", order)
+            if rank == 0
+                println("Generated ", size(new_diagrams), " Green's function diagrams at order ", order)
+            end
         end
     else
         # Only remaining case: propagator_diagram with is_bold=true

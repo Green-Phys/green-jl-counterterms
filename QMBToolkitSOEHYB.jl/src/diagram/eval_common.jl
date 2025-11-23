@@ -5,13 +5,23 @@ function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, di
     rank = MPI.Comm_rank(comm)
     if diagram_type == :propagator_diagram &&
            !solver_params.propagator.is_bold
+        # Clear partition function by order tracking
+        empty!(solver_data.calc.partition_function_by_order)
+
         for order in 0:solver_params.propagator.expansion_order
             if rank == 0
                 println("Evaluating propagator diagrams at order ", order)
             end
-            eval_propagator_given_order!(solver_data, diagrams[order+1])
+            eval_propagator_given_order!(solver_data, diagrams[order+1], comm)
+
+            # Calculate and store partition function after this order
+            propagator_coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.propagator.vals, solver_data.model.dlr_grid.tau)
+            propagator_at_beta = dlr2tau(solver_data.model.dlr_grid, propagator_coeffs, [solver_data.model.beta])[1, :, :]
+            Z_current = tr(propagator_at_beta)
+            push!(solver_data.calc.partition_function_by_order, Z_current)
         end
-        # update dlr coefficients
+
+        # Update final dlr coefficients and partition function
         solver_data.calc.propagator.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.propagator.vals, solver_data.model.dlr_grid.tau)
         # update partition function
         propagator_at_beta = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.propagator.coeffs, [solver_data.model.beta])[1, :, :]
@@ -21,7 +31,7 @@ function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, di
             if rank == 0
                 println("Evaluating Green's function diagrams at order ", order)
             end
-            eval_green_given_order!(solver_data, diagrams[order], solver_params.green.is_bold)
+            eval_green_given_order!(solver_data, diagrams[order], solver_params.green.is_bold, comm)
         end
         # update dlr coefficients
         solver_data.calc.green.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)

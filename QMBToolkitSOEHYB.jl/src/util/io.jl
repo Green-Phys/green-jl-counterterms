@@ -233,9 +233,7 @@ function print_timing_summary(
     t_eval_green_total::Float64
 )
     println()
-    println("========================================")
-    println("         TIMING SUMMARY")
-    println("========================================")
+    println("--- TIMING SUMMARY ---")
     println("Number of MPI processes: $nprocs")
     println()
 
@@ -271,45 +269,8 @@ function print_timing_summary(
             total_wall, 100.0, t_eval_prop_total + t_eval_green_total)
 
     println()
-    println("Parallel Performance Metrics:")
-    println("---------------------------------------")
 
-    # CPU Time / Wall Time ratio interpretation:
-    # - With 1 process: ratio = 1.0 (baseline)
-    # - With N processes working efficiently: ratio = N (each process busy)
-    # - With N processes doing redundant work: ratio = N (but wall time doesn't decrease)
-    #
-    # The key is to compare wall times between runs with different N:
-    # - Good parallelization: wall_time(N) ≈ wall_time(1) / N
-    # - No parallelization: wall_time(N) ≈ wall_time(1)
-
-    prop_ratio = t_eval_prop_total / t_eval_prop_wall
-    green_ratio = t_eval_green_total / t_eval_green_wall
-    total_eval_cpu = t_eval_prop_total + t_eval_green_total
-    total_eval_wall = t_eval_prop_wall + t_eval_green_wall
-    total_ratio = total_eval_cpu / total_eval_wall
-
-    println("  Propagator evaluation:")
-    @printf("    CPU Time / Wall Time = %.3f (expected ≈ %.1f for %d processes)\n",
-            prop_ratio, Float64(nprocs), nprocs)
-
-    println("  Green's function evaluation:")
-    @printf("    CPU Time / Wall Time = %.3f (expected ≈ %.1f for %d processes)\n",
-            green_ratio, Float64(nprocs), nprocs)
-
-    println("  Overall evaluation:")
-    @printf("    CPU Time / Wall Time = %.3f (expected ≈ %.1f for %d processes)\n",
-            total_ratio, Float64(nprocs), nprocs)
-
-    println()
-    println("Notes:")
-    println("  - Wall Time: elapsed real time for the operation")
-    println("  - CPU Time: sum of CPU time across all $nprocs MPI ranks (for evaluation only)")
-    println("  - CPU Time / Wall Time ratio:")
-    println("    * Expected ≈ $nprocs when all processes are working")
-    println("    * To assess parallel efficiency, compare wall times across different runs:")
-    println("      - Good scaling: Wall_time(N) ≈ Wall_time(1) / N")
-    println("      - No scaling: Wall_time(N) ≈ Wall_time(1)")
     println("========================================")
-    println("--- Finish calculation ---")
+    println("  QMBToolkitSOEXCA Solver Finished  ")
+    println("========================================")
 end

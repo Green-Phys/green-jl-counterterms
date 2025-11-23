@@ -1,4 +1,5 @@
 # Green's function diagram for both bare and bold expansion
+using MPI
 
 function gen_green_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64}, is_bold::Bool=false)
     
@@ -54,17 +55,28 @@ function gen_green_given_topology(M::Int, annihilation_pos::Int, connected_pairs
 end
 
 
-function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBone,4}, is_bold::Bool=false)
+function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBone,4}, is_bold::Bool, comm::MPI.Comm)
+    rank = MPI.Comm_rank(comm)
+    nprocs = MPI.Comm_size(comm)
+
     n_topology = size(diagrams, 1)
     n_directions = size(diagrams, 2)
     n_line_flavors = size(diagrams, 3)
     n_hyb_exponents = size(diagrams, 4)
+
     if is_bold
         propagator = solver_data.calc.propagator
     else
         propagator = solver_data.model.bare_propagator
     end
-    @showprogress "Evaluating green diagrams" for i in 1:n_topology
+
+    # Create local accumulator for this rank's work (only for this order)
+    local_result = zeros(Float64, size(solver_data.calc.green.vals))
+
+    # Distribute topology loop across ranks: rank processes indices rank+1:nprocs:n_topology
+    my_topologies = rank+1:nprocs:n_topology
+
+    for i in my_topologies
         for j in 1:n_directions
             external_opts_loc = diagrams[i, j, 1, 1].external_opts_loc
             @assert length(external_opts_loc) == 2 && external_opts_loc[1] == 1 "External operator locations are invalid."
@@ -85,11 +97,15 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
             end
             for ann_index in 1:solver_data.model.n_flavors_physical
                 for cre_index in 1:solver_data.model.n_flavors_physical
-                    solver_data.calc.green.vals[:, ann_index, cre_index] .+= _trace_3(_multiplication_32(backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index])) ./ solver_data.calc.partition_function
+                    local_result[:, ann_index, cre_index] .+= _trace_3(_multiplication_32(backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index])) ./ solver_data.calc.partition_function
                 end
             end
         end
     end
+
+    # Sum results from all ranks for this order, then ADD to existing green values
+    order_result = MPI.Allreduce(local_result, MPI.SUM, comm)
+    solver_data.calc.green.vals .+= order_result
 end
 
 

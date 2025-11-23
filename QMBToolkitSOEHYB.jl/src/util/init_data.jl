@@ -105,7 +105,8 @@ function init_solver_data(model_data::ModelData)
         DLRData(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # pseudo-particle propagator
         DLRData(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # pseudo-particle self-energy
         DLRData(model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical), # physical Green's function
-        1.0 # partition function
+        1.0, # partition function
+        Float64[] # partition function by order (filled during eval_diagrams!)
     )
     return SolverData(model_data, calculation_data)
 end

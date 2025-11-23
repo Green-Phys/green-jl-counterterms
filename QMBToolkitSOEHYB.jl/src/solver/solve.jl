@@ -2,6 +2,7 @@
 using QMBToolkitDLR
 using LinearAlgebra
 using MPI
+using Printf
 
 function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.Comm)
     rank = MPI.Comm_rank(comm)
@@ -50,6 +51,11 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
 
     if rank == 0
         println("Partition function Z = ", solver_data.calc.partition_function)
+        println("\nPartition function by expansion order:")
+        for (idx, Z) in enumerate(solver_data.calc.partition_function_by_order)
+            order = idx - 1
+            @printf("  Order %d: Z = %.10f\n", order, Z)
+        end
     end
 
     # === Green's Function Calculation ===

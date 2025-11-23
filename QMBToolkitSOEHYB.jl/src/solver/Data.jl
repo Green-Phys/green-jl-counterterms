@@ -72,6 +72,7 @@ mutable struct CalculationData
     selfenergy::DLRData
     green::DLRData
     partition_function::Float64
+    partition_function_by_order::Vector{Float64}  # Z after including each order
 end
 
 """

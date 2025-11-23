@@ -1,5 +1,5 @@
 # Propagator diagram for bare expansion
-using ProgressMeter
+using MPI
 
 function gen_propagator_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64})
     pairings_with_crossings = _generate_pairings(expansion_order)
@@ -33,14 +33,30 @@ function gen_propagator_given_topology(M::Int, connected_pairs::Vector{Tuple{Int
 end
 
 
-function eval_propagator_given_order!(solver_data::SolverData, diagrams::Array{BackBone,4})
+function eval_propagator_given_order!(solver_data::SolverData, diagrams::Array{BackBone,4}, comm::MPI.Comm)
+    rank = MPI.Comm_rank(comm)
+    nprocs = MPI.Comm_size(comm)
+
     diagrams_flat = vcat(diagrams...)
-    @showprogress "Evaluating propagator diagrams" for (i, diagram) in enumerate(diagrams_flat)
-        # print_diagram(diagram)
+    n_diagrams = length(diagrams_flat)
+
+    # Create local accumulator for this rank's work (only for this order)
+    local_result = zeros(Float64, size(solver_data.calc.propagator.vals))
+
+    # Distribute diagrams across ranks: rank processes indices rank+1:nprocs:n_diagrams
+    my_diagrams = rank+1:nprocs:n_diagrams
+
+    # Evaluate diagrams assigned to this rank
+    for i in my_diagrams
+        diagram = diagrams_flat[i]
         backbone_0_to_tau = multiplication_convolution(diagram.nodes, diagram.edges, solver_data.model.dlr_grid, solver_data.model, solver_data.model.bare_propagator)
         prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
-        solver_data.calc.propagator.vals += prefactor .* backbone_0_to_tau
+        local_result .+= prefactor .* backbone_0_to_tau
     end
+
+    # Sum results from all ranks for this order, then ADD to existing propagator values
+    order_result = MPI.Allreduce(local_result, MPI.SUM, comm)
+    solver_data.calc.propagator.vals .+= order_result
 end
 
 

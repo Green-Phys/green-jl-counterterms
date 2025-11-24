@@ -1,6 +1,24 @@
 # Common utility functions for diagram generation
 using MPI
 
+"""
+    gen_diagrams(solver_data, solver_params, diagram_type, comm)
+
+Generate all diagrams for a given diagram type and expansion order.
+
+# Arguments
+- `solver_data::SolverData`: The solver data containing model information
+- `solver_params::SolverParams`: Solver parameters including expansion orders and boldness settings
+- `diagram_type::Symbol`: Type of diagrams to generate (`:propagator_diagram` or `:green_diagram`)
+- `comm::MPI.Comm`: MPI communicator for parallel execution
+
+# Returns
+- `Vector{Array{BackBone,4}}`: Vector of diagram arrays, one for each expansion order
+
+Diagrams are organized by expansion order. For propagator diagrams, generates orders 0 through
+`propagator.expansion_order`. For Green's function diagrams, generates orders 1 through
+`green.expansion_order`.
+"""
 function gen_diagrams(solver_data::SolverData, solver_params::SolverParams, diagram_type::Symbol, comm::MPI.Comm)
     rank = MPI.Comm_rank(comm)
     diagrams = Vector{Array{BackBone,4}}()

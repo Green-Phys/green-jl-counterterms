@@ -1,4 +1,4 @@
-using SparseArrays
+
 using QMBToolkitDLR
 
 """
@@ -52,13 +52,13 @@ struct ModelData
     dlr_grid::DLRGrid
     E_shift::Float64
     n_flavors_physical::Int
-    n_fock_physical::Int
     bare_propagator_err::Float64
     hyb::SOEData
     bare_propagator::DLRData
     K0_inverse::Vector{Float64}
     ann_opts_SOE::Matrix{Matrix{Float64}} # shape: (n_flavors, p)
     cre_opts_SOE::Matrix{Matrix{Float64}} # shape: (n_flavors, p)
+    Z_counterterms::Float64
 end
 
 
@@ -73,6 +73,8 @@ mutable struct CalculationData
     green::DLRData
     partition_function::Float64
     partition_function_by_order::Vector{Float64}  # Z after including each order
+    green_linear_grid::Array{Float64,3}  # Green's function on uniform linear tau grid
+    tau_linear_grid::Vector{Float64}  # Uniform linear tau grid points
 end
 
 """

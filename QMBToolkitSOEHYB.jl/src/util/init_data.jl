@@ -16,7 +16,12 @@ and hybridization function.
 function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
 
     ### Load local Hamiltonian data
-    H, ann_opts = QMBToolkitED.build_hamiltonian(model_params.file_path*model_params.hopping_file, model_params.file_path*model_params.interaction_file)
+    hopping_path = joinpath(model_params.file_path, model_params.hopping_file)
+    interaction_path = joinpath(model_params.file_path, model_params.interaction_file)
+    isfile(hopping_path) || error("Hopping file not found: $hopping_path")
+    isfile(interaction_path) || error("Interaction file not found: $interaction_path")
+
+    H, ann_opts = QMBToolkitED.build_hamiltonian(hopping_path, interaction_path)
     ann_opts = vec([Matrix{Float64}(c) for c in ann_opts]) # convert to Float64
     n_flavors = length(ann_opts)
     n_fock = 1 << n_flavors
@@ -32,18 +37,24 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     E_shift = minimum(evals)
     evals_shifted = evals .- E_shift
     for (k, tau) in enumerate(tau_grid)
-        U_tau = exp.(-tau .* evals_shifted)
+        U_tau = exp.(-tau * evals_shifted)
         bare_propagator[k, :, :] = evecs * Diagonal(U_tau) * adjoint(evecs)
     end
    
     ### Load hybridization function data
-    hyb_poles = readdlm(model_params.file_path*model_params.hybridization_poles_file)
+    hyb_poles_path = joinpath(model_params.file_path, model_params.hybridization_poles_file)
+    hyb_weights_path = joinpath(model_params.file_path, model_params.hybridization_weights_file)
+    isfile(hyb_poles_path) || error("Hybridization poles file not found: $hyb_poles_path")
+    isfile(hyb_weights_path) || error("Hybridization weights file not found: $hyb_weights_path")
+
+    hyb_poles = readdlm(hyb_poles_path)
     hyb_poles = vec(hyb_poles)
-    hyb_weights_orig = readdlm(model_params.file_path*model_params.hybridization_weights_file)
-    @assert size(hyb_weights_orig, 2) == HYB_WEIGHTS_EXPECTED_COLS "Hybridization weights file must have $(HYB_WEIGHTS_EXPECTED_COLS) columns: ind_poles, orb_1, orb_2, weights"
+    hyb_weights_orig = readdlm(hyb_weights_path)
+    size(hyb_weights_orig, 2) == HYB_WEIGHTS_EXPECTED_COLS || error("Hybridization weights file must have $(HYB_WEIGHTS_EXPECTED_COLS) columns (ind_poles, orb_1, orb_2, weights), got $(size(hyb_weights_orig, 2))")
     n_poles = Int(maximum(hyb_weights_orig[:, 1])) + 1
     n_flavors_physical = Int(maximum(hyb_weights_orig[:, 2:3])) + 1
-    @assert size(hyb_weights_orig, 1) == n_poles * n_flavors_physical * n_flavors_physical
+    expected_rows = n_poles * n_flavors_physical * n_flavors_physical
+    size(hyb_weights_orig, 1) == expected_rows || error("Hybridization weights file has incorrect number of rows: expected $expected_rows, got $(size(hyb_weights_orig, 1))")
     hyb_weights_flat = hyb_weights_orig[:, 4]
     hyb_weights_permuted = reshape(hyb_weights_flat, (n_flavors_physical, n_flavors_physical, n_poles))
     hyb_weights_physical = permutedims(hyb_weights_permuted, (3, 2, 1))  # Now Delta[tau, orb_1, orb_2]
@@ -58,8 +69,6 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     hyb_soe = SOEData(hyb_weights, hyb_poles, KPlus_on_DLRtau, KMinus_on_DLRtau)
 
     ### Derived quantities
-    n_fock_physical = 1 << n_flavors_physical
-    
     # Convert bare propagator e^{-tau H} to DLR representation
     bare_propagator_dlr = tau2dlr(dlr_grid, bare_propagator, dlr_grid.tau)
     bare_propagator_reconstructed = dlr2tau(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
@@ -73,6 +82,9 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     # precompute K0_inverse
     K0_inverse = _gen_K0_inverse(hyb_poles, model_params.beta)
 
+    # calculate partition function for the counter-terms
+    Z_counterterms = calculate_Z_counterterms(model_params, n_flavors, n_flavors_physical)
+    
     return ModelData(
         model_params.beta,
         n_flavors,
@@ -84,13 +96,13 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
         dlr_grid,
         E_shift,
         n_flavors_physical,
-        n_fock_physical,
         bare_propagator_err,
         hyb_soe,
         DLRData(bare_propagator, bare_propagator_dlr), # bare propagator
         K0_inverse,
         ann_opts_SOE,
-        cre_opts_SOE
+        cre_opts_SOE,
+        Z_counterterms
     )
 end
 
@@ -106,7 +118,9 @@ function init_solver_data(model_data::ModelData)
         DLRData(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # pseudo-particle self-energy
         DLRData(model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical), # physical Green's function
         1.0, # partition function
-        Float64[] # partition function by order (filled during eval_diagrams!)
+        Float64[], # partition function by order (filled during eval_diagrams!)
+        zeros(Float64, 0, 0, 0), # green_linear_grid (filled during post-processing)
+        Float64[] # tau_linear_grid (filled during post-processing)
     )
     return SolverData(model_data, calculation_data)
 end
@@ -120,8 +134,8 @@ function _gen_K0_inverse(exponents::Vector{Float64},beta::Float64)
             K0_inverse[i] = 1.0 + exp(-beta * omega)
         end
     end
-    # all values should between 1 and 2
-    @assert all(K0_inverse .>= 1.0) && all(K0_inverse .<= 2.0) "K0_inverse values should be between 1 and 2."
+    # Validate: all values should be between 1 and 2
+    (all(K0_inverse .>= 1.0) && all(K0_inverse .<= 2.0)) || error("K0_inverse values must be between 1 and 2, got range [$(minimum(K0_inverse)), $(maximum(K0_inverse))]")
     return K0_inverse
 end
 
@@ -144,8 +158,8 @@ function _gen_opts_SOE(opts::Vector{Matrix{Float64}}, coeffs::Array{Float64,3}, 
 
     n_flavors = length(opts)
     p = size(coeffs, 1)
-    @assert size(coeffs, 2) == n_flavors "Size mismatch between coeffs and number of flavors."
-    @assert size(coeffs, 3) == n_flavors "Size mismatch between coeffs and number of flavors."
+    size(coeffs, 2) == n_flavors || error("Size mismatch between coeffs dimension 2 and number of flavors: expected $n_flavors, got $(size(coeffs, 2))")
+    size(coeffs, 3) == n_flavors || error("Size mismatch between coeffs dimension 3 and number of flavors: expected $n_flavors, got $(size(coeffs, 3))")
     opts_SOE = Matrix{Matrix{Float64}}(undef, n_flavors, p)
     for o in 1:n_flavors
         for l in 1:p

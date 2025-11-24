@@ -1,5 +1,6 @@
 # Green's function diagram for both bare and bold expansion
 using MPI
+using QMBToolkitDLR
 
 function gen_green_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64}, is_bold::Bool=false)
     
@@ -55,6 +56,20 @@ function gen_green_given_topology(M::Int, annihilation_pos::Int, connected_pairs
 end
 
 
+"""
+    eval_green_given_order!(solver_data, diagrams, is_bold, comm)
+
+Evaluate all Green's function diagrams at a given expansion order and accumulate results.
+
+# Arguments
+- `solver_data::SolverData`: The solver data containing model information and calculation results
+- `diagrams::Array{BackBone,4}`: 4D array of diagrams organized by (topology, direction, flavor, exponent)
+- `is_bold::Bool`: Whether to use bold expansion (true) or bare expansion (false)
+- `comm::MPI.Comm`: MPI communicator for parallel execution
+
+Updates `solver_data.calc.green.vals` by accumulating contributions from all diagrams.
+Uses MPI parallelization to distribute diagram evaluation across ranks.
+"""
 function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBone,4}, is_bold::Bool, comm::MPI.Comm)
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)

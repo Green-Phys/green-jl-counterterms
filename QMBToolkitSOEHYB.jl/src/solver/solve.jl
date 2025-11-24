@@ -1,6 +1,4 @@
 # Main control loop
-using QMBToolkitDLR
-using LinearAlgebra
 using MPI
 using Printf
 
@@ -9,9 +7,12 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
     nprocs = MPI.Comm_size(comm)
 
     # Validation
-    if solver_params.propagator.is_bold && solver_params.green.is_bold || !solver_params.propagator.is_bold && !solver_params.green.is_bold
+    if (solver_params.propagator.is_bold && solver_params.green.is_bold) || (!solver_params.propagator.is_bold && !solver_params.green.is_bold)
         if rank == 0
-            println("--- Start calculation ---")
+            println()
+            println("========================================")
+            println(" Calculating Diagrams ... ")
+            println("========================================")
         end
     else
         error("Invalid combination of boldness settings:" *

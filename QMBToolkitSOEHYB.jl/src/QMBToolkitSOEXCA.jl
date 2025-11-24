@@ -29,16 +29,12 @@ function run(input_file::String)
     MPI.Init()
     comm = MPI.COMM_WORLD
     rank = MPI.Comm_rank(comm)
-    size = MPI.Comm_size(comm)
 
     # Only rank 0 prints output
     if rank == 0
         println("========================================")
         println("  QMBToolkitSOEXCA Solver Starting Up  ")
         println("========================================")
-        println("MPI Configuration:")
-        println("  Number of processes: $size")
-        println()
     end
 
     # 1. Read the input parameters

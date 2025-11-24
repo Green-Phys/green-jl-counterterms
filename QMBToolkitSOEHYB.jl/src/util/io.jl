@@ -26,11 +26,12 @@ Read input parameters from a TOML file.
 function read_input(file_path::String)
     dict = TOML.parsefile(file_path)
 
-    @assert dict["model"]["beta"] > 0 "beta must be positive"
-    @assert dict["solver"]["propagator"]["expansion_order"] >= 0 "expansion_order must be non-negative"
-    @assert dict["solver"]["green"]["expansion_order"] >= 1 "expansion_order must be at least 1"
-    @assert dict["solver"]["dlr"]["rtol"] > 0 "rtol must be positive"
-    @assert dict["solver"]["dlr"]["Euv"] > 0 "Euv must be positive"
+    # Validate input parameters
+    dict["model"]["beta"] > 0 || error("beta must be positive, got $(dict["model"]["beta"])")
+    dict["solver"]["propagator"]["expansion_order"] >= 0 || error("propagator expansion_order must be non-negative, got $(dict["solver"]["propagator"]["expansion_order"])")
+    dict["solver"]["green"]["expansion_order"] >= 1 || error("green expansion_order must be at least 1, got $(dict["solver"]["green"]["expansion_order"])")
+    dict["solver"]["dlr"]["rtol"] > 0 || error("dlr rtol must be positive, got $(dict["solver"]["dlr"]["rtol"])")
+    dict["solver"]["dlr"]["Euv"] > 0 || error("dlr Euv must be positive, got $(dict["solver"]["dlr"]["Euv"])")
 
     # Get the directory containing the input file for resolving relative paths
     input_dir = dirname(abspath(file_path))
@@ -38,14 +39,6 @@ function read_input(file_path::String)
     # Resolve paths relative to input file directory
     model_file_path = resolve_path(dict["model"]["file_path"], input_dir)
     output_path = resolve_path(dict["solver"]["output_path"], input_dir)
-
-    # Ensure paths end with directory separator for proper concatenation
-    if !endswith(model_file_path, "/")
-        model_file_path = model_file_path * "/"
-    end
-    if !endswith(output_path, "/")
-        output_path = output_path * "/"
-    end
 
     model_params = ModelParams(
         dict["model"]["beta"],
@@ -88,6 +81,7 @@ end
 Print parameters in a formatted way.
 """
 function print_parameters(params::Params)
+    println()
     println("--- Input Parameters ---")
     println(" [model]")
     println("   beta: ", params.model.beta)
@@ -95,14 +89,14 @@ function print_parameters(params::Params)
     println("   interaction_file: ", params.model.interaction_file)
     println("   hybridization_poles_file: ", params.model.hybridization_poles_file)
     println("   hybridization_weights_file: ", params.model.hybridization_weights_file)
-    println("  [solver]")
-    println("   [expansion]")
-    println("     expansion_order: ", params.solver.propagator.expansion_order)
-    println("   [green]")
-    println("     expansion_order: ", params.solver.green.expansion_order)
-    println("   [dlr]")
-    println("     Euv: ", params.solver.dlr.Euv)
-    println("     rtol: ", params.solver.dlr.rtol)
+    println(" [solver]")
+    println("  [expansion]")
+    println("    expansion_order: ", params.solver.propagator.expansion_order)
+    println("  [green]")
+    println("    expansion_order: ", params.solver.green.expansion_order)
+    println("  [dlr]")
+    println("    Euv: ", params.solver.dlr.Euv)
+    println("    rtol: ", params.solver.dlr.rtol)
 end
 
 """
@@ -111,69 +105,64 @@ end
 Print the contents of a `SolverData` object.
 """
 function print_init_data(solver_data::SolverData)
+    println()
     println("--- Model Data ---")
     println(" n_flavors: ", solver_data.model.n_flavors)
     println(" n_fock: ", solver_data.model.n_fock)
     println(" n_flavors_physical: ", solver_data.model.n_flavors_physical)
-    println(" n_fock_physical: ", solver_data.model.n_fock_physical)
-    println(" Local Hamiltonian Eigenvalues (first 4 out of ", length(solver_data.model.evals), "):")
-    if length(solver_data.model.evals) >= 4
-        for i in 1:4
-            println("  evals[", i, "]: ", solver_data.model.evals[i])
-        end
-    end
-    println(" Bare Propagator (first :5 tau slices out of ", size(solver_data.model.bare_propagator.vals, 1), "):")
-    if size(solver_data.model.bare_propagator.vals, 1) >= 5
-        for i in 1:5
-            println("  bare_propagator[", i, ", 1, 1]: ", solver_data.model.bare_propagator.vals[i, 1, 1])
-        end
-    end
+    println(" # of SOE for hybridization function: ", length(solver_data.model.hyb.exponents))
+    println()
     println("--- DLR Data ---")
     println(" # of DLR coefficients: ", solver_data.model.dlr_grid.size)
-    println(" DLR Grid Points (first 5):")
-    for i in 1:min(5, solver_data.model.dlr_grid.size)
-        println("  w[", i, "] = ", solver_data.model.dlr_grid.omega[i])
-    end
-    println(" # of tau points for DLR grid: ", length(solver_data.model.dlr_grid.tau))
-    println(" DLR Tau Points (last 5):")
-    for i in max(1, length(solver_data.model.dlr_grid.tau) - 4):length(solver_data.model.dlr_grid.tau)
-        println("  tau[", i, "] = ", solver_data.model.dlr_grid.tau[i])
-    end
     println(" Maximum reconstruction error in bare propagator: ", solver_data.model.bare_propagator_err)
 end
 
 
 """
-    save_green_function(green_tau_linear, tau_linear, green_tau_dlr, tau_dlr, green_dlr_coeffs, file_path)
+    save_data(model_data, calc_data, file_path)
 
-Save Green's function data to an HDF5 file.
+Save all calculation results to an HDF5 file.
 
-Saves both linear grid and DLR grid representations in organized groups:
-- /linear_grid/green_tau: Green's function on uniform linear grid
-- /linear_grid/tau: Uniform linear tau grid
-- /dlr_grid/green_tau: Green's function on DLR tau grid
-- /dlr_grid/tau: DLR tau grid points
-- /dlr_grid/coeffs: DLR expansion coefficients
+Saves data in organized groups:
+- /green/linear_grid/green_tau: Green's function on uniform linear grid
+- /green/linear_grid/tau: Uniform linear tau grid
+- /green/dlr_grid/green_tau: Green's function on DLR tau grid
+- /green/dlr_grid/tau: DLR tau grid points
+- /green/dlr_grid/coeffs: DLR expansion coefficients
+- /model/E_shift: Energy shift applied to Hamiltonian
+- /model/beta: Inverse temperature
+- /calculation/partition_function: Final partition function
+- /calculation/partition_function_by_order: Partition function after each expansion order
 """
-function save_green_function(
-    green_tau_linear::Array{Float64,3},
-    tau_linear::Array{Float64,1},
-    green_tau_dlr::Array{Float64,3},
-    tau_dlr::Array{Float64,1},
-    green_dlr_coeffs::Array{Float64,3},
+function save_data(
+    model_data::ModelData,
+    calc_data::CalculationData,
     file_path::String
 )
     h5open(file_path, "w") do file
-        # Save linear grid data
-        linear_group = create_group(file, "linear_grid")
-        linear_group["green_tau"] = green_tau_linear
-        linear_group["tau"] = tau_linear
+        # Save Green's function - linear grid
+        green_linear_group = create_group(file, "green/linear_grid")
+        green_linear_group["green_tau"] = calc_data.green_linear_grid
+        green_linear_group["tau"] = calc_data.tau_linear_grid
 
-        # Save DLR grid data
-        dlr_group = create_group(file, "dlr_grid")
-        dlr_group["green_tau"] = green_tau_dlr
-        dlr_group["tau"] = tau_dlr
-        dlr_group["coeffs"] = green_dlr_coeffs
+        # Save Green's function - DLR grid
+        green_dlr_group = create_group(file, "green/dlr_grid")
+        green_dlr_group["green_tau"] = calc_data.green.vals
+        green_dlr_group["tau"] = model_data.dlr_grid.tau
+        green_dlr_group["coeffs"] = calc_data.green.coeffs
+
+        # Save model parameters
+        model_group = create_group(file, "model")
+        model_group["E_shift"] = model_data.E_shift
+        model_group["beta"] = model_data.beta
+        model_group["Z_counterterms"] = model_data.Z_counterterms
+
+        # Save calculation results
+        calc_group = create_group(file, "partition_function")
+        calc_group["partition_function"] = calc_data.partition_function
+        calc_group["partition_function_by_order"] = calc_data.partition_function_by_order
+        partition_function_corrected = exp(-model_data.E_shift*model_data.beta) * calc_data.partition_function / model_data.Z_counterterms
+        calc_group["partition_function_corrected"] = partition_function_corrected
     end
 end
 
@@ -188,31 +177,22 @@ function save_results(solver_data::SolverData, solver_params::SolverParams)
     println()
     println("--- Post-processing and saving data ---")
 
-    # Linear grid
-    uniform_grid = collect(LinRange(0.0, solver_data.model.beta, solver_params.green.save_linear_size))
-    green_tau_linear = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.green.coeffs, uniform_grid)
-
-    # DLR grid
-    dlr_tau_grid = solver_data.model.dlr_grid.tau
-    green_tau_dlr = solver_data.calc.green.vals
-    green_dlr_coeffs = solver_data.calc.green.coeffs
+    # Compute linear grid and store in CalculationData
+    solver_data.calc.tau_linear_grid = collect(LinRange(0.0, solver_data.model.beta, solver_params.green.save_linear_size))
+    solver_data.calc.green_linear_grid = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.green.coeffs, solver_data.calc.tau_linear_grid)
 
     # Print summary
     println("First 4 linear grid tau points:")
-    println(uniform_grid[1:4])
+    println(solver_data.calc.tau_linear_grid[1:4])
     println("Green's function G[1:4, 1,1] on linear grid:")
-    println(green_tau_linear[1:4, 1, 1])
+    println(solver_data.calc.green_linear_grid[1:4, 1, 1])
     println("Head + Tail (linear grid):")
-    println(green_tau_linear[1, 1, 1] + green_tau_linear[end, 1, 1])
+    println(solver_data.calc.green_linear_grid[1, 1, 1] + solver_data.calc.green_linear_grid[end, 1, 1])
 
-    # Save both linear and DLR grid data
-    output_file = solver_params.output_path * "sim.h5"
-    save_green_function(
-        green_tau_linear, uniform_grid,
-        green_tau_dlr, dlr_tau_grid, green_dlr_coeffs,
-        output_file
-    )
-    println("Saved Green's function (linear grid and DLR grid) to: ", output_file)
+    # Save all data
+    output_file = joinpath(solver_params.output_path, "sim.h5")
+    save_data(solver_data.model, solver_data.calc, output_file)
+    println("Saved results to: ", output_file)
 end
 
 

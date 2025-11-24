@@ -1,6 +1,23 @@
 ### Evaluate the backbone diagrams to obtain their contributions
 using MPI
+using LinearAlgebra
+using QMBToolkitDLR
 
+"""
+    eval_diagrams!(solver_data, solver_params, diagram_type, diagrams, comm)
+
+Evaluate all diagrams for a given diagram type and accumulate results into solver_data.
+
+# Arguments
+- `solver_data::SolverData`: The solver data containing model information and calculation results
+- `solver_params::SolverParams`: Solver parameters including expansion orders and boldness settings
+- `diagram_type::Symbol`: Type of diagrams to evaluate (`:propagator_diagram`, `:green_diagram`, or `:selfenergy_diagram`)
+- `diagrams::Vector{Array{BackBone,4}}`: Vector of diagram arrays organized by expansion order
+- `comm::MPI.Comm`: MPI communicator for parallel execution
+
+For propagator diagrams, updates `solver_data.calc.propagator` and `solver_data.calc.partition_function`.
+For Green's function diagrams, updates `solver_data.calc.green`.
+"""
 function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, diagram_type::Symbol, diagrams::Vector{Array{BackBone,4}}, comm::MPI.Comm)
     rank = MPI.Comm_rank(comm)
     if diagram_type == :propagator_diagram &&
@@ -36,12 +53,12 @@ function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, di
         # update dlr coefficients
         solver_data.calc.green.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)
     else
-        error("Unknown diagram type: ", diagram_type)
+        error("Unknown diagram type: $diagram_type. Supported types are: :propagator_diagram, :green_diagram, :selfenergy_diagram")
     end
 end
 
 function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData, propagator::DLRData)
-    @assert length(nodes) == length(edges) + 1 "Number of nodes must be one more than number of edges."
+    length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
     # calculate the multiplication and convolution from right to left ignoring the two boundary nodes
     # |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
     # nodes and edges are stored from 1 to M
@@ -56,13 +73,13 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
         # multiply with the next node operator
         node = nodes[i+1]
         if node.opt_type !== :empty
-            if node.opt_type == :cdag && node.bar_index == nothing
+            if node.opt_type == :cdag && isnothing(node.bar_index)
                 op_matrix = model_data.cre_opts[node.flavor]
-            elseif node.opt_type == :c && node.bar_index == nothing
+            elseif node.opt_type == :c && isnothing(node.bar_index)
                 op_matrix = model_data.ann_opts[node.flavor]
-            elseif node.opt_type == :cdag && node.bar_index != nothing
+            elseif node.opt_type == :cdag && !isnothing(node.bar_index)
                 op_matrix = model_data.cre_opts_SOE[node.flavor, node.bar_index]
-            elseif node.opt_type == :c && node.bar_index != nothing
+            elseif node.opt_type == :c && !isnothing(node.bar_index)
                 op_matrix = model_data.ann_opts_SOE[node.flavor, node.bar_index]
             end
             result = _multiplication_23(op_matrix, result)
@@ -131,7 +148,7 @@ function _trace_3(A::Array{Float64,3})
     n_tau = size(A, 1)
     o1 = size(A, 2)
     o2 = size(A, 3)
-    @assert o1 == o2 "Matrix to be traced must be square."
+    o1 == o2 || error("Matrix to be traced must be square: got dimensions $o1 x $o2")
     trace_vals = zeros(Float64, n_tau)
     for k in 1:n_tau
         trace_vals[k] = tr(A[k, :, :])

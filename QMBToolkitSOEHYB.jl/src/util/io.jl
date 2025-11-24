@@ -119,7 +119,7 @@ end
 
 
 """
-    save_data(model_data, calc_data, file_path)
+    save_data(model_data, calc_data, file_path, total_wall_time, total_cpu_time)
 
 Save all calculation results to an HDF5 file.
 
@@ -133,11 +133,15 @@ Saves data in organized groups:
 - /model/beta: Inverse temperature
 - /calculation/partition_function: Final partition function
 - /calculation/partition_function_by_order: Partition function after each expansion order
+- /timing/total_wall_time: Total wall clock time in seconds
+- /timing/total_cpu_time: Total CPU time across all MPI ranks in seconds
 """
 function save_data(
     model_data::ModelData,
     calc_data::CalculationData,
-    file_path::String
+    file_path::String,
+    total_wall_time::Float64,
+    total_cpu_time::Float64
 )
     h5open(file_path, "w") do file
         # Save Green's function - linear grid
@@ -163,17 +167,22 @@ function save_data(
         calc_group["partition_function_by_order"] = calc_data.partition_function_by_order
         partition_function_corrected = exp(-model_data.E_shift*model_data.beta) * calc_data.partition_function / model_data.Z_counterterms
         calc_group["partition_function_corrected"] = partition_function_corrected
+
+        # Save timing information
+        timing_group = create_group(file, "timing")
+        timing_group["total_wall_time"] = total_wall_time
+        timing_group["total_cpu_time"] = total_cpu_time
     end
 end
 
 
 """
-    save_results(solver_data::SolverData, solver_params::SolverParams)
+    save_results(solver_data::SolverData, solver_params::SolverParams, total_wall_time::Float64, total_cpu_time::Float64)
 
 Process Green's function data and save to HDF5 file. Returns nothing.
 Prints summary information about the results.
 """
-function save_results(solver_data::SolverData, solver_params::SolverParams)
+function save_results(solver_data::SolverData, solver_params::SolverParams, total_wall_time::Float64, total_cpu_time::Float64)
     println()
     println("--- Post-processing and saving data ---")
 
@@ -191,7 +200,7 @@ function save_results(solver_data::SolverData, solver_params::SolverParams)
 
     # Save all data
     output_file = joinpath(solver_params.output_path, "sim.h5")
-    save_data(solver_data.model, solver_data.calc, output_file)
+    save_data(solver_data.model, solver_data.calc, output_file, total_wall_time, total_cpu_time)
     println("Saved results to: ", output_file)
 end
 

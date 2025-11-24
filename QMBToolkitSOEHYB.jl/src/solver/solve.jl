@@ -81,7 +81,11 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
 
     # === Data Processing and Saving (rank 0 only) ===
     if rank == 0
-        save_results(solver_data, solver_params)
+        # Calculate total times
+        total_wall_time = t_gen_prop_wall + t_eval_prop_wall + t_gen_green_wall + t_eval_green_wall
+        total_cpu_time = t_eval_prop_total + t_eval_green_total
+
+        save_results(solver_data, solver_params, total_wall_time, total_cpu_time)
     end
 
     # === Print Timing Summary (rank 0 only) ===

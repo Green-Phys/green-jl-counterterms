@@ -1,5 +1,25 @@
 export reconstruct_signal
 
+function _kernel_tau(tau, omega, beta)
+    tau=Float64(tau)
+    omega=Float64(omega)
+    beta=Float64(beta)
+    @assert tau >= -beta && tau <= beta "tau must be in [-beta, beta]"
+    if tau >= 0.0
+        if omega > 0.0
+            return exp(-tau * omega)/(1 + exp(-beta * omega))
+        else
+            return exp(-(tau - beta) * omega)/(1 + exp(beta * omega))   
+        end
+    else
+        if omega > 0.0
+            return -1 * exp(-(tau + beta) * omega)/(1 + exp(-beta * omega))
+        else
+            return -1 * exp(-tau * omega)/(1 + exp(beta * omega))   
+        end
+    end
+end
+
 function _estimate_model_order(M::Union{Int, Nothing}, tolerance::Union{Float64, Nothing}, verbose::Bool, S::AbstractVector{<:Real})
     M_eff = M
     if M_eff === nothing
@@ -51,12 +71,17 @@ end
 
 Reconstruct a signal from its estimated parameters `s` and amplitudes `R` at given time points `t`.
 """
-function reconstruct_signal(s::Vector{<:Number}, R::AbstractArray{<:Number}, t::Vector{<:Real})
+function reconstruct_signal(s::Vector{<:Number}, R::AbstractArray{<:Number}, t::Vector{<:Real}; is_Euclidian_Fermi::Bool=false)
     N = length(t)
     M = length(s)
     f_rec = zeros(ComplexF64, (N,size(R)[2:end]...))
     for i in 1:N
-        selectdim(f_rec, 1, i) .= sum(selectdim(R, 1, j) .* exp(s[j] * t[i]) for j in 1:M)
+        if !is_Euclidian_Fermi
+            selectdim(f_rec, 1, i) .= sum(selectdim(R, 1, j) .* exp(s[j] * t[i]) for j in 1:M)
+        else
+            beta = t[end]
+            selectdim(f_rec, 1, i) .= sum(selectdim(R, 1, j) .* _kernel_tau(t[i], -s[j], beta) for j in 1:M)
+        end
     end
     return f_rec
 end

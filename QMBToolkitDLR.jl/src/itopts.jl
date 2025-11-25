@@ -56,14 +56,14 @@ function do_convolution_dlr2tau(dlr_grid::DLRGrid, F_dlr::Array{Float64,3}, G_dl
 end
 
 """ 
-    Perform reflection operation: H(τ) = F(β - τ)
+    Perform reflection operation: F(τ) = H(β - τ)
     where F is represented in the DLR basis, which is an Array of size (r,o1,o2).
     return the results on the DLR tau grid as an Array of size (r, o1, o2).
 """
 function do_reflection_dlr2tau(dlr_grid::DLRGrid, H_dlr::Array{Float64,3})
     tau_grid_reflected = dlr_grid.beta .- dlr_grid.tau
-    H_reflected_tau = dlr2tau(dlr_grid, H_dlr, tau_grid_reflected)
-    return H_reflected_tau
+    F_tau = dlr2tau(dlr_grid, H_dlr, tau_grid_reflected)
+    return F_tau
 end
 
 

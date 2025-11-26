@@ -5,6 +5,7 @@ function gen_propagator_given_order(expansion_order::Int, n_flavors::Int, expone
     pairings_with_crossings = _generate_pairings(expansion_order)
     diagrams_list = Vector{Array{BackBone,3}}()
     for (pairing, crossing_count) in pairings_with_crossings
+        println("Pairing: ", pairing, " with crossings: ", crossing_count)
         crossing_parity = (-1.0)^crossing_count
         new_diagrams = gen_propagator_given_topology(2 + 2 * expansion_order, pairing, crossing_parity, n_flavors, exponents)
         push!(diagrams_list, new_diagrams)

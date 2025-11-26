@@ -55,7 +55,7 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
         println("\nPartition function by expansion order:")
         for (idx, Z) in enumerate(solver_data.calc.partition_function_by_order)
             order = idx - 1
-            @printf("  Order %d: Z = %.10f\n", order, Z)
+            @printf("  Order %d: Z = %.16f\n", order, Z)
         end
     end
 

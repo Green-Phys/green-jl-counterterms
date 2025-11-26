@@ -25,6 +25,7 @@ function gen_green_given_order(expansion_order::Int, n_flavors::Int, exponents::
         pairings_with_crossings = _generate_pairings_with_hole(expansion_order)
         diagrams_list = Vector{Array{BackBone,3}}()
         for (pairing, annihilation_pos, crossing_count) in pairings_with_crossings
+            println("Pairing: ", pairing, " with annihilation at position: ", annihilation_pos, " and crossings: ", crossing_count)
             crossing_parity = (-1.0)^crossing_count
             new_diagrams = gen_green_given_topology(2 * expansion_order + 1, annihilation_pos, pairing, crossing_parity, n_flavors, exponents)
             push!(diagrams_list, new_diagrams)

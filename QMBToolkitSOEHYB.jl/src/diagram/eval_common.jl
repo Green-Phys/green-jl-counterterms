@@ -211,14 +211,12 @@ For NoHyb or DeltaHyb, returns the result unchanged.
 """
 function apply_hybridization(hyb::HybridizationState, result::Array{Float64,3}, model_data::ModelData; is_reverse::Bool=false)
     if hyb isa KPlus
-        println("Applying KPlus hybridization with index ", hyb.l)
         if !is_reverse
             return _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, hyb.l], result)
         else
             return _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, hyb.l], result)
         end
     elseif hyb isa KMinus
-        println("Applying KMinus hybridization with index ", hyb.l)
         if !is_reverse
             return _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, hyb.l], result)
         else

@@ -99,6 +99,49 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
     return result
 end
 
+
+function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData, propagator::DLRData)
+    length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
+    # calculate the multiplication and convolution from left to right ignoring the two boundary nodes (the matrix multiplications is done in the original order)
+    # |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
+    # nodes and edges are stored from 1 to M
+    result = copy(propagator.vals)
+    for i in length(edges):-1:2
+        edge = edges[i]
+        if i == length(edges)
+            for hyb in edge.attached_hybs
+                result = apply_hybridization(hyb, result, model_data)
+            end
+        end
+        node = nodes[i]
+        if node.opt_type !== :empty
+            if node.opt_type == :cdag && isnothing(node.bar_index)
+                op_matrix = model_data.cre_opts[node.flavor]
+            elseif node.opt_type == :c && isnothing(node.bar_index)
+                op_matrix = model_data.ann_opts[node.flavor]
+            elseif node.opt_type == :cdag && !isnothing(node.bar_index)
+                op_matrix = model_data.cre_opts_SOE[node.flavor, node.bar_index]
+            elseif node.opt_type == :c && !isnothing(node.bar_index)
+                op_matrix = model_data.ann_opts_SOE[node.flavor, node.bar_index]
+            end
+            result = _multiplication_32(result, op_matrix)
+        end
+
+        result = apply_hybridization(node.attached_hyb, result, model_data, is_reverse=true)
+
+        # calculate the convolution with the next edge
+        edge_minus1 = edges[i-1]
+        to_be_convoluted = copy(propagator.vals)
+        for hyb in edge_minus1.attached_hybs
+            to_be_convoluted = apply_hybridization(hyb, to_be_convoluted, model_data)
+        end
+
+        result = do_convolution_dlr2tau(dlr_grid, tau2dlr(dlr_grid, result, dlr_grid.tau), tau2dlr(dlr_grid, to_be_convoluted, dlr_grid.tau))
+    end
+    return result
+end
+
+
 function _multiplication_23(A::Array{Float64,2}, B::Array{Float64,3})
     n_tau = size(B, 1)
     o1 = size(B, 2)
@@ -166,11 +209,21 @@ For KPlus hybridizations, multiplies by KPlus_on_DLRtau.
 For KMinus hybridizations, multiplies by KMinus_on_DLRtau.
 For NoHyb or DeltaHyb, returns the result unchanged.
 """
-function apply_hybridization(hyb::HybridizationState, result::Array{Float64,3}, model_data::ModelData)
+function apply_hybridization(hyb::HybridizationState, result::Array{Float64,3}, model_data::ModelData; is_reverse::Bool=false)
     if hyb isa KPlus
-        return _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, hyb.l], result)
+        println("Applying KPlus hybridization with index ", hyb.l)
+        if !is_reverse
+            return _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, hyb.l], result)
+        else
+            return _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, hyb.l], result)
+        end
     elseif hyb isa KMinus
-        return _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, hyb.l], result)
+        println("Applying KMinus hybridization with index ", hyb.l)
+        if !is_reverse
+            return _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, hyb.l], result)
+        else
+            return _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, hyb.l], result)
+        end
     else
         return result
     end

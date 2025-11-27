@@ -3,23 +3,23 @@ using MPI
 using QMBToolkitDLR
 
 function gen_green_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64}, is_bold::Bool=false)
-    
+
     if is_bold
-        if expansion_order == 1 
+        if expansion_order == 1
             diagrams1 = gen_green_given_topology(3, 2, [], 1.0, n_flavors, exponents)
             diagrams = stack([diagrams1], dims=1)
         elseif expansion_order == 2
-            diagrams1 = gen_green_given_topology(5, 3, [(4,2)], -1.0, n_flavors, exponents)
+            diagrams1 = gen_green_given_topology(5, 3, [(4, 2)], -1.0, n_flavors, exponents)
             diagrams = stack([diagrams1], dims=1)
         elseif expansion_order == 3
-            diagrams1 = gen_green_given_topology(7, 3, [(6,4),(5,2)],  1.0, n_flavors, exponents)
-            diagrams2 = gen_green_given_topology(7, 4, [(6,3),(5,2)], -1.0, n_flavors, exponents)
-            diagrams3 = gen_green_given_topology(7, 5, [(6,3),(4,2)],  1.0, n_flavors, exponents)
-            diagrams4 = gen_green_given_topology(7, 4, [(6,2),(5,3)], 1.0, n_flavors, exponents)
+            diagrams1 = gen_green_given_topology(7, 3, [(6, 4), (5, 2)], 1.0, n_flavors, exponents)
+            diagrams2 = gen_green_given_topology(7, 4, [(6, 3), (5, 2)], -1.0, n_flavors, exponents)
+            diagrams3 = gen_green_given_topology(7, 5, [(6, 3), (4, 2)], 1.0, n_flavors, exponents)
+            diagrams4 = gen_green_given_topology(7, 4, [(6, 2), (5, 3)], 1.0, n_flavors, exponents)
             diagrams = stack([diagrams1, diagrams2, diagrams3, diagrams4], dims=1)
         else
             error("Unsupported expansion order for Green's function: $expansion_order")
-            
+
         end
     else
         pairings_with_crossings = _generate_pairings_with_hole(expansion_order)
@@ -46,7 +46,7 @@ function gen_green_given_topology(M::Int, annihilation_pos::Int, connected_pairs
     @assert all(x -> x[1] > x[2], connected_pairs) "Connected pairs should have first index larger than second index"
     @assert issorted([x[1] for x in connected_pairs]; rev=true) "Connected pairs are not ordered properly"
     @assert sort(vcat([x[1] for x in connected_pairs], [x[2] for x in connected_pairs])) == setdiff(collect(2:M-1), [annihilation_pos]) "Connected pairs do not cover all internal nodes"
-    
+
     base_nodes = Vector{BackBoneNode}(undef, M)
     base_nodes[1] = empty_node
     base_nodes[annihilation_pos] = empty_node
@@ -93,17 +93,21 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
     my_topologies = rank+1:nprocs:n_topology
 
     for i in my_topologies
+        local_result_topology = zeros(Float64, size(solver_data.calc.green.vals))
         for j in 1:n_directions
+            local_result_direction = zeros(Float64, size(solver_data.calc.green.vals))
             external_opts_loc = diagrams[i, j, 1, 1].external_opts_loc
             @assert length(external_opts_loc) == 2 && external_opts_loc[1] == 1 "External operator locations are invalid."
             backbone_0_to_beta_with_ann = [zeros(Float64, size(propagator.vals)) for i in 1:solver_data.model.n_flavors_physical]
             for k in 1:n_line_flavors
                 for l in 1:n_hyb_exponents
                     diagram = diagrams[i, j, k, l]
-                    # print_diagram(diagram)
+                    if i == 8
+                        print_diagram(diagram)
+                    end
                     @assert diagram.external_opts_loc == external_opts_loc "External operator locations do not match among diagrams of the same topology and direction."
                     contrib_0_to_tau = multiplication_convolution(diagram.nodes[1:external_opts_loc[2]], diagram.edges[1:external_opts_loc[2]-1], solver_data.model.dlr_grid, solver_data.model, propagator)
-                    contrib_tau_to_beta = multiplication_convolution(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, propagator)
+                    contrib_tau_to_beta = multiplication_convolution_reverse(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, propagator)
                     contrib_tau_to_beta = do_reflection_tau2tau(solver_data.model.dlr_grid, contrib_tau_to_beta)
                     prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
                     for ann_index in 1:solver_data.model.n_flavors_physical
@@ -114,8 +118,26 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
             for ann_index in 1:solver_data.model.n_flavors_physical
                 for cre_index in 1:solver_data.model.n_flavors_physical
                     local_result[:, ann_index, cre_index] .+= _trace_3(_multiplication_32(backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index])) ./ solver_data.calc.partition_function
+                    local_result_topology[:, ann_index, cre_index] .+= _trace_3(_multiplication_32(backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index])) ./ solver_data.calc.partition_function
+                    local_result_direction[:, ann_index, cre_index] .+= _trace_3(_multiplication_32(backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index])) ./ solver_data.calc.partition_function
                 end
             end
+            if i == 8
+                linear_grid = collect(0.0:solver_data.model.dlr_grid.beta/1000:solver_data.model.dlr_grid.beta)
+                println("Intermediate Green's function contribution from topology ", i, ", direction ", j, " on linear tau grid.")
+                green_linear = dlr2tau(solver_data.model.dlr_grid, tau2dlr(solver_data.model.dlr_grid, local_result_direction, solver_data.model.dlr_grid.tau), linear_grid)
+                # print first four tau points and the [1,1] element
+                for idx in 1:4
+                    @printf("  tau = %.6f: G(tau)[1,1] = %.16f\n", linear_grid[idx], green_linear[idx, 1, 1])
+                end
+            end
+        end
+        linear_grid = collect(0.0:solver_data.model.dlr_grid.beta/1000:solver_data.model.dlr_grid.beta)
+        println("Intermediate Green's function contribution from topology ", i, " on linear tau grid.")
+        green_linear = dlr2tau(solver_data.model.dlr_grid, tau2dlr(solver_data.model.dlr_grid, local_result_topology, solver_data.model.dlr_grid.tau), linear_grid)
+        # print first four tau points and the [1,1] element
+        for idx in 1:4
+            @printf("  tau = %.6f: G(tau)[1,1] = %.16f\n", linear_grid[idx], green_linear[idx, 1, 1])
         end
     end
 
@@ -127,7 +149,7 @@ end
 
 function _generate_pairings_with_hole(N::Int)
     # Points: 2, 3, ..., 2N
-    all_points = collect(2:(2 * N))
+    all_points = collect(2:(2*N))
 
     final_output = []
 

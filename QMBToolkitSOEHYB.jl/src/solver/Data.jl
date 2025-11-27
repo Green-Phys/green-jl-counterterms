@@ -71,8 +71,9 @@ mutable struct CalculationData
     propagator::DLRData
     selfenergy::DLRData
     green::DLRData
-    partition_function::Float64
     partition_function_by_order::Vector{Float64}  # Z after including each order
+    green_numerator_by_order::Vector{Array{Float64,3}}  # Green's function numerator after each order
+    green_by_order::Vector{Array{Float64,3}}  # Green's function (=numerator/Z) at each order on DLR grid
     green_linear_grid::Array{Float64,3}  # Green's function on uniform linear tau grid
     tau_linear_grid::Vector{Float64}  # Uniform linear tau grid points
 end

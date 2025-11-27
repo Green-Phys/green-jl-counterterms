@@ -117,8 +117,9 @@ function init_solver_data(model_data::ModelData)
         DLRData(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # pseudo-particle propagator
         DLRData(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # pseudo-particle self-energy
         DLRData(model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical), # physical Green's function
-        1.0, # partition function
         Float64[], # partition function by order (filled during eval_diagrams!)
+        Vector{Array{Float64,3}}(), # green numerator by order (filled during eval_diagrams!)
+        Vector{Array{Float64,3}}(), # green by order (computed at the end)
         zeros(Float64, 0, 0, 0), # green_linear_grid (filled during post-processing)
         Float64[] # tau_linear_grid (filled during post-processing)
     )

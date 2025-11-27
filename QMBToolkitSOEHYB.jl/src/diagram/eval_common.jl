@@ -38,18 +38,30 @@ function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, di
             push!(solver_data.calc.partition_function_by_order, Z_current)
         end
 
-        # Update final dlr coefficients and partition function
+        # Update final dlr coefficients
         solver_data.calc.propagator.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.propagator.vals, solver_data.model.dlr_grid.tau)
-        # update partition function
-        propagator_at_beta = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.propagator.coeffs, [solver_data.model.beta])[1, :, :]
-        solver_data.calc.partition_function = tr(propagator_at_beta)
     elseif diagram_type == :green_diagram
         for order in 1:solver_params.green.expansion_order
             if rank == 0
                 println("Evaluating Green's function diagrams at order ", order)
             end
             eval_green_given_order!(solver_data, diagrams[order], solver_params.green.is_bold, comm)
+
+            # Store Green's function numerator after this order
+            push!(solver_data.calc.green_numerator_by_order, copy(solver_data.calc.green.vals))
         end
+
+        # Compute Green's function by order (numerator / Z)
+        # Green's function order i uses partition function from propagator order i-1
+        for order in 1:solver_params.green.expansion_order
+            propagator_order = order  # Green order 1 uses Z[1] (propagator order 0), etc.
+            green_at_order = solver_data.calc.green_numerator_by_order[order] ./ solver_data.calc.partition_function_by_order[propagator_order]
+            push!(solver_data.calc.green_by_order, green_at_order)
+        end
+
+        # Update final Green's function (using last order)
+        solver_data.calc.green.vals .= solver_data.calc.green_by_order[end]
+
         # update dlr coefficients
         solver_data.calc.green.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)
     else

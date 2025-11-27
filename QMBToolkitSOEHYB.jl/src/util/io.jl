@@ -156,6 +156,17 @@ function save_data(
         green_dlr_group["tau"] = model_data.dlr_grid.tau
         green_dlr_group["coeffs"] = calc_data.green.coeffs
 
+        # Save Green's function by order (on linear grid)
+        # Note: green_by_order is stored on DLR grid, need to interpolate to linear grid
+        green_by_order_group = create_group(file, "green/by_order")
+        for (i, green_at_order_dlr) in enumerate(calc_data.green_by_order)
+            # Convert from DLR grid to DLR coefficients
+            green_coeffs = tau2dlr(model_data.dlr_grid, green_at_order_dlr, model_data.dlr_grid.tau)
+            # Interpolate to linear grid
+            green_at_order_linear = dlr2tau(model_data.dlr_grid, green_coeffs, calc_data.tau_linear_grid)
+            green_by_order_group["green_order_$i"] = green_at_order_linear
+        end
+
         # Save model parameters
         model_group = create_group(file, "model")
         model_group["E_shift"] = model_data.E_shift
@@ -164,9 +175,9 @@ function save_data(
 
         # Save calculation results
         calc_group = create_group(file, "partition_function")
-        calc_group["partition_function"] = calc_data.partition_function
+        calc_group["partition_function"] = calc_data.partition_function_by_order[end]
         calc_group["partition_function_by_order"] = calc_data.partition_function_by_order
-        partition_function_corrected = exp(-model_data.E_shift*model_data.beta) * calc_data.partition_function / model_data.Z_counterterms
+        partition_function_corrected = exp(-model_data.E_shift*model_data.beta) * calc_data.partition_function_by_order[end] / model_data.Z_counterterms
         calc_group["partition_function_corrected"] = partition_function_corrected
 
         # Save timing information
@@ -188,6 +199,7 @@ function save_results(solver_data::SolverData, solver_params::SolverParams, tota
     println("--- Post-processing and saving data ---")
 
     # Compute linear grid and store in CalculationData
+    # IMPORTANT: This must be done BEFORE calling save_data since save_data uses the linear grid
     solver_data.calc.tau_linear_grid = collect(LinRange(0.0, solver_data.model.beta, solver_params.green.save_linear_size))
     solver_data.calc.green_linear_grid = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.green.coeffs, solver_data.calc.tau_linear_grid)
 

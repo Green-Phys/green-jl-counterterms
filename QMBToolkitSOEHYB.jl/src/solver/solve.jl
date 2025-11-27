@@ -51,7 +51,7 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
     end
 
     if rank == 0
-        println("Partition function Z = ", solver_data.calc.partition_function)
+        println("Partition function Z = ", solver_data.calc.partition_function_by_order[end])
         println("\nPartition function by expansion order:")
         for (idx, Z) in enumerate(solver_data.calc.partition_function_by_order)
             order = idx - 1

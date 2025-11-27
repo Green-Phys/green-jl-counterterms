@@ -111,7 +111,7 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
             end
             for ann_index in 1:solver_data.model.n_flavors_physical
                 for cre_index in 1:solver_data.model.n_flavors_physical
-                    local_result[:, ann_index, cre_index] .+= _trace_3(_multiplication_32(backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index])) ./ solver_data.calc.partition_function
+                    local_result[:, ann_index, cre_index] .+= _trace_3(_multiplication_32(backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index]))
                 end
             end
         end

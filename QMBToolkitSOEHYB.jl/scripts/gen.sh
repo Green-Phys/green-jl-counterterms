@@ -19,14 +19,18 @@ dlr_eps_counterterms=1e-3
 dlr_eps_hybridization=1e-12
 hyb_type="SemiCircular"
 soe_subroutine_counterterms="ESPRIT"
-n_soe_counterterms=0
-soe_subroutine_hyb="DLR"
-n_soe_hybridization=7
+n_soe_counterterms=1
+# soe_subroutine_hyb="DLR"
+soe_subroutine_hyb="ESPRIT"
+n_soe_hybridization=9
+do_subtraction_trick=true
 
 # Extract the exponent from dlr_eps_hybridization (e.g., 1e-12 -> 12)
 dlr_eps_hyb_exp=$(echo $dlr_eps_hybridization | sed 's/1e-//')
 
-output_dir="../examples/spinless_semicircular/beta'$beta'/ESPRIT'$n_soe_counterterms'_DLR-'$dlr_eps_hyb_exp'"
+# output_dir="../examples/spinless_semicircular/beta${beta}/ESPRIT${n_soe_counterterms}_DLR-${dlr_eps_hyb_exp}"
+n_soe_total=$((n_soe_hybridization + n_soe_counterterms))
+output_dir="../examples/spinless_semicircular/beta${beta}/ESPRIT${n_soe_counterterms}_ESPRIT${n_soe_total}"
 hopping_file="${output_dir}/hopping.txt"
 
 mkdir -p $output_dir
@@ -57,6 +61,7 @@ julia gen_soe_counterterms_hyb.jl \
     --n_soe_counterterms $n_soe_counterterms \
     --soe_subroutine_hyb $soe_subroutine_hyb \
     --n_soe_hybridization $n_soe_hybridization \
-    --output_dir $output_dir
+    --output_dir $output_dir \
+    --do_subtraction_trick $do_subtraction_trick
 
 

@@ -281,6 +281,10 @@ function parse_commandline()
         help = "Output directory for generated files"
         arg_type = String
         required = true
+        "--do_subtraction_trick"
+        help = "Whether to do subtraction trick (For ESPRIT or ADAPOL, the remaining hybrdization is not well fitted, but one can fit the original data at different precision, the remaining hybridizaiotn function is a sum of them with the high precision part has negative coefficients)"
+        arg_type = Bool
+        default = false
     end
     return parse_args(s)
 end
@@ -395,7 +399,7 @@ function main()
     println("Max hybridization: ", maximum(abs.(G_data.G_tau)))
     println("# of SOE terms: ", length(poles))
     println("SOE inf-norm error: ", @sprintf("%.6e", error))
-    println("--- Counterterms fitting ---")
+    println("--- Obtaining counterterms ---")
     counterterms_energy, counterterms_hyb = _obtain_hyb(poles, weights)
     println("Shape of counterterms_energy: ", size(counterterms_energy))
     println("Shape of counterterms_hyb: ", size(counterterms_hyb))
@@ -407,7 +411,20 @@ function main()
     end
     println("--- Remaining hybridziation SOE ---")
     remaining_G_data = gen_remaining_hyb(G_data.tau_grid, G_data.G_tau, counterterms_contribution, args["n_matsubara"], args["beta"])
-    poles_remain, weights_remain, error_remain = gen_soe(args["beta"], remaining_G_data, args["soe_subroutine_hybridization"], args["n_soe_hybridization"], args["dlr_eps_hybridization"])
+    if !args["do_subtraction_trick"]
+        poles_remain, weights_remain, error_remain = gen_soe(args["beta"], remaining_G_data, args["soe_subroutine_hybridization"], args["n_soe_hybridization"], args["dlr_eps_hybridization"])
+    else
+        if  args["dlr_eps_hybridization"]>=args["dlr_eps_counterterms"] || args["n_soe_hybridization"]<=args["n_soe_counterterms"]
+            error("For subtraction trick, dlr_eps_hybridization must be smaller than dlr_eps_counterterms and n_soe_hybridization must be larger than n_soe_counterterms")
+        end
+        println("Using subtraction trick for remaining hybridization SOE fitting...")
+        poles_precise, weights_precise, error_precise = gen_soe(args["beta"], G_data, args["soe_subroutine_hybridization"], args["n_soe_hybridization"], args["dlr_eps_hybridization"])
+        # Now the remaining hybridization is the difference between the two SOE fits
+        println("The number of precise SOE terms: ", length(poles_precise))
+        poles_remain = vcat(poles_precise, poles)
+        weights_remain = vcat(weights_precise, -1.0*weights)
+        error_remain = _inf_error(remaining_G_data.G_tau, _reconstruct_green(poles_remain, weights_remain, remaining_G_data.tau_grid, args["beta"]))
+    end
     println("Max remain hybridization: ", maximum(abs.(remaining_G_data.G_tau)))
     println("# of SOE terms: ", length(poles_remain))
     println("SOE inf-norm error: ", @sprintf("%.6e", error_remain))

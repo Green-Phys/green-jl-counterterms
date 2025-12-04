@@ -36,22 +36,20 @@ function format_node(node::BackBoneNode, is_external_opt::Bool=false, is_externa
 
     # Determine hybridization part
     hyb_part = ""
-    if node.attached_hyb isa KPlus
-        hyb_part = "K⁺_{$(node.attached_hyb.l)}"
-    elseif node.attached_hyb isa KMinus
-        hyb_part = "K⁻_{$(node.attached_hyb.l)}"
-    elseif node.attached_hyb isa DeltaHyb
-        hyb_part = "Δ_{$(node.attached_hyb.i),$(node.attached_hyb.j)}"
+    if is_kplus(node.attached_hyb)
+        hyb_part = "K⁺_{$(get_kplus_index(node.attached_hyb))}"
+    elseif is_kminus(node.attached_hyb)
+        hyb_part = "K⁻_{$(get_kminus_index(node.attached_hyb))}"
     end
     
     return (op_part * hyb_part, op_part, hyb_part)
 end
 
 function format_hyb(hyb::HybridizationState)
-    if hyb isa KPlus
-        return "K⁺_{$(hyb.l)}"
-    elseif hyb isa KMinus
-        return "K⁻_{$(hyb.l)}"
+    if is_kplus(hyb)
+        return "K⁺_{$(get_kplus_index(hyb))}"
+    elseif is_kminus(hyb)
+        return "K⁻_{$(get_kminus_index(hyb))}"
     else
         return ""
     end

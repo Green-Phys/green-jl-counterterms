@@ -75,10 +75,11 @@ The package implements a sophisticated diagrammatic expansion system:
 - Three diagram types: `:propagator_diagram`, `:selfenergy_diagram`, `:green_diagram`
 
 **Hybridization States**:
-- `NoHyb` - No hybridization attached
-- `DeltaHyb(i,j)` - Undecomposed hybridization Δᵢⱼ
-- `KPlus(l)` - Decomposed hybridization K⁺ₗ(τ)
-- `KMinus(l)` - Decomposed hybridization K⁻ₗ(τ)
+- `NoHyb()` - No hybridization attached (encoded as index=0)
+- `KPlus(l)` - Decomposed hybridization K⁺ₗ(τ) (encoded as index=l, l>0)
+- `KMinus(l)` - Decomposed hybridization K⁻ₗ(τ) (encoded as index=-l, l>0)
+
+Note: Uses efficient integer encoding instead of abstract types for optimal performance.
 
 **Generation Pipeline**:
 1. `gen_diagrams` (`src/diagram/gen_common.jl`) - Top-level: generates all diagrams for given order

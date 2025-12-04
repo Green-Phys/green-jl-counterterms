@@ -14,24 +14,38 @@
     We assume each of the L decomposed hybridization functions can be in p states
 """
 
-abstract type HybridizationState end
-struct NoHyb <: HybridizationState end
-struct DeltaHyb <: HybridizationState 
-    i::Int # flavor index for Delta_{ij} associated with a c^{\dag}_{i}
-    j::Int # flavor index for Delta_{ij} associated with a c_{j}
+"""
+    HybridizationState
+
+Compact representation of hybridization state using integer encoding:
+- index == 0: NoHyb (no hybridization)
+- index > 0: KPlus with l = index
+- index < 0: KMinus with l = -index
+
+This concrete type representation provides optimal performance compared to
+abstract type hierarchies, with zero dispatch overhead and efficient memory layout.
+"""
+struct HybridizationState
+    index::Int  # 0 for NoHyb, positive for KPlus(l), negative for KMinus(l)
 end
-struct KPlus <: HybridizationState
-    l::Int # index of the decomposed hybridization function, runs from 1 to p
-end
-struct KMinus <: HybridizationState
-    l::Int # index of the decomposed hybridization function, runs from 1 to p
-end
+
+# Constructor helpers for backward compatibility and clarity
+NoHyb() = HybridizationState(0)
+KPlus(l::Int) = HybridizationState(l)
+KMinus(l::Int) = HybridizationState(-l)
+
+# Type checking helpers
+is_nohyb(h::HybridizationState) = h.index == 0
+is_kplus(h::HybridizationState) = h.index > 0
+is_kminus(h::HybridizationState) = h.index < 0
+get_kplus_index(h::HybridizationState) = h.index
+get_kminus_index(h::HybridizationState) = -h.index
 
 struct BackBoneNode
     opt_type::Symbol # :c or :cdag or :empty
     flavor::Int # spin-orbital index associated with the creation or annihilation operator; -1 for :empty nodes
     bar_index::Int # can take 1 to p if the operator has bar, otherwise -1
-    attached_hyb::HybridizationState # can be NoHyb, DeltaHyb, KPlus(l), KMinus(l)
+    attached_hyb::HybridizationState # can be NoHyb, KPlus(l), or KMinus(l)
 end
 
 

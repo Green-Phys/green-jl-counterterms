@@ -95,17 +95,21 @@ Uses pre-allocated temp_buffer to avoid allocations.
 When `is_reverse=true`, swaps KPlus ↔ KMinus (used in reverse convolution).
 """
 function apply_hybridization_inplace!(temp_buffer::Array{Float64,3}, target::Array{Float64,3}, hyb::HybridizationState, model_data::ModelData; is_reverse::Bool=false)
-    if hyb isa KPlus || hyb isa KMinus
+    if !is_nohyb(hyb)
         # Select the appropriate hybridization array (swap if reverse)
-        vec = if (hyb isa KPlus && !is_reverse) || (hyb isa KMinus && is_reverse)
-            @view(model_data.hyb.KPlus_on_DLRtau[:, hyb.l])
+        if (is_kplus(hyb) && !is_reverse) || (is_kminus(hyb) && is_reverse)
+            # Use KPlus
+            l = is_kplus(hyb) ? get_kplus_index(hyb) : get_kminus_index(hyb)
+            vec = @view(model_data.hyb.KPlus_on_DLRtau[:, l])
         else
-            @view(model_data.hyb.KMinus_on_DLRtau[:, hyb.l])
+            # Use KMinus
+            l = is_kminus(hyb) ? get_kminus_index(hyb) : get_kplus_index(hyb)
+            vec = @view(model_data.hyb.KMinus_on_DLRtau[:, l])
         end
         _multiplication_13!(temp_buffer, vec, target)
         copyto!(target, temp_buffer)
     end
-    # For NoHyb or DeltaHyb, do nothing (target unchanged)
+    # For NoHyb, do nothing (target unchanged)
 end
 
 """
@@ -312,20 +316,18 @@ Apply a hybridization function multiplication to the result array.
 
 For KPlus hybridizations, multiplies by KPlus_on_DLRtau.
 For KMinus hybridizations, multiplies by KMinus_on_DLRtau.
-For NoHyb or DeltaHyb, returns the result unchanged.
+For NoHyb, returns the result unchanged.
 """
 function apply_hybridization(hyb::HybridizationState, result::Array{Float64,3}, model_data::ModelData; is_reverse::Bool=false)
-    if hyb isa KPlus
-        if !is_reverse
-            return _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, hyb.l], result)
+    if !is_nohyb(hyb)
+        if (is_kplus(hyb) && !is_reverse) || (is_kminus(hyb) && is_reverse)
+            # Use KPlus
+            l = is_kplus(hyb) ? get_kplus_index(hyb) : get_kminus_index(hyb)
+            return _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, l], result)
         else
-            return _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, hyb.l], result)
-        end
-    elseif hyb isa KMinus
-        if !is_reverse
-            return _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, hyb.l], result)
-        else
-            return _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, hyb.l], result)
+            # Use KMinus
+            l = is_kminus(hyb) ? get_kminus_index(hyb) : get_kplus_index(hyb)
+            return _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, l], result)
         end
     else
         return result

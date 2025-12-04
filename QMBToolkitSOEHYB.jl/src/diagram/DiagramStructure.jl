@@ -29,8 +29,8 @@ end
 
 struct BackBoneNode
     opt_type::Symbol # :c or :cdag or :empty
-    flavor::Union{Int, Nothing} # spin-orbital index associated with the creation or annihilation operator
-    bar_index::Union{Int, Nothing} # can take 1 to p if the operator has bar, otherwise nothing
+    flavor::Int # spin-orbital index associated with the creation or annihilation operator; -1 for :empty nodes
+    bar_index::Int # can take 1 to p if the operator has bar, otherwise -1
     attached_hyb::HybridizationState # can be NoHyb, DeltaHyb, KPlus(l), KMinus(l)
 end
 
@@ -45,6 +45,6 @@ struct BackBone
     prefactor_Kexps::Vector{Int} # Length p
     nodes::Vector{BackBoneNode} # length M
     edges::Vector{BackBoneEdge} # length M-1
-    external_opts_loc::Union{Vector{Int}, Nothing} # only for green_diagram, record the location of external operators (annihilation and creation), otherwise nothing
+    external_opts_loc::Vector{Int} # only for green_diagram, record the location of external operators (annihilation and creation); empty vector for other diagram types
 end
 

@@ -8,9 +8,9 @@ function format_node(node::BackBoneNode, is_external_opt::Bool=false, is_externa
             op = "c⁺"
         end
     else
-        if node.bar_index !== nothing && node.opt_type == :c
+        if node.bar_index != -1 && node.opt_type == :c
             op = "F̅"
-        elseif node.bar_index !== nothing && node.opt_type == :cdag
+        elseif node.bar_index != -1 && node.opt_type == :cdag
             op = "F̅⁺"
         elseif node.opt_type == :c
             op = "F"
@@ -25,10 +25,10 @@ function format_node(node::BackBoneNode, is_external_opt::Bool=false, is_externa
 
     # Determine subindex string
     sub = ""
-    if node.flavor !== nothing
+    if node.flavor != -1
         sub = "$(node.flavor)"
     end
-    if node.bar_index !== nothing
+    if node.bar_index != -1
         sub *= ",$(node.bar_index)"
     end
 
@@ -263,12 +263,12 @@ function print_diagram(backbone::BackBone)
         return
     end
 
-    external_opts_loc = backbone.external_opts_loc === nothing ? nothing : [M-i+1 for i in backbone.external_opts_loc]
+    external_opts_loc = isempty(backbone.external_opts_loc) ? Int[] : [M-i+1 for i in backbone.external_opts_loc]
     node_infos = [
         format_node(
             nodes[i],
-            external_opts_loc !== nothing && i in external_opts_loc,
-            external_opts_loc !== nothing && i == external_opts_loc[2]
+            !isempty(external_opts_loc) && i in external_opts_loc,
+            !isempty(external_opts_loc) && i == external_opts_loc[2]
         ) for i in 1:M
     ]
     node_strs = [info[1] for info in node_infos]

@@ -75,14 +75,14 @@ function process_connected_pair!(
         if hyb_direction == :forward
             # cdag with bar at node i, c at node j, the edge in between has KPlus
             nodes[i] = BackBoneNode(:cdag, flavor_index, exponent_index, NoHyb())
-            nodes[j] = BackBoneNode(:c, flavor_index, nothing, NoHyb())
+            nodes[j] = BackBoneNode(:c, flavor_index, -1, NoHyb())
             # from jth edge to (i-1)th edge, attach KPlus
             push!(edges[j].attached_hybs, KPlus(exponent_index))
             sign *= -1.0 # diagram rule
         else # backward
             # c with bar at node i, cdag at node j, the edge in between has KMinus
             nodes[i] = BackBoneNode(:c, flavor_index, exponent_index, NoHyb())
-            nodes[j] = BackBoneNode(:cdag, flavor_index, nothing, NoHyb())
+            nodes[j] = BackBoneNode(:cdag, flavor_index, -1, NoHyb())
             # from jth edge to (i-1)th edge, attach KMinus
             push!(edges[j].attached_hybs, KMinus(exponent_index))
             sign *= -1.0 # transform from KPlus to KMinus
@@ -91,13 +91,13 @@ function process_connected_pair!(
         if hyb_direction == :forward && exponents[exponent_index] <= 0.0
             # cdag with bar at node i with KPlus, c at node j with KMinus
             nodes[i] = BackBoneNode(:cdag, flavor_index, exponent_index, KPlus(exponent_index))
-            nodes[j] = BackBoneNode(:c, flavor_index, nothing, KMinus(exponent_index))
+            nodes[j] = BackBoneNode(:c, flavor_index, -1, KMinus(exponent_index))
             prefactor_Kexps[exponent_index] += 1
             sign *= -1.0 # this is because diagram rule, forward hybridization line contributes a -1 factor
         elseif hyb_direction == :forward && exponents[exponent_index] > 0.0
             # cdag with bar at node i, c at node j
             nodes[i] = BackBoneNode(:cdag, flavor_index, exponent_index, NoHyb())
-            nodes[j] = BackBoneNode(:c, flavor_index, nothing, NoHyb())
+            nodes[j] = BackBoneNode(:c, flavor_index, -1, NoHyb())
             # from jth edge to (i-1)th edge, attach KPlus
             for e in j:(i-1)
                 push!(edges[e].attached_hybs, KPlus(exponent_index))
@@ -107,13 +107,13 @@ function process_connected_pair!(
         elseif hyb_direction == :backward && exponents[exponent_index] > 0.0
             # c with bar at node i with KMinus, cdag at node j with KPlus
             nodes[i] = BackBoneNode(:c, flavor_index, exponent_index, KMinus(exponent_index))
-            nodes[j] = BackBoneNode(:cdag, flavor_index, nothing, KPlus(exponent_index))
+            nodes[j] = BackBoneNode(:cdag, flavor_index, -1, KPlus(exponent_index))
             prefactor_Kexps[exponent_index] += 1
             sign *= -1.0  # this is due to separation of backward hybridization line
         elseif hyb_direction == :backward && exponents[exponent_index] <= 0.0
             # c with bar at node i, cdag at node j
             nodes[i] = BackBoneNode(:c, flavor_index, exponent_index, NoHyb())
-            nodes[j] = BackBoneNode(:cdag, flavor_index, nothing, NoHyb())
+            nodes[j] = BackBoneNode(:cdag, flavor_index, -1, NoHyb())
             # from jth edge to (i-1)th edge, attach KMinus
             for e in j:(i-1)
                 push!(edges[e].attached_hybs, KMinus(exponent_index))
@@ -136,7 +136,7 @@ function gen_diagram_combinations(
     exponents::Vector{Float64},
     base_nodes::Vector{BackBoneNode},
     base_sign::Float64,
-    external_opts_loc::Union{Vector{Int},Nothing}=nothing
+    external_opts_loc::Vector{Int}=Int[]
 )
     p = length(exponents)
     L = length(connected_pairs)

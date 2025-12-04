@@ -14,8 +14,8 @@ function gen_propagator_given_order(expansion_order::Int, n_flavors::Int, expone
 end
 
 function gen_propagator_given_topology(M::Int, connected_pairs::Vector{Tuple{Int,Int}}, crossing_parity::Float64, n_flavors::Int, exponents::Vector{Float64})
-    external_opts_loc = nothing
-    empty_node = BackBoneNode(:empty, nothing, nothing, NoHyb())
+    external_opts_loc = Int[]
+    empty_node = BackBoneNode(:empty, -1, -1, NoHyb())
     p = length(exponents)
 
     # Validate connected_pairs structure

@@ -17,7 +17,7 @@ save_linear_size = 1001
 
 [solver.dlr]
 rtol = 1e-14
-Euv = 1000.0
+Euv = 500.0
 
 [solver]
 output_path = "."  

@@ -75,13 +75,13 @@ end
 Get the operator matrix for a given node from model data.
 """
 function get_operator_matrix(node::BackBoneNode, model_data::ModelData)
-    if node.opt_type == :cdag && isnothing(node.bar_index)
+    if node.opt_type == :cdag && node.bar_index == -1
         return model_data.cre_opts[node.flavor]
-    elseif node.opt_type == :c && isnothing(node.bar_index)
+    elseif node.opt_type == :c && node.bar_index == -1
         return model_data.ann_opts[node.flavor]
-    elseif node.opt_type == :cdag && !isnothing(node.bar_index)
+    elseif node.opt_type == :cdag && node.bar_index != -1
         return model_data.cre_opts_SOE[node.flavor, node.bar_index]
-    elseif node.opt_type == :c && !isnothing(node.bar_index)
+    elseif node.opt_type == :c && node.bar_index != -1
         return model_data.ann_opts_SOE[node.flavor, node.bar_index]
     end
 end

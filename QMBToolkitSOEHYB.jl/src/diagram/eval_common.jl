@@ -69,41 +69,86 @@ function eval_diagrams!(solver_data::SolverData, solver_params::SolverParams, di
     end
 end
 
-function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData, propagator::DLRData)
+"""
+    get_operator_matrix(node::BackBoneNode, model_data::ModelData)
+
+Get the operator matrix for a given node from model data.
+"""
+function get_operator_matrix(node::BackBoneNode, model_data::ModelData)
+    if node.opt_type == :cdag && isnothing(node.bar_index)
+        return model_data.cre_opts[node.flavor]
+    elseif node.opt_type == :c && isnothing(node.bar_index)
+        return model_data.ann_opts[node.flavor]
+    elseif node.opt_type == :cdag && !isnothing(node.bar_index)
+        return model_data.cre_opts_SOE[node.flavor, node.bar_index]
+    elseif node.opt_type == :c && !isnothing(node.bar_index)
+        return model_data.ann_opts_SOE[node.flavor, node.bar_index]
+    end
+end
+
+"""
+    apply_hybridization_inplace!(temp_buffer, target, hyb, model_data; is_reverse=false)
+
+Apply hybridization function to target array in-place, updating target with the result.
+Uses pre-allocated temp_buffer to avoid allocations.
+
+When `is_reverse=true`, swaps KPlus ↔ KMinus (used in reverse convolution).
+"""
+function apply_hybridization_inplace!(temp_buffer::Array{Float64,3}, target::Array{Float64,3}, hyb::HybridizationState, model_data::ModelData; is_reverse::Bool=false)
+    if hyb isa KPlus || hyb isa KMinus
+        # Select the appropriate hybridization array (swap if reverse)
+        vec = if (hyb isa KPlus && !is_reverse) || (hyb isa KMinus && is_reverse)
+            @view(model_data.hyb.KPlus_on_DLRtau[:, hyb.l])
+        else
+            @view(model_data.hyb.KMinus_on_DLRtau[:, hyb.l])
+        end
+        _multiplication_13!(temp_buffer, vec, target)
+        copyto!(target, temp_buffer)
+    end
+    # For NoHyb or DeltaHyb, do nothing (target unchanged)
+end
+
+"""
+    multiplication_convolution(nodes, edges, dlr_grid, model_data, propagator, temp_buffer, result_buffer, convolution_buffer)
+
+Calculate backbone diagram contribution via multiplication and convolution from right to left.
+
+Pre-allocated buffers are reused across all diagram evaluations for efficiency:
+- `temp_buffer`: Temporary storage for in-place matrix operations
+- `result_buffer`: Working buffer for accumulated result
+- `convolution_buffer`: Working buffer for convolution operands
+"""
+function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData, propagator::DLRData, temp_buffer::Array{Float64,3}, result_buffer::Array{Float64,3}, convolution_buffer::Array{Float64,3})
     length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
     # calculate the multiplication and convolution from right to left ignoring the two boundary nodes
     # |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
     # nodes and edges are stored from 1 to M
-    result = copy(propagator.vals)
+    copyto!(result_buffer, propagator.vals)
+    result = result_buffer
     for i in 1:length(edges)-1
         edge = edges[i]
         if i == 1
             for hyb in edge.attached_hybs
-                result = apply_hybridization(hyb, result, model_data)
+                apply_hybridization_inplace!(temp_buffer, result, hyb, model_data, is_reverse=false)
             end
         end
         # multiply with the next node operator
         node = nodes[i+1]
         if node.opt_type !== :empty
-            if node.opt_type == :cdag && isnothing(node.bar_index)
-                op_matrix = model_data.cre_opts[node.flavor]
-            elseif node.opt_type == :c && isnothing(node.bar_index)
-                op_matrix = model_data.ann_opts[node.flavor]
-            elseif node.opt_type == :cdag && !isnothing(node.bar_index)
-                op_matrix = model_data.cre_opts_SOE[node.flavor, node.bar_index]
-            elseif node.opt_type == :c && !isnothing(node.bar_index)
-                op_matrix = model_data.ann_opts_SOE[node.flavor, node.bar_index]
-            end
-            result = _multiplication_23(op_matrix, result)
+            op_matrix = get_operator_matrix(node, model_data)
+            _multiplication_23!(temp_buffer, op_matrix, result)
+            copyto!(result, temp_buffer)
         end
 
-        result = apply_hybridization(node.attached_hyb, result, model_data)
+        # Apply hybridization attached to the node
+        apply_hybridization_inplace!(temp_buffer, result, node.attached_hyb, model_data, is_reverse=false)
 
         # calculate the convolution with the next edge
         edge_plus1 = edges[i+1]
-        to_be_convoluted = copy(propagator.vals)
+        copyto!(convolution_buffer, propagator.vals)
+        to_be_convoluted = convolution_buffer
         for hyb in edge_plus1.attached_hybs
-            to_be_convoluted = apply_hybridization(hyb, to_be_convoluted, model_data)
+            apply_hybridization_inplace!(temp_buffer, to_be_convoluted, hyb, model_data, is_reverse=false)
         end
 
         result = do_convolution_dlr2tau(dlr_grid, tau2dlr(dlr_grid, to_be_convoluted, dlr_grid.tau), tau2dlr(dlr_grid, result, dlr_grid.tau))
@@ -112,40 +157,42 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
 end
 
 
-function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData, propagator::DLRData)
+"""
+    multiplication_convolution_reverse(nodes, edges, dlr_grid, model_data, propagator, temp_buffer, result_buffer, convolution_buffer)
+
+Calculate backbone diagram contribution via multiplication and convolution from left to right.
+Similar to `multiplication_convolution` but traverses in reverse direction with swapped K± hybridizations.
+"""
+function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData, propagator::DLRData, temp_buffer::Array{Float64,3}, result_buffer::Array{Float64,3}, convolution_buffer::Array{Float64,3})
     length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
     # calculate the multiplication and convolution from left to right ignoring the two boundary nodes (the matrix multiplications is done in the original order)
     # |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
     # nodes and edges are stored from 1 to M
-    result = copy(propagator.vals)
+    copyto!(result_buffer, propagator.vals)
+    result = result_buffer
     for i in length(edges):-1:2
         edge = edges[i]
         if i == length(edges)
             for hyb in edge.attached_hybs
-                result = apply_hybridization(hyb, result, model_data)
+                apply_hybridization_inplace!(temp_buffer, result, hyb, model_data, is_reverse=false)
             end
         end
         node = nodes[i]
         if node.opt_type !== :empty
-            if node.opt_type == :cdag && isnothing(node.bar_index)
-                op_matrix = model_data.cre_opts[node.flavor]
-            elseif node.opt_type == :c && isnothing(node.bar_index)
-                op_matrix = model_data.ann_opts[node.flavor]
-            elseif node.opt_type == :cdag && !isnothing(node.bar_index)
-                op_matrix = model_data.cre_opts_SOE[node.flavor, node.bar_index]
-            elseif node.opt_type == :c && !isnothing(node.bar_index)
-                op_matrix = model_data.ann_opts_SOE[node.flavor, node.bar_index]
-            end
-            result = _multiplication_32(result, op_matrix)
+            op_matrix = get_operator_matrix(node, model_data)
+            _multiplication_32!(temp_buffer, result, op_matrix)
+            copyto!(result, temp_buffer)
         end
 
-        result = apply_hybridization(node.attached_hyb, result, model_data, is_reverse=true)
+        # Apply hybridization with is_reverse=true (swaps K+ ↔ K-)
+        apply_hybridization_inplace!(temp_buffer, result, node.attached_hyb, model_data, is_reverse=true)
 
         # calculate the convolution with the next edge
         edge_minus1 = edges[i-1]
-        to_be_convoluted = copy(propagator.vals)
+        copyto!(convolution_buffer, propagator.vals)
+        to_be_convoluted = convolution_buffer
         for hyb in edge_minus1.attached_hybs
-            to_be_convoluted = apply_hybridization(hyb, to_be_convoluted, model_data)
+            apply_hybridization_inplace!(temp_buffer, to_be_convoluted, hyb, model_data, is_reverse=false)
         end
 
         result = do_convolution_dlr2tau(dlr_grid, tau2dlr(dlr_grid, result, dlr_grid.tau), tau2dlr(dlr_grid, to_be_convoluted, dlr_grid.tau))
@@ -154,6 +201,16 @@ function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::
 end
 
 
+# In-place version: writes result to temp_buffer, then caller copies back to input
+function _multiplication_23!(temp_buffer::Array{Float64,3}, A::Array{Float64,2}, B::Array{Float64,3})
+    n_tau = size(B, 1)
+    @inbounds for k in 1:n_tau
+        mul!(view(temp_buffer, k, :, :), A, view(B, k, :, :))
+    end
+    return temp_buffer
+end
+
+# Allocating version for backward compatibility
 function _multiplication_23(A::Array{Float64,2}, B::Array{Float64,3})
     n_tau = size(B, 1)
     o1 = size(B, 2)
@@ -163,6 +220,14 @@ function _multiplication_23(A::Array{Float64,2}, B::Array{Float64,3})
         C[k, :, :] = A * B[k, :, :]
     end
     return C
+end
+
+function _multiplication_32!(temp_buffer::Array{Float64,3}, A::Array{Float64,3}, B::Array{Float64,2})
+    n_tau = size(A, 1)
+    @inbounds for k in 1:n_tau
+        mul!(view(temp_buffer, k, :, :), view(A, k, :, :), B)
+    end
+    return temp_buffer
 end
 
 function _multiplication_32(A::Array{Float64,3}, B::Array{Float64,2})
@@ -176,6 +241,14 @@ function _multiplication_32(A::Array{Float64,3}, B::Array{Float64,2})
     return C
 end
 
+function _multiplication_13!(temp_buffer::Array{Float64,3}, A::AbstractVector{Float64}, B::Array{Float64,3})
+    n_tau = size(B, 1)
+    @inbounds for k in 1:n_tau
+        @views temp_buffer[k, :, :] .= A[k] .* B[k, :, :]
+    end
+    return temp_buffer
+end
+
 function _multiplication_13(A::Array{Float64,1}, B::Array{Float64,3})
     n_tau = size(B, 1)
     o1 = size(B, 2)
@@ -185,6 +258,14 @@ function _multiplication_13(A::Array{Float64,1}, B::Array{Float64,3})
         C[k, :, :] = A[k] .* B[k, :, :]
     end
     return C
+end
+
+function _multiplication_33!(temp_buffer::Array{Float64,3}, A::Array{Float64,3}, B::Array{Float64,3})
+    n_tau = size(A, 1)
+    @inbounds for k in 1:n_tau
+        mul!(view(temp_buffer, k, :, :), view(A, k, :, :), view(B, k, :, :))
+    end
+    return temp_buffer
 end
 
 function _multiplication_33(A::Array{Float64,3}, B::Array{Float64,3})
@@ -209,6 +290,18 @@ function _trace_3(A::Array{Float64,3})
         trace_vals[k] = tr(A[k, :, :])
     end
     return trace_vals
+end
+
+# In-place version: writes result to trace_buffer
+function _trace_3!(trace_buffer::Vector{Float64}, A::Array{Float64,3})
+    n_tau = size(A, 1)
+    o1 = size(A, 2)
+    o2 = size(A, 3)
+    o1 == o2 || error("Matrix to be traced must be square: got dimensions $o1 x $o2")
+    @inbounds for k in 1:n_tau
+        trace_buffer[k] = tr(A[k, :, :])
+    end
+    return trace_buffer
 end
 
 

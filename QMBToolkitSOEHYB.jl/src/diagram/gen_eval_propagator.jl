@@ -43,13 +43,18 @@ function eval_propagator_given_order!(solver_data::SolverData, diagrams::Array{B
     # Create local accumulator for this rank's work (only for this order)
     local_result = zeros(Float64, size(solver_data.calc.propagator.vals))
 
+    # Pre-allocate temp buffers for in-place operations (reused across all diagrams)
+    temp_buffer = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
+    result_buffer = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
+    convolution_buffer = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
+
     # Distribute diagrams across ranks: rank processes indices rank+1:nprocs:n_diagrams
     my_diagrams = rank+1:nprocs:n_diagrams
 
     # Evaluate diagrams assigned to this rank
     for i in my_diagrams
         diagram = diagrams_flat[i]
-        backbone_0_to_tau = multiplication_convolution(diagram.nodes, diagram.edges, solver_data.model.dlr_grid, solver_data.model, solver_data.model.bare_propagator)
+        backbone_0_to_tau = multiplication_convolution(diagram.nodes, diagram.edges, solver_data.model.dlr_grid, solver_data.model, solver_data.model.bare_propagator, temp_buffer, result_buffer, convolution_buffer)
         prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
         local_result .+= prefactor .* backbone_0_to_tau
     end

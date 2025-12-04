@@ -88,6 +88,20 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
     # Create local accumulator for this rank's work (only for this order)
     local_result = zeros(Float64, size(solver_data.calc.green.vals))
 
+    # Pre-allocate buffers for in-place operations (reused across all diagrams to avoid allocations)
+    # General-purpose temporary buffers for matrix operations
+    temp_buffer = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
+    temp_buffer2 = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
+    temp_buffer3 = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
+    trace_buffer = zeros(Float64, length(solver_data.model.dlr_grid.tau))
+
+    # Separate buffer sets for forward and reverse convolutions to avoid aliasing
+    # (both convolutions are called sequentially and their results are used together)
+    result_buffer_fwd = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
+    convolution_buffer_fwd = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
+    result_buffer_rev = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
+    convolution_buffer_rev = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
+
     # Distribute topology loop across ranks: rank processes indices rank+1:nprocs:n_topology
     my_topologies = rank+1:nprocs:n_topology
 
@@ -100,18 +114,24 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
                 for l in 1:n_hyb_exponents
                     diagram = diagrams[i, j, k, l]
                     @assert diagram.external_opts_loc == external_opts_loc "External operator locations do not match among diagrams of the same topology and direction."
-                    contrib_0_to_tau = multiplication_convolution(diagram.nodes[1:external_opts_loc[2]], diagram.edges[1:external_opts_loc[2]-1], solver_data.model.dlr_grid, solver_data.model, propagator)
-                    contrib_tau_to_beta = multiplication_convolution_reverse(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, propagator)
+                    contrib_0_to_tau = multiplication_convolution(diagram.nodes[1:external_opts_loc[2]], diagram.edges[1:external_opts_loc[2]-1], solver_data.model.dlr_grid, solver_data.model, propagator, temp_buffer, result_buffer_fwd, convolution_buffer_fwd)
+                    contrib_tau_to_beta = multiplication_convolution_reverse(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, propagator, temp_buffer, result_buffer_rev, convolution_buffer_rev)
                     contrib_tau_to_beta = do_reflection_tau2tau(solver_data.model.dlr_grid, contrib_tau_to_beta)
                     prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
                     for ann_index in 1:solver_data.model.n_flavors_physical
-                        backbone_0_to_beta_with_ann[ann_index] .+= prefactor .* _multiplication_33(contrib_tau_to_beta, _multiplication_23(solver_data.model.ann_opts[ann_index], contrib_0_to_tau))
+                        # Use in-place versions: temp_buffer2 = ann_opt * contrib_0_to_tau, then temp_buffer3 = contrib_tau_to_beta * temp_buffer2
+                        _multiplication_23!(temp_buffer2, solver_data.model.ann_opts[ann_index], contrib_0_to_tau)
+                        _multiplication_33!(temp_buffer3, contrib_tau_to_beta, temp_buffer2)
+                        backbone_0_to_beta_with_ann[ann_index] .+= prefactor .* temp_buffer3
                     end
                 end
             end
             for ann_index in 1:solver_data.model.n_flavors_physical
                 for cre_index in 1:solver_data.model.n_flavors_physical
-                    local_result[:, ann_index, cre_index] .+= _trace_3(_multiplication_32(backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index]))
+                    # Use in-place version: temp_buffer2 = backbone * cre_opt, then trace
+                    _multiplication_32!(temp_buffer2, backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index])
+                    _trace_3!(trace_buffer, temp_buffer2)
+                    local_result[:, ann_index, cre_index] .+= trace_buffer
                 end
             end
         end

@@ -1,6 +1,31 @@
 # Propagator diagram for bare expansion
 using MPI
 
+"""
+    PropagatorConvolutionBuffers
+
+Buffers for propagator backbone convolution calculations.
+Reused across diagrams to avoid allocations during convolution operations.
+
+# Fields
+- `operator_product_buffer`: General-purpose buffer for operator multiplications
+- `backbone_accumulator`: Accumulates the backbone result through multiplication and convolution
+- `convolution_operand_buffer`: Prepares the operand for convolution operations
+"""
+struct PropagatorConvolutionBuffers
+    operator_product_buffer::Array{Float64,3}
+    backbone_accumulator::Array{Float64,3}
+    convolution_operand_buffer::Array{Float64,3}
+end
+
+function PropagatorConvolutionBuffers(n_tau::Int, n_fock::Int)
+    return PropagatorConvolutionBuffers(
+        zeros(Float64, n_tau, n_fock, n_fock),
+        zeros(Float64, n_tau, n_fock, n_fock),
+        zeros(Float64, n_tau, n_fock, n_fock)
+    )
+end
+
 function gen_propagator_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64})
     pairings_with_crossings = _generate_pairings(expansion_order)
     diagrams_list = Vector{Array{BackBone,3}}()
@@ -43,10 +68,25 @@ function eval_propagator_given_order!(solver_data::SolverData, diagrams::Array{B
     # Create local accumulator for this rank's work (only for this order)
     local_result = zeros(Float64, size(solver_data.calc.propagator.vals))
 
-    # Pre-allocate temp buffers for in-place operations (reused across all diagrams)
-    temp_buffer = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
-    result_buffer = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
-    convolution_buffer = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
+    # ============================================================================
+    # Buffer Allocation Strategy
+    # ============================================================================
+    # Pre-allocate work buffers that are reused across all diagram evaluations
+    # to avoid repeated allocations in the hot loop. All buffers are grouped in
+    # PropagatorConvolutionBuffers for clarity.
+    #
+    # Buffer reuse pattern:
+    # - operator_product_buffer: Used by apply_hybridization_inplace! and _multiplication_* functions
+    # - backbone_accumulator: Accumulates propagator result through multiplication_convolution
+    # - convolution_operand_buffer: Prepares the second operand for DLR convolutions
+    #
+    # Each diagram evaluation reuses the same buffers, overwriting previous values.
+    # This is safe because diagram contributions are accumulated into local_result
+    # after each evaluation completes.
+    # ============================================================================
+    n_tau = length(solver_data.model.dlr_grid.tau)
+    n_fock = solver_data.model.n_fock
+    buffers = PropagatorConvolutionBuffers(n_tau, n_fock)
 
     # Distribute diagrams across ranks: rank processes indices rank+1:nprocs:n_diagrams
     my_diagrams = rank+1:nprocs:n_diagrams
@@ -54,7 +94,7 @@ function eval_propagator_given_order!(solver_data::SolverData, diagrams::Array{B
     # Evaluate diagrams assigned to this rank
     for i in my_diagrams
         diagram = diagrams_flat[i]
-        backbone_0_to_tau = multiplication_convolution(diagram.nodes, diagram.edges, solver_data.model.dlr_grid, solver_data.model, solver_data.model.bare_propagator, temp_buffer, result_buffer, convolution_buffer)
+        backbone_0_to_tau = multiplication_convolution(diagram.nodes, diagram.edges, solver_data.model.dlr_grid, solver_data.model, solver_data.model.bare_propagator, buffers.operator_product_buffer, buffers.backbone_accumulator, buffers.convolution_operand_buffer)
         prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
         local_result .+= prefactor .* backbone_0_to_tau
     end

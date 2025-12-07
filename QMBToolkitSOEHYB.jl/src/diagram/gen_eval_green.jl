@@ -2,6 +2,80 @@
 using MPI
 using QMBToolkitDLR
 
+"""
+    ConvolutionBufferSet
+
+Buffers for a single direction (forward or reverse) of backbone convolution.
+Reused across diagrams to avoid allocations during convolution operations.
+
+# Fields
+- `backbone_accumulator`: Accumulates the backbone result through multiplication and convolution
+- `convolution_operand_buffer`: Prepares the operand for convolution operations
+"""
+struct ConvolutionBufferSet
+    backbone_accumulator::Array{Float64,3}
+    convolution_operand_buffer::Array{Float64,3}
+end
+
+function ConvolutionBufferSet(n_tau::Int, n_fock::Int)
+    return ConvolutionBufferSet(
+        zeros(Float64, n_tau, n_fock, n_fock),
+        zeros(Float64, n_tau, n_fock, n_fock)
+    )
+end
+
+"""
+    GreenConvolutionBuffers
+
+Container for forward and reverse convolution buffer sets.
+Both sets are required because forward and reverse convolutions are computed
+sequentially but their results (contrib_0_to_tau and contrib_tau_to_beta)
+are used simultaneously in operator products.
+
+# Fields
+- `fwd`: Forward convolution buffers
+- `rev`: Reverse convolution buffers
+"""
+struct GreenConvolutionBuffers
+    fwd::ConvolutionBufferSet
+    rev::ConvolutionBufferSet
+end
+
+function GreenConvolutionBuffers(n_tau::Int, n_fock::Int)
+    return GreenConvolutionBuffers(
+        ConvolutionBufferSet(n_tau, n_fock),
+        ConvolutionBufferSet(n_tau, n_fock)
+    )
+end
+
+"""
+    OperatorProductBuffers
+
+Buffers for operator multiplication operations.
+Reused across diagrams to avoid allocations during matrix products.
+
+# Fields
+- `operator_product_buffer`: General-purpose buffer for operator multiplications (shared across convolutions)
+- `annihilation_product_buffer`: Holds products involving annihilation operators
+- `final_product_buffer`: Holds final products before accumulation
+- `trace_result_buffer`: Holds trace computation results
+"""
+struct OperatorProductBuffers
+    operator_product_buffer::Array{Float64,3}
+    annihilation_product_buffer::Array{Float64,3}
+    final_product_buffer::Array{Float64,3}
+    trace_result_buffer::Vector{Float64}
+end
+
+function OperatorProductBuffers(n_tau::Int, n_fock::Int)
+    return OperatorProductBuffers(
+        zeros(Float64, n_tau, n_fock, n_fock),
+        zeros(Float64, n_tau, n_fock, n_fock),
+        zeros(Float64, n_tau, n_fock, n_fock),
+        zeros(Float64, n_tau)
+    )
+end
+
 function gen_green_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64}, is_bold::Bool=false)
 
     if is_bold
@@ -88,19 +162,36 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
     # Create local accumulator for this rank's work (only for this order)
     local_result = zeros(Float64, size(solver_data.calc.green.vals))
 
-    # Pre-allocate buffers for in-place operations (reused across all diagrams to avoid allocations)
-    # General-purpose temporary buffers for matrix operations
-    temp_buffer = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
-    temp_buffer2 = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
-    temp_buffer3 = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
-    trace_buffer = zeros(Float64, length(solver_data.model.dlr_grid.tau))
+    # ============================================================================
+    # Buffer Allocation Strategy
+    # ============================================================================
+    # Pre-allocate work buffers that are reused across all diagram evaluations
+    # to avoid repeated allocations in the hot loop. Buffers are grouped into
+    # structs for organizational clarity.
+    #
+    # Buffer reuse pattern for Green's function evaluation:
+    #
+    # 1. OperatorProductBuffers (op_buffers):
+    #    - operator_product_buffer: Shared between fwd/rev convolutions for hybridization and operator products
+    #    - annihilation_product_buffer: Temporary storage for annihilation operator multiplication
+    #    - final_product_buffer: Holds final operator products before accumulation
+    #    - trace_result_buffer: Holds trace results before adding to local_result
+    #
+    # 2. GreenConvolutionBuffers (conv_buffers):
+    #    - Contains separate fwd and rev buffer sets (ConvolutionBufferSet)
+    #    - Each set has: backbone_accumulator and convolution_operand_buffer
+    #    - Separate fwd/rev sets required because contrib_0_to_tau and contrib_tau_to_beta
+    #      are computed sequentially but both results are used together in operator products
+    #
+    # Each diagram evaluation reuses the same buffers, overwriting previous values.
+    # This is safe because contributions are accumulated into backbone_0_to_beta_with_ann
+    # and local_result after each use.
+    # ============================================================================
+    n_tau = length(solver_data.model.dlr_grid.tau)
+    n_fock = solver_data.model.n_fock
 
-    # Separate buffer sets for forward and reverse convolutions to avoid aliasing
-    # (both convolutions are called sequentially and their results are used together)
-    result_buffer_fwd = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
-    convolution_buffer_fwd = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
-    result_buffer_rev = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
-    convolution_buffer_rev = zeros(Float64, length(solver_data.model.dlr_grid.tau), solver_data.model.n_fock, solver_data.model.n_fock)
+    op_buffers = OperatorProductBuffers(n_tau, n_fock)
+    conv_buffers = GreenConvolutionBuffers(n_tau, n_fock)
 
     # Distribute topology loop across ranks: rank processes indices rank+1:nprocs:n_topology
     my_topologies = rank+1:nprocs:n_topology
@@ -114,24 +205,24 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
                 for l in 1:n_hyb_exponents
                     diagram = diagrams[i, j, k, l]
                     @assert diagram.external_opts_loc == external_opts_loc "External operator locations do not match among diagrams of the same topology and direction."
-                    contrib_0_to_tau = multiplication_convolution(diagram.nodes[1:external_opts_loc[2]], diagram.edges[1:external_opts_loc[2]-1], solver_data.model.dlr_grid, solver_data.model, propagator, temp_buffer, result_buffer_fwd, convolution_buffer_fwd)
-                    contrib_tau_to_beta = multiplication_convolution_reverse(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, propagator, temp_buffer, result_buffer_rev, convolution_buffer_rev)
+                    contrib_0_to_tau = multiplication_convolution(diagram.nodes[1:external_opts_loc[2]], diagram.edges[1:external_opts_loc[2]-1], solver_data.model.dlr_grid, solver_data.model, propagator, op_buffers.operator_product_buffer, conv_buffers.fwd.backbone_accumulator, conv_buffers.fwd.convolution_operand_buffer)
+                    contrib_tau_to_beta = multiplication_convolution_reverse(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, propagator, op_buffers.operator_product_buffer, conv_buffers.rev.backbone_accumulator, conv_buffers.rev.convolution_operand_buffer)
                     contrib_tau_to_beta = do_reflection_tau2tau(solver_data.model.dlr_grid, contrib_tau_to_beta)
                     prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
                     for ann_index in 1:solver_data.model.n_flavors_physical
-                        # Use in-place versions: temp_buffer2 = ann_opt * contrib_0_to_tau, then temp_buffer3 = contrib_tau_to_beta * temp_buffer2
-                        _multiplication_23!(temp_buffer2, solver_data.model.ann_opts[ann_index], contrib_0_to_tau)
-                        _multiplication_33!(temp_buffer3, contrib_tau_to_beta, temp_buffer2)
-                        backbone_0_to_beta_with_ann[ann_index] .+= prefactor .* temp_buffer3
+                        # Use in-place versions: annihilation_product_buffer = ann_opt * contrib_0_to_tau, then final_product_buffer = contrib_tau_to_beta * annihilation_product_buffer
+                        _multiplication_23!(op_buffers.annihilation_product_buffer, solver_data.model.ann_opts[ann_index], contrib_0_to_tau)
+                        _multiplication_33!(op_buffers.final_product_buffer, contrib_tau_to_beta, op_buffers.annihilation_product_buffer)
+                        backbone_0_to_beta_with_ann[ann_index] .+= prefactor .* op_buffers.final_product_buffer
                     end
                 end
             end
             for ann_index in 1:solver_data.model.n_flavors_physical
                 for cre_index in 1:solver_data.model.n_flavors_physical
-                    # Use in-place version: temp_buffer2 = backbone * cre_opt, then trace
-                    _multiplication_32!(temp_buffer2, backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index])
-                    _trace_3!(trace_buffer, temp_buffer2)
-                    local_result[:, ann_index, cre_index] .+= trace_buffer
+                    # Use in-place version: annihilation_product_buffer = backbone * cre_opt, then trace
+                    _multiplication_32!(op_buffers.annihilation_product_buffer, backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index])
+                    _trace_3!(op_buffers.trace_result_buffer, op_buffers.annihilation_product_buffer)
+                    local_result[:, ann_index, cre_index] .+= op_buffers.trace_result_buffer
                 end
             end
         end

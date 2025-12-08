@@ -151,7 +151,7 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
             apply_hybridization_inplace!(temp_buffer, to_be_convoluted, hyb, model_data, is_reverse=false)
         end
 
-        result = do_convolution_dlr2tau(dlr_grid, tau2dlr(dlr_grid, to_be_convoluted, dlr_grid.tau), tau2dlr(dlr_grid, result, dlr_grid.tau))
+        result = do_convolution_dlr2tau!(model_data.convolution_workspace, dlr_grid, model_data.kernel_cache, tau2dlr(dlr_grid, to_be_convoluted, dlr_grid.tau), tau2dlr(dlr_grid, result, dlr_grid.tau))
     end
     return result
 end
@@ -195,7 +195,7 @@ function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::
             apply_hybridization_inplace!(temp_buffer, to_be_convoluted, hyb, model_data, is_reverse=false)
         end
 
-        result = do_convolution_dlr2tau(dlr_grid, tau2dlr(dlr_grid, result, dlr_grid.tau), tau2dlr(dlr_grid, to_be_convoluted, dlr_grid.tau))
+        result = do_convolution_dlr2tau!(model_data.convolution_workspace, dlr_grid, model_data.kernel_cache, tau2dlr(dlr_grid, result, dlr_grid.tau), tau2dlr(dlr_grid, to_be_convoluted, dlr_grid.tau))
     end
     return result
 end

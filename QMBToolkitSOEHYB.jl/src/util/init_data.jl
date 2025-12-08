@@ -84,7 +84,13 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
 
     # calculate partition function for the counter-terms
     Z_counterterms = calculate_Z_counterterms(model_params, n_flavors, n_flavors_physical)
-    
+
+    # Pre-compute kernel cache and workspace for DLR convolutions (performance optimization)
+    kernel_cache = compute_kernel_cache(dlr_grid)
+    r = length(dlr_grid.omega)
+    n_tau = length(dlr_grid.tau)
+    convolution_workspace = ConvolutionWorkspace(r, n_fock, n_fock, n_tau)
+
     return ModelData(
         model_params.beta,
         n_flavors,
@@ -102,7 +108,9 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
         K0_inverse,
         ann_opts_SOE,
         cre_opts_SOE,
-        Z_counterterms
+        Z_counterterms,
+        kernel_cache,
+        convolution_workspace
     )
 end
 

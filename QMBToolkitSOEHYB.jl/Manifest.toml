@@ -56,12 +56,6 @@ version = "1.6.0"
     LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
     StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
-[[deps.DataStructures]]
-deps = ["OrderedCollections"]
-git-tree-sha1 = "e357641bb3e0638d353c4b29ea0e40ea644066a6"
-uuid = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
-version = "0.19.3"
-
 [[deps.Dates]]
 deps = ["Printf"]
 uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
@@ -368,14 +362,8 @@ deps = ["Unicode"]
 uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 version = "1.11.0"
 
-[[deps.ProgressMeter]]
-deps = ["Distributed", "Printf"]
-git-tree-sha1 = "fbb92c6c56b34e1a2c4c36058f68f332bec840e7"
-uuid = "92933f4c-e287-5a05-a399-4b506db050ca"
-version = "1.11.0"
-
 [[deps.QMBToolkitDLR]]
-deps = ["Lehmann", "Printf"]
+deps = ["Lehmann", "LinearAlgebra", "Printf"]
 path = "/Users/yangyu/src/QMBToolkit/QMBToolkitDLR.jl/"
 uuid = "88558c09-ce6c-406f-aebb-ec948f67cfc7"
 version = "1.0.0-DEV"
@@ -387,22 +375,10 @@ uuid = "1d152fa9-cea6-4728-9c5c-b50c1b54dcac"
 version = "1.0.0-DEV"
 
 [[deps.QMBToolkitSOEXCA]]
-deps = ["DelimitedFiles", "HDF5", "LinearAlgebra", "Printf", "ProgressMeter", "QMBToolkitDLR", "QMBToolkitED", "QuadGK", "SparseArrays", "TOML"]
+deps = ["DelimitedFiles", "HDF5", "LinearAlgebra", "MPI", "Printf", "QMBToolkitDLR", "QMBToolkitED", "TOML"]
 path = "."
 uuid = "c59e8169-549d-454f-b5d8-07bad43e82a7"
 version = "1.0.0-DEV"
-
-[[deps.QuadGK]]
-deps = ["DataStructures", "LinearAlgebra"]
-git-tree-sha1 = "9da16da70037ba9d701192e27befedefb91ec284"
-uuid = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
-version = "2.11.2"
-
-    [deps.QuadGK.extensions]
-    QuadGKEnzymeExt = "Enzyme"
-
-    [deps.QuadGK.weakdeps]
-    Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 
 [[deps.Quadmath]]
 deps = ["Compat", "Printf", "Random", "Requires"]

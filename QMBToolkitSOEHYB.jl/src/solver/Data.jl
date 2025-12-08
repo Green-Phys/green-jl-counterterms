@@ -59,6 +59,9 @@ struct ModelData
     ann_opts_SOE::Matrix{Matrix{Float64}} # shape: (n_flavors, p)
     cre_opts_SOE::Matrix{Matrix{Float64}} # shape: (n_flavors, p)
     Z_counterterms::Float64
+    # Performance optimization caches
+    kernel_cache::KernelCache  # Pre-computed kernel values for DLR convolution
+    convolution_workspace::ConvolutionWorkspace  # Reusable buffers for convolution
 end
 
 

@@ -2,7 +2,7 @@
 
 julia_version = "1.12.1"
 manifest_format = "2.0"
-project_hash = "acc81a72d376a5b33feab64ccfe073604cc6c8d9"
+project_hash = "10ce0306efd0aed10203be6fe3fde6df4c245900"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
@@ -195,7 +195,7 @@ uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 version = "1.11.0"
 
 [[deps.QMBToolkitDLR]]
-deps = ["Lehmann"]
+deps = ["Lehmann", "LinearAlgebra", "Printf"]
 path = "."
 uuid = "88558c09-ce6c-406f-aebb-ec948f67cfc7"
 version = "1.0.0-DEV"

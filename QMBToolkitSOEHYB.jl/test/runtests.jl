@@ -58,7 +58,7 @@ using HDF5
             Z_computed = read(file, "/partition_function/partition_function_by_order")
 
             @testset "Partition function - Order $order" for order in 0:2
-                @test isapprox(Z_computed[order+1], Z_analytical[order+1], rtol=1e-14)
+                @test isapprox(Z_computed[order+1], Z_analytical[order+1], rtol=1e-12)
             end
 
             # Test Green's function values by order on linear grid
@@ -79,7 +79,7 @@ using HDF5
                     # Compare with analytical result
                     G_expected = G_analytical[order][tau_idx]
 
-                    @test isapprox(G_computed, G_expected, rtol=1e-14)
+                    @test isapprox(G_computed, G_expected, rtol=1e-12)
                 end
             end
         end

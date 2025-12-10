@@ -1,82 +1,33 @@
 """
-Block-sparse interface matching QMBToolkitED.jl API.
+High-level Hamiltonian construction for block-dense operators.
 
-This module provides block-sparse implementations of the main QMBToolkitED.jl functions,
-maintaining API compatibility for easy comparison and validation.
-
-Main functions:
-- get_annihilators_blocksparse: Generate fermionic operators (block-sparse)
-- build_hamiltonian_blocksparse: Construct Hamiltonian from input files
+Provides functions to build Hamiltonians from input files.
 """
 
 """
-    get_annihilators_blocksparse(basis::BlockSparseBasis) -> Vector{BlockSparseOperator}
-
-Generate fermionic annihilation operators for a given block-sparse basis.
-
-This is the block-sparse equivalent of `get_annihilators(nflavors)`.
-
-Arguments:
-- `basis::BlockSparseBasis`: The many-body basis with sector structure
-
-Returns:
-- `Vector{BlockSparseOperator}`: Array of annihilation operators c[i] for i=1:nflavors
-
-Example:
-```julia
-# Create basis for 3-orbital system with N conservation
-site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-basis = make_basis(site_qns)
-
-# Get annihilation operators
-c = get_annihilators_blocksparse(basis)
-
-# c[i] is the annihilation operator for flavor i
-```
-
-Comparison with sparse version:
-```julia
-# Sparse version
-c_sparse = get_annihilators(3)
-
-# Block-sparse version
-basis = make_basis([QN_N(1), QN_N(1), QN_N(1)])
-c_block = get_annihilators_blocksparse(basis)
-
-# Should match when converted to sparse
-for i in 1:3
-    @assert to_sparse(c_block[i]) ≈ c_sparse[i]
-end
-```
-"""
-function get_annihilators_blocksparse(basis::BlockSparseBasis)
-    return [get_annihilator_blocksparse(basis, i) for i in 1:basis.nflavors]
-end
-
-"""
-    build_hamiltonian_blocksparse(
-        basis::BlockSparseBasis,
+    build_hamiltonian_blockdense(
+        basis::BlockDenseBasis,
         hopping_matrix_input::Union{String, IO},
         coulomb_tensor_input::Union{String, IO}
-    ) -> Tuple{BlockSparseOperator, Vector{BlockSparseOperator}}
+    ) -> Tuple{BlockDenseOperator, Vector{BlockDenseOperator}}
 
-Construct a block-sparse Hamiltonian from hopping and Coulomb interaction inputs.
+Construct a block-dense Hamiltonian from hopping and Coulomb interaction inputs.
 
-This is the block-sparse equivalent of `build_hamiltonian(hopping, coulomb)`.
+This is the block-dense equivalent of `build_hamiltonian(hopping, coulomb)`.
 
 The Hamiltonian has the form:
     H = Σ_{ij} t_{ij} c_i' c_j + 0.5 Σ_{ijkl} U_{ijkl} c_i' c_j' c_k c_l
 
 Arguments:
-- `basis::BlockSparseBasis`: The many-body basis (must match nflavors in input files)
+- `basis::BlockDenseBasis`: The many-body basis (must match nflavors in input files)
 - `hopping_matrix_input`: Path to file or IO containing hopping matrix
   Format: Each line is "i j Re(t_ij) Im(t_ij)" (0-indexed)
 - `coulomb_tensor_input`: Path to file or IO containing Coulomb tensor
   Format: First line is nflavors, then "# i j k l Re(U_ijkl) Im(U_ijkl)" (0-indexed)
 
 Returns:
-- `BlockSparseOperator`: The total Hamiltonian H
-- `Vector{BlockSparseOperator}`: Annihilation operators used to build H
+- `BlockDenseOperator`: The total Hamiltonian H
+- `Vector{BlockDenseOperator}`: Annihilation operators used to build H
 
 Note: The Hamiltonian should have flux = 0 (number conserving).
 
@@ -85,7 +36,7 @@ Example:
 site_qns = [QN_N(1), QN_N(1), QN_N(1)]
 basis = make_basis(site_qns)
 
-H, c = build_hamiltonian_blocksparse(basis, "hopping.txt", "coulomb.txt")
+H, c = build_hamiltonian_blockdense(basis, "hopping.txt", "coulomb.txt")
 
 # H should be Hermitian
 H_sparse = to_sparse(H)
@@ -102,14 +53,14 @@ H_sparse, c_sparse = build_hamiltonian("hopping.txt", "coulomb.txt")
 
 # Block-sparse version
 basis = make_basis([QN_N(1) for _ in 1:nflavors])
-H_block, c_block = build_hamiltonian_blocksparse(basis, "hopping.txt", "coulomb.txt")
+H_block, c_block = build_hamiltonian_blockdense(basis, "hopping.txt", "coulomb.txt")
 
 # Hamiltonians should match
 @assert to_sparse(H_block) ≈ H_sparse atol=1e-14
 ```
 """
-function build_hamiltonian_blocksparse(
-    basis::BlockSparseBasis,
+function build_hamiltonian_blockdense(
+    basis::BlockDenseBasis,
     hopping_matrix_input::Union{String, IO},
     coulomb_tensor_input::Union{String, IO}
 )
@@ -145,12 +96,12 @@ function build_hamiltonian_blocksparse(
     end
 
     # Get annihilation operators
-    c = get_annihilators_blocksparse(basis)
+    c = get_annihilators_blockdense(basis)
 
     # Build hopping Hamiltonian: H_hop = Σ_{ij} t_{ij} c_i' c_j
     # Start with zero operator (no blocks)
-    QN_type = eltype(basis.site_qns)
-    H_hop = BlockSparseOperator(
+    QN_type = typeof(basis.site_qns[1])
+    H_hop = BlockDenseOperator(
         basis,
         OperatorFlux(zero_qn(QN_type)),
         Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
@@ -169,9 +120,9 @@ function build_hamiltonian_blocksparse(
     end
 
     # Build interaction Hamiltonian: H_int = 0.5 Σ_{ijkl} U_{ijkl} c_i' c_j' c_k c_l
-    H_int = BlockSparseOperator(
+    H_int = BlockDenseOperator(
         basis,
-        OperatorFlux(zero_qn(QN_type)),
+        OperatorFlux(zero_qn(typeof(basis.site_qns[1]))),
         Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
     )
 
@@ -193,43 +144,4 @@ function build_hamiltonian_blocksparse(
     H = H_hop + H_int
 
     return H, c
-end
-
-"""
-    solve_hamiltonian_blocksparse(H::BlockSparseOperator) -> Tuple{Vector{Float64}, Matrix{ComplexF64}}
-
-Diagonalize a block-sparse Hamiltonian.
-
-This is the block-sparse equivalent of `solve_hamiltonian(H)`.
-
-Arguments:
-- `H::BlockSparseOperator`: Block-sparse Hamiltonian
-
-Returns:
-- `Vector{Float64}`: Eigenvalues (sorted)
-- `Matrix{ComplexF64}`: Eigenvectors (columns)
-
-Note: Currently converts to dense matrix for diagonalization.
-Future optimization: Diagonalize each sector independently.
-
-Example:
-```julia
-basis = make_basis([QN_N(1), QN_N(1)])
-H, c = build_hamiltonian_blocksparse(basis, "hopping.txt", "coulomb.txt")
-
-evals, evecs = solve_hamiltonian_blocksparse(H)
-
-# Ground state energy
-E0 = evals[1]
-```
-"""
-function solve_hamiltonian_blocksparse(H::BlockSparseOperator)
-    # Convert to sparse, then dense
-    H_sparse = to_sparse(H)
-    H_dense = Matrix(H_sparse)
-
-    # Ensure Hermitian
-    sol = eigen(Hermitian(H_dense))
-
-    return sol.values, sol.vectors
 end

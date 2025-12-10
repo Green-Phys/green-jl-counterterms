@@ -1,5 +1,5 @@
 """
-Quantum number types for block-sparse exact diagonalization.
+Quantum number types for block-dense exact diagonalization.
 
 This module defines the abstract QuantumNumber type and concrete implementations
 for particle number (N) and particle number with spin (N, Sz) conservation.

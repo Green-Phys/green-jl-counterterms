@@ -1,23 +1,23 @@
 """
-Phase 3 Tests: Linear Algebra Operations
+BlockDense Tests: Linear Algebra Operations
 
 Tests for operator multiplication, addition, scalar multiplication, adjoint,
 and conversion to/from sparse matrices.
 """
 
 using Test
-using Main.BlockSparse
+using Main.BlockDense
 using LinearAlgebra
 using SparseArrays
 
-@testset "Phase 3: Linear Algebra" begin
+@testset "BlockDense: Linear Algebra" begin
 
     @testset "Operator multiplication" begin
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
-        c2 = get_annihilator_blocksparse(basis, 2)
+        c1 = get_annihilator_blockdense(basis, 1)
+        c2 = get_annihilator_blockdense(basis, 2)
 
         # Creation operators
         c1_dag = c1'
@@ -43,8 +43,8 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
-        c2 = get_annihilator_blocksparse(basis, 2)
+        c1 = get_annihilator_blockdense(basis, 1)
+        c2 = get_annihilator_blockdense(basis, 2)
 
         # Both have same flux, can be added
         @test c1.flux.delta_qn == c2.flux.delta_qn
@@ -61,8 +61,8 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
-        c2 = get_annihilator_blocksparse(basis, 2)
+        c1 = get_annihilator_blockdense(basis, 1)
+        c2 = get_annihilator_blockdense(basis, 2)
 
         c_diff = c1 - c2
         @test c_diff.flux.delta_qn == c1.flux.delta_qn
@@ -76,7 +76,7 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
+        c1 = get_annihilator_blockdense(basis, 1)
 
         # Scale by real number
         c1_scaled = 2.0 * c1
@@ -114,7 +114,7 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
+        c1 = get_annihilator_blockdense(basis, 1)
 
         c1_neg = -c1
         @test c1_neg.flux.delta_qn == c1.flux.delta_qn
@@ -128,7 +128,7 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
+        c1 = get_annihilator_blockdense(basis, 1)
 
         # c1 has flux QN_N(-1), c1' should have flux QN_N(1)
         c1_dag = c1'
@@ -150,9 +150,9 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
-        c2 = get_annihilator_blocksparse(basis, 2)
-        c3 = get_annihilator_blocksparse(basis, 3)
+        c1 = get_annihilator_blockdense(basis, 1)
+        c2 = get_annihilator_blockdense(basis, 2)
+        c3 = get_annihilator_blockdense(basis, 3)
 
         # {c_i, c_j} = c_i * c_j + c_j * c_i = 0
         anticomm_12 = c1 * c2 + c2 * c1
@@ -169,8 +169,8 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
-        c2 = get_annihilator_blocksparse(basis, 2)
+        c1 = get_annihilator_blockdense(basis, 1)
+        c2 = get_annihilator_blockdense(basis, 2)
 
         c1_dag = c1'
         c2_dag = c2'
@@ -196,7 +196,7 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
+        c1 = get_annihilator_blockdense(basis, 1)
 
         # Convert to sparse
         c1_sparse = to_sparse(c1)
@@ -216,7 +216,7 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
+        c1 = get_annihilator_blockdense(basis, 1)
 
         # Round trip: block -> sparse -> block
         c1_sparse = to_sparse(c1)
@@ -237,8 +237,8 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
-        c2 = get_annihilator_blocksparse(basis, 2)
+        c1 = get_annihilator_blockdense(basis, 1)
+        c2 = get_annihilator_blockdense(basis, 2)
 
         c1_dag = c1'
         c2_dag = c2'
@@ -261,8 +261,8 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
-        c2 = get_annihilator_blocksparse(basis, 2)
+        c1 = get_annihilator_blockdense(basis, 1)
+        c2 = get_annihilator_blockdense(basis, 2)
 
         # (c1 + c2) * c1' = c1 * c1' + c2 * c1'
         c1_dag = c1'
@@ -280,8 +280,8 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
-        c2 = get_annihilator_blocksparse(basis, 2)
+        c1 = get_annihilator_blockdense(basis, 1)
+        c2 = get_annihilator_blockdense(basis, 2)
 
         α = 2.0 + 3.0im
 
@@ -299,8 +299,8 @@ using SparseArrays
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
-        c2 = get_annihilator_blocksparse(basis, 2)
+        c1 = get_annihilator_blockdense(basis, 1)
+        c2 = get_annihilator_blockdense(basis, 2)
 
         # (c1 + c2)' = c1' + c2'
         lhs = (c1 + c2)'
@@ -330,7 +330,7 @@ using SparseArrays
         basis = make_basis(site_qns)
 
         # Total number operator: N = Σ_i c_i' * c_i
-        N = sum([get_annihilator_blocksparse(basis, i)' * get_annihilator_blocksparse(basis, i)
+        N = sum([get_annihilator_blockdense(basis, i)' * get_annihilator_blockdense(basis, i)
                  for i in 1:3])
 
         @test N.flux.delta_qn == QN_N(0)
@@ -355,8 +355,8 @@ using SparseArrays
         @test basis.total_dim == 16  # 2^4
 
         # Create hopping term: c_1' * c_2 + c_2' * c_1
-        c1 = get_annihilator_blocksparse(basis, 1)
-        c2 = get_annihilator_blocksparse(basis, 2)
+        c1 = get_annihilator_blockdense(basis, 1)
+        c2 = get_annihilator_blockdense(basis, 2)
 
         hopping = c1' * c2 + c2' * c1
 
@@ -369,4 +369,3 @@ using SparseArrays
 
 end
 
-println("\nPhase 3: Linear Algebra Tests Complete")

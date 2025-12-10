@@ -7,7 +7,7 @@ then grouped into sectors by their total quantum number.
 """
 
 """
-    BlockSparseBasis
+    BlockDenseBasis
 
 A many-body basis partitioned into symmetry sectors.
 
@@ -27,7 +27,7 @@ println("Number of sectors: ", length(basis.sectors))
 println("Total dimension: ", basis.total_dim)
 ```
 """
-struct BlockSparseBasis
+struct BlockDenseBasis
     site_qns::Vector{QuantumNumber}
     nflavors::Int
     sectors::Vector{Sector}
@@ -35,7 +35,7 @@ struct BlockSparseBasis
     total_dim::Int
 
     # Inner constructor with validation
-    function BlockSparseBasis(
+    function BlockDenseBasis(
         site_qns::Vector{QN},
         nflavors::Int,
         sectors::Vector{Sector},
@@ -57,9 +57,9 @@ struct BlockSparseBasis
 end
 
 """
-    make_basis(site_qns::Vector{QN}) where {QN <: QuantumNumber} -> BlockSparseBasis
+    make_basis(site_qns::Vector{QN}) where {QN <: QuantumNumber} -> BlockDenseBasis
 
-Construct a block-sparse basis from site quantum numbers.
+Construct a block-dense basis from site quantum numbers.
 
 This is the primary interface for creating a basis. Each element of `site_qns`
 specifies the quantum number carried by occupying that orbital.
@@ -68,7 +68,7 @@ Arguments:
 - `site_qns::Vector{QN}`: Quantum numbers for each single-particle orbital
 
 Returns:
-- `BlockSparseBasis`: The partitioned many-body basis
+- `BlockDenseBasis`: The partitioned many-body basis
 
 Algorithm:
 1. Generate all 2^nflavors Fock states (as bit patterns)
@@ -136,13 +136,13 @@ function make_basis(site_qns::Vector{QN}) where {QN <: QuantumNumber}
     end
 
     # Step 3: Construct basis
-    return BlockSparseBasis(site_qns, nflavors, sectors, qn_to_sector, nfock)
+    return BlockDenseBasis(site_qns, nflavors, sectors, qn_to_sector, nfock)
 end
 
 # Display
-function Base.show(io::IO, basis::BlockSparseBasis)
+function Base.show(io::IO, basis::BlockDenseBasis)
     QN_type = eltype(basis.site_qns)
-    println(io, "BlockSparseBasis{$QN_type}")
+    println(io, "BlockDenseBasis{$QN_type}")
     println(io, "  nflavors: ", basis.nflavors)
     println(io, "  total_dim: ", basis.total_dim)
     println(io, "  num_sectors: ", length(basis.sectors))

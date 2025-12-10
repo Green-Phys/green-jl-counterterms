@@ -1,5 +1,5 @@
 """
-Utility functions for block-sparse exact diagonalization.
+Utility functions for block-dense exact diagonalization.
 
 Includes:
 - sum_occupied_sites: Compute total quantum number from occupied sites

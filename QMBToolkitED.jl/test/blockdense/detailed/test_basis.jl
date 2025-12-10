@@ -1,14 +1,14 @@
 """
-Phase 2 Tests: Site-Based Basis Construction
+BlockDense Tests: Site-Based Basis Construction
 
-Tests for BlockSparseBasis and make_basis function.
+Tests for BlockDenseBasis and make_basis function.
 Validates basis partitioning, sector generation, and state coverage.
 """
 
 using Test
-using Main.BlockSparse
+using Main.BlockDense
 
-@testset "Phase 2: Basis Construction" begin
+@testset "BlockDense: Basis Construction" begin
 
     @testset "Simple 2-flavor spin system with QN_NSz" begin
         # [↑, ↓] system
@@ -240,7 +240,7 @@ using Main.BlockSparse
         show(io, basis)
         output = String(take!(io))
 
-        @test occursin("BlockSparseBasis", output)
+        @test occursin("BlockDenseBasis", output)
         @test occursin("nflavors: 2", output)
         @test occursin("total_dim: 4", output)
     end
@@ -267,4 +267,3 @@ using Main.BlockSparse
 
 end
 
-println("\nPhase 2: Basis Construction Tests Complete")

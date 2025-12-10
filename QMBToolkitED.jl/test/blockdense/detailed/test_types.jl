@@ -1,8 +1,8 @@
 using Test
-# Import BlockSparse module (loaded by run_phase1.jl)
-using Main.BlockSparse
+# Import BlockDense module (loaded by run_phase1.jl)
+using Main.BlockDense
 
-@testset "Phase 1: Core Types" begin
+@testset "BlockDense: Core Types" begin
 
     @testset "QN_NSz Type" begin
         @testset "Construction and Equality" begin

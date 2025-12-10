@@ -1,5 +1,5 @@
 """
-Linear algebra operations for block-sparse operators.
+Linear algebra operations for block-dense operators.
 
 Implements:
 - Operator multiplication: A * B (block chaining with flux composition)
@@ -9,20 +9,20 @@ Implements:
 """
 
 """
-    Base.:*(A::BlockSparseOperator, B::BlockSparseOperator) -> BlockSparseOperator
+    Base.:*(A::BlockDenseOperator, B::BlockDenseOperator) -> BlockDenseOperator
 
-Multiply two block-sparse operators by chaining blocks.
+Multiply two block-dense operators by chaining blocks.
 
 The resulting operator has flux = combine_qn(A.flux, B.flux).
 Block (target, source) in the result is computed by summing over intermediate sectors:
     result[target, source] = Σ_mid A.blocks[target, mid] * B.blocks[mid, source]
 
 Arguments:
-- `A::BlockSparseOperator`: Left operator
-- `B::BlockSparseOperator`: Right operator
+- `A::BlockDenseOperator`: Left operator
+- `B::BlockDenseOperator`: Right operator
 
 Returns:
-- `BlockSparseOperator`: Product operator A*B
+- `BlockDenseOperator`: Product operator A*B
 
 Requirements:
 - Both operators must act on the same basis
@@ -31,7 +31,7 @@ Requirements:
 Example:
 ```julia
 basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator_blocksparse(basis, 1)
+c1 = get_annihilator_blockdense(basis, 1)
 c1_dag = c1'
 
 # Number operator: n1 = c1† * c1
@@ -39,7 +39,7 @@ n1 = c1_dag * c1
 # flux(n1) = QN_N(1) + QN_N(-1) = QN_N(0)
 ```
 """
-function Base.:*(A::BlockSparseOperator, B::BlockSparseOperator)
+function Base.:*(A::BlockDenseOperator, B::BlockDenseOperator)
     @assert A.basis === B.basis "Operators must act on same basis"
 
     # Result flux is composition of input fluxes
@@ -77,20 +77,20 @@ function Base.:*(A::BlockSparseOperator, B::BlockSparseOperator)
     # Remove any blocks that became zero due to cancellation
     filter!(((key, block),) -> !iszero(block), result_blocks)
 
-    return BlockSparseOperator(A.basis, result_flux, result_blocks)
+    return BlockDenseOperator(A.basis, result_flux, result_blocks)
 end
 
 """
-    Base.:+(A::BlockSparseOperator, B::BlockSparseOperator) -> BlockSparseOperator
+    Base.:+(A::BlockDenseOperator, B::BlockDenseOperator) -> BlockDenseOperator
 
-Add two block-sparse operators with the same flux.
+Add two block-dense operators with the same flux.
 
 Arguments:
-- `A::BlockSparseOperator`: First operator
-- `B::BlockSparseOperator`: Second operator
+- `A::BlockDenseOperator`: First operator
+- `B::BlockDenseOperator`: Second operator
 
 Returns:
-- `BlockSparseOperator`: Sum operator A+B
+- `BlockDenseOperator`: Sum operator A+B
 
 Requirements:
 - Both operators must have the same flux
@@ -99,14 +99,14 @@ Requirements:
 Example:
 ```julia
 basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator_blocksparse(basis, 1)
-c2 = get_annihilator_blocksparse(basis, 2)
+c1 = get_annihilator_blockdense(basis, 1)
+c2 = get_annihilator_blockdense(basis, 2)
 
 # Both have flux QN_N(-1), so can be added
 c_sum = c1 + c2
 ```
 """
-function Base.:+(A::BlockSparseOperator, B::BlockSparseOperator)
+function Base.:+(A::BlockDenseOperator, B::BlockDenseOperator)
     @assert A.basis === B.basis "Operators must act on same basis"
     @assert A.flux.delta_qn == B.flux.delta_qn "Operators must have same flux to be added"
 
@@ -125,45 +125,45 @@ function Base.:+(A::BlockSparseOperator, B::BlockSparseOperator)
     # Remove any blocks that became zero
     filter!(((key, block),) -> !iszero(block), result_blocks)
 
-    return BlockSparseOperator(A.basis, A.flux, result_blocks)
+    return BlockDenseOperator(A.basis, A.flux, result_blocks)
 end
 
 """
-    Base.:-(A::BlockSparseOperator, B::BlockSparseOperator) -> BlockSparseOperator
+    Base.:-(A::BlockDenseOperator, B::BlockDenseOperator) -> BlockDenseOperator
 
-Subtract two block-sparse operators with the same flux.
+Subtract two block-dense operators with the same flux.
 
 Equivalent to A + (-1)*B.
 """
-function Base.:-(A::BlockSparseOperator, B::BlockSparseOperator)
+function Base.:-(A::BlockDenseOperator, B::BlockDenseOperator)
     return A + (-1) * B
 end
 
 """
-    Base.:*(α::Number, A::BlockSparseOperator) -> BlockSparseOperator
+    Base.:*(α::Number, A::BlockDenseOperator) -> BlockDenseOperator
 
 Multiply operator by scalar.
 
 Arguments:
 - `α::Number`: Scalar coefficient
-- `A::BlockSparseOperator`: Operator
+- `A::BlockDenseOperator`: Operator
 
 Returns:
-- `BlockSparseOperator`: Scaled operator α*A with same flux
+- `BlockDenseOperator`: Scaled operator α*A with same flux
 
 Example:
 ```julia
 basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator_blocksparse(basis, 1)
+c1 = get_annihilator_blockdense(basis, 1)
 
 # Scale by coefficient
 c1_scaled = 2.0 * c1
 ```
 """
-function Base.:*(α::Number, A::BlockSparseOperator)
+function Base.:*(α::Number, A::BlockDenseOperator)
     if iszero(α)
         # Return zero operator (no blocks)
-        return BlockSparseOperator(A.basis, A.flux, Dict{Tuple{Int,Int}, Matrix{ComplexF64}}())
+        return BlockDenseOperator(A.basis, A.flux, Dict{Tuple{Int,Int}, Matrix{ComplexF64}}())
     end
 
     # Scale all blocks
@@ -172,51 +172,51 @@ function Base.:*(α::Number, A::BlockSparseOperator)
         scaled_blocks[key] = α * block
     end
 
-    return BlockSparseOperator(A.basis, A.flux, scaled_blocks)
+    return BlockDenseOperator(A.basis, A.flux, scaled_blocks)
 end
 
 """
-    Base.:*(A::BlockSparseOperator, α::Number) -> BlockSparseOperator
+    Base.:*(A::BlockDenseOperator, α::Number) -> BlockDenseOperator
 
 Multiply operator by scalar (commutative version).
 """
-Base.:*(A::BlockSparseOperator, α::Number) = α * A
+Base.:*(A::BlockDenseOperator, α::Number) = α * A
 
 """
-    Base.:/(A::BlockSparseOperator, α::Number) -> BlockSparseOperator
+    Base.:/(A::BlockDenseOperator, α::Number) -> BlockDenseOperator
 
 Divide operator by scalar.
 
 Equivalent to (1/α) * A.
 """
-Base.:/(A::BlockSparseOperator, α::Number) = (1/α) * A
+Base.:/(A::BlockDenseOperator, α::Number) = (1/α) * A
 
 """
-    Base.adjoint(A::BlockSparseOperator) -> BlockSparseOperator
+    Base.adjoint(A::BlockDenseOperator) -> BlockDenseOperator
 
-Compute the adjoint (Hermitian conjugate) of a block-sparse operator.
+Compute the adjoint (Hermitian conjugate) of a block-dense operator.
 
 The adjoint operator has:
 - Reversed flux: flux(A') = reverse_qn(flux(A))
 - Transposed and conjugated blocks: A'[src, tgt] = conj(A[tgt, src]ᵀ)
 
 Arguments:
-- `A::BlockSparseOperator`: Input operator
+- `A::BlockDenseOperator`: Input operator
 
 Returns:
-- `BlockSparseOperator`: Adjoint operator A'
+- `BlockDenseOperator`: Adjoint operator A'
 
 Example:
 ```julia
 basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator_blocksparse(basis, 1)
+c1 = get_annihilator_blockdense(basis, 1)
 
 # Creation operator
 c1_dag = c1'
 # flux(c1_dag) = reverse_qn(QN_N(-1)) = QN_N(1)
 ```
 """
-function Base.adjoint(A::BlockSparseOperator)
+function Base.adjoint(A::BlockDenseOperator)
     # Reverse flux
     adj_flux = OperatorFlux(reverse_qn(A.flux.delta_qn))
 
@@ -229,14 +229,14 @@ function Base.adjoint(A::BlockSparseOperator)
         adj_blocks[(src, tgt)] = adjoint(block)
     end
 
-    return BlockSparseOperator(A.basis, adj_flux, adj_blocks)
+    return BlockDenseOperator(A.basis, adj_flux, adj_blocks)
 end
 
 """
-    Base.:-(A::BlockSparseOperator) -> BlockSparseOperator
+    Base.:-(A::BlockDenseOperator) -> BlockDenseOperator
 
 Unary negation of operator.
 
 Equivalent to (-1) * A.
 """
-Base.:-(A::BlockSparseOperator) = (-1) * A
+Base.:-(A::BlockDenseOperator) = (-1) * A

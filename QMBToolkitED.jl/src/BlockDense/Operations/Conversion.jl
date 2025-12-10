@@ -1,21 +1,23 @@
 """
-Conversion between block-sparse and sparse matrix formats.
+Conversion between block-dense and dense/sparse matrix formats.
 
 Provides:
-- to_sparse: Convert BlockSparseOperator to standard sparse matrix
-- from_sparse: Convert sparse matrix to BlockSparseOperator (with known flux)
+- to_dense: Convert BlockDenseOperator to dense Matrix
+- to_sparse: Convert BlockDenseOperator to sparse matrix
+- from_dense: Convert dense Matrix to BlockDenseOperator (with known flux)
+- from_sparse: Convert sparse matrix to BlockDenseOperator (with known flux)
 """
 
 """
-    to_sparse(op::BlockSparseOperator) -> SparseMatrixCSC{ComplexF64, Int}
+    to_sparse(op::BlockDenseOperator) -> SparseMatrixCSC{ComplexF64, Int}
 
-Convert a block-sparse operator to a standard sparse matrix.
+Convert a block-dense operator to a standard sparse matrix.
 
 The sparse matrix has dimensions (total_dim × total_dim) where total_dim = 2^nflavors.
 Each block is mapped to the appropriate global indices in the sparse matrix.
 
 Arguments:
-- `op::BlockSparseOperator`: Block-sparse operator
+- `op::BlockDenseOperator`: Block-sparse operator
 
 Returns:
 - `SparseMatrixCSC{ComplexF64, Int}`: Sparse matrix representation
@@ -29,14 +31,14 @@ The mapping works as follows:
 Example:
 ```julia
 basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator_blocksparse(basis, 1)
+c1 = get_annihilator_blockdense(basis, 1)
 
 # Convert to sparse for validation
 c1_sparse = to_sparse(c1)
 @assert size(c1_sparse) == (4, 4)  # 2^2 = 4
 ```
 """
-function to_sparse(op::BlockSparseOperator)
+function to_sparse(op::BlockDenseOperator)
     basis = op.basis
     n = basis.total_dim
 
@@ -76,20 +78,20 @@ function to_sparse(op::BlockSparseOperator)
 end
 
 """
-    from_sparse(matrix::AbstractMatrix, basis::BlockSparseBasis, flux::OperatorFlux) -> BlockSparseOperator
+    from_sparse(matrix::AbstractMatrix, basis::BlockDenseBasis, flux::OperatorFlux) -> BlockDenseOperator
 
-Convert a sparse matrix to a block-sparse operator.
+Convert a sparse matrix to a block-dense operator.
 
 This function partitions the input matrix into blocks according to the basis sectors
 and the specified flux. Only blocks connecting compatible sectors are extracted.
 
 Arguments:
 - `matrix::AbstractMatrix`: Input matrix (sparse or dense)
-- `basis::BlockSparseBasis`: Basis defining the block structure
+- `basis::BlockDenseBasis`: Basis defining the block structure
 - `flux::OperatorFlux`: Quantum number flux of the operator
 
 Returns:
-- `BlockSparseOperator`: Block-sparse representation
+- `BlockDenseOperator`: Block-sparse representation
 
 Note: This is primarily for testing and validation. The matrix must respect
 the sector structure, otherwise blocks may be zero or incorrect.
@@ -97,7 +99,7 @@ the sector structure, otherwise blocks may be zero or incorrect.
 Example:
 ```julia
 basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator_blocksparse(basis, 1)
+c1 = get_annihilator_blockdense(basis, 1)
 
 # Convert to sparse and back
 c1_sparse = to_sparse(c1)
@@ -107,7 +109,7 @@ c1_reconstructed = from_sparse(c1_sparse, basis, c1.flux)
 @assert all(c1.blocks[key] ≈ c1_reconstructed.blocks[key] for key in keys(c1.blocks))
 ```
 """
-function from_sparse(matrix::AbstractMatrix, basis::BlockSparseBasis, flux::OperatorFlux)
+function from_sparse(matrix::AbstractMatrix, basis::BlockDenseBasis, flux::OperatorFlux)
     @assert size(matrix) == (basis.total_dim, basis.total_dim) "Matrix size must match basis dimension"
 
     # Compute sector starting indices
@@ -148,5 +150,64 @@ function from_sparse(matrix::AbstractMatrix, basis::BlockSparseBasis, flux::Oper
         end
     end
 
-    return BlockSparseOperator(basis, flux, blocks)
+    return BlockDenseOperator(basis, flux, blocks)
+end
+
+"""
+    to_dense(op::BlockDenseOperator) -> Matrix{ComplexF64}
+
+Convert a block-dense operator to a dense matrix.
+
+This is a convenience wrapper around `to_sparse` that converts the result to dense format.
+
+Arguments:
+- `op::BlockDenseOperator`: Block-sparse operator
+
+Returns:
+- `Matrix{ComplexF64}`: Dense matrix representation
+
+Example:
+```julia
+basis = make_basis([QN_N(1), QN_N(1)])
+c1 = get_annihilator_blockdense(basis, 1)
+
+# Convert to dense matrix
+c1_dense = to_dense(c1)
+@assert size(c1_dense) == (4, 4)  # 2^2 = 4
+```
+"""
+function to_dense(op::BlockDenseOperator)
+    return Matrix{ComplexF64}(to_sparse(op))
+end
+
+"""
+    from_dense(matrix::Matrix{ComplexF64}, basis::BlockDenseBasis, flux::OperatorFlux) -> BlockDenseOperator
+
+Convert a dense matrix to a block-dense operator.
+
+This is an alias for `from_sparse` that works with dense matrices.
+
+Arguments:
+- `matrix::Matrix{ComplexF64}`: Input dense matrix
+- `basis::BlockDenseBasis`: Basis defining the block structure
+- `flux::OperatorFlux`: Quantum number flux of the operator
+
+Returns:
+- `BlockDenseOperator`: Block-sparse representation
+
+Example:
+```julia
+basis = make_basis([QN_N(1), QN_N(1)])
+c1 = get_annihilator_blockdense(basis, 1)
+
+# Convert to dense and back
+c1_dense = to_dense(c1)
+c1_reconstructed = from_dense(c1_dense, basis, c1.flux)
+
+# Should match original
+@assert all(c1.blocks[key] ≈ c1_reconstructed.blocks[key] for key in keys(c1.blocks))
+```
+"""
+function from_dense(matrix::Matrix{ComplexF64}, basis::BlockDenseBasis, flux::OperatorFlux)
+    return from_sparse(matrix, basis, flux)
 end

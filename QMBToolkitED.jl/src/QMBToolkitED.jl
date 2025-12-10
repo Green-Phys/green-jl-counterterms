@@ -2,126 +2,26 @@ module QMBToolkitED
 
 using LinearAlgebra, SparseArrays
 
-export get_annihilators, build_hamiltonian, solve_hamiltonian, calculate_green_tau, calculate_green_matsubara, get_Z
+# Include dense submodule
+include("Dense/Dense.jl")
+using .Dense
 
-"""
-    get_annihilators(nflavors::Int)
+# Include block-dense submodule
+include("BlockDense/BlockDense.jl")
+using .BlockDense
 
-Generate fermionic annihilation operators for a Fock space with `nflavors`.
+# Include unified interface (provides backwards-compatible API with method parameter)
+include("UnifiedInterface.jl")
 
-The operators are represented as sparse matrices in the occupation number basis.
-The Fock space is ordered such that the i-th bit of an integer corresponds to the occupation of the i-th state. E.g., for `nflavors = 3`, the state |100> has the first state occupied and the others empty, the corresponding integer (fock_state) is 4.
+# Exports - main functions (now from unified interface)
+export get_annihilators, build_hamiltonian, solve_hamiltonian
+export calculate_green_tau, calculate_green_matsubara, get_Z
 
-"""
-function get_annihilators(nflavors::Int)
-    nfock = 1 << nflavors
+# Export conversion functions (from BlockDense module)
+export to_dense, from_dense, to_sparse, from_sparse
 
-    # Annihilation operators
-    c = Vector{SparseMatrixCSC{Int8,Int}}(undef, nflavors)
-
-    # Sign for fermionic anti-commutation relations
-    sign = ones(Int8, nfock)
-
-    for i in 1:nflavors
-        bitmask = 1 << (i - 1)
-
-        # This is exactly half the states, so we can pre-allocate.
-        num_non_zero = nfock >> 1
-        I = Vector{Int}(undef, num_non_zero)
-        J = Vector{Int}(undef, num_non_zero)
-        V = Vector{Int8}(undef, num_non_zero)
-        count = 0
-
-        for alpha in 1:nfock
-            fock_state = alpha - 1 # 0-indexed fock state
-            if (fock_state & bitmask) != 0
-                count += 1
-                # State i is occupied, can be annihilated
-                I[count] = (fock_state - bitmask) + 1 
-                J[count] = alpha
-                V[count] = sign[alpha]
-
-                # Update sign for the next operator c_{i+1}
-                sign[alpha] *= -1
-            end
-        end
-        c[i] = sparse(I, J, V, nfock, nfock)
-    end
-
-    return c
-end
-
-"""
-    build_hamiltonian(hopping_matrix_input::Union{String, IO}, coulomb_tensor_input::Union{String, IO})
-
-Construct the Hamiltonian from either input files or strings.
-
-Parameters:
-- `hopping_matrix_input`: Path to the file or string containing the hopping matrix.
-- `coulomb_tensor_input`: Path to the file or string containing the Coulomb tensor.
-
-Returns the Hamiltonian matrix and the annihilation operators.
-"""
-function build_hamiltonian(hopping_matrix_input::Union{String, IO}, coulomb_tensor_input::Union{String, IO})
-    hopping_lines = readlines(hopping_matrix_input)
-    coulomb_lines = readlines(coulomb_tensor_input)
-    
-    # Read hopping matrix
-    max_flavor = 0
-    if !isempty(hopping_lines)
-        for line in hopping_lines
-            parts = split(line)
-            i = parse(Int, parts[1])
-            j = parse(Int, parts[2])
-            max_flavor = max(max_flavor, i, j)
-        end
-    end
-    nflavors = max_flavor + 1
-    nfock = 1 << nflavors
-
-    annh = get_annihilators(nflavors)
-    
-    H_hop = spzeros(ComplexF64, nfock, nfock)
-    if !isempty(hopping_lines)
-        for line in hopping_lines
-            parts = split(line)
-            i = parse(Int, parts[1]) + 1
-            j = parse(Int, parts[2]) + 1
-            val = parse(Float64, parts[3]) + im * parse(Float64, parts[4])
-            H_hop += val * (annh[i]' * annh[j])
-        end
-    end
-
-    # Read Coulomb tensor
-    H_int = spzeros(ComplexF64, nfock, nfock)
-    if length(coulomb_lines) > 1
-        for line in coulomb_lines[2:end]
-            parts = split(line)
-            i = parse(Int, parts[2]) + 1
-            j = parse(Int, parts[3]) + 1
-            k = parse(Int, parts[4]) + 1
-            l = parse(Int, parts[5]) + 1
-            val = parse(Float64, parts[6]) + im * parse(Float64, parts[7])
-            H_int += 0.5 * val * (annh[i]' * annh[j]' * annh[k] * annh[l])
-        end
-    end
-
-    H = H_hop + H_int
-    return H, annh
-end
-
-
-"""
-    solve_hamiltonian(H::SparseMatrixCSC)
-
-Diagonalize the Hamiltonian to find eigenvalues and eigenvectors.
-"""
-function solve_hamiltonian(H::SparseMatrixCSC)
-    H_dense = Matrix(H)
-    # Ensure H is treated as Hermitian
-    sol = eigen(Hermitian(H_dense)) 
-    return sol.values, sol.vectors # H = V * Diagonal(values) * V'
-end
+# Export submodules for direct access
+export Dense, BlockDense
 
 """
     get_Z(evals::Vector{<:Real}, beta::Real; shift_energy::Bool=false)
@@ -142,16 +42,18 @@ end
 
 Compute an element of the imaginary-time Green's function matrix G(τ).
 Specifically, it calculates -<c_i(τ) c_j^†(0)>.
+
+Works with both dense (Matrix{ComplexF64}) and block-dense (BlockDenseOperator) operators.
 """
-function calculate_green_tau(evals::Vector{Float64}, evecs::Matrix{ComplexF64}, annh_ops::Vector{SparseMatrixCSC{Int8,Int}}, beta::Real, n_tau::Int, i::Int, j::Int)
+function calculate_green_tau(evals::Vector{Float64}, evecs::Matrix{ComplexF64}, annh_ops::Vector{Matrix{ComplexF64}}, beta::Real, n_tau::Int, i::Int, j::Int)
     # Get annihilation operators for indices i and j
     c_i = annh_ops[i]
     c_j = annh_ops[j]
     c_j_dag = c_j'
 
     # Transform operators to the eigenbasis of the Hamiltonian
-    c_i_tilde = evecs' * Matrix(c_i) * evecs
-    c_j_dag_tilde = evecs' * Matrix(c_j_dag) * evecs
+    c_i_tilde = evecs' * c_i * evecs
+    c_j_dag_tilde = evecs' * c_j_dag * evecs
 
     # Shift energies so that ground state is at 0
     evals .-= minimum(evals)
@@ -176,22 +78,31 @@ function calculate_green_tau(evals::Vector{Float64}, evecs::Matrix{ComplexF64}, 
     return tau_grid, gtau
 end
 
+# Overload for BlockDenseOperator
+function calculate_green_tau(evals::Vector{Float64}, evecs::Matrix{ComplexF64}, annh_ops::Vector{BlockDense.BlockDenseOperator}, beta::Real, n_tau::Int, i::Int, j::Int)
+    # Convert BlockDenseOperator to dense matrices
+    annh_ops_dense = [to_dense(op) for op in annh_ops]
+    return calculate_green_tau(evals, evecs, annh_ops_dense, beta, n_tau, i, j)
+end
+
 """
     calculate_green_matsubara(evals, evecs, annh_ops, beta, n_matsubara, i, j)
 
 Compute an element of the Matsubara Green's function G(iω_n) using the Lehmann representation.
+
+Works with both dense (Matrix{ComplexF64}) and block-dense (BlockDenseOperator) operators.
 """
-function calculate_green_matsubara(evals::Vector{<:Real}, evecs::Matrix, annh_ops, beta::Real, n_matsubara::Int, i::Int, j::Int)
+function calculate_green_matsubara(evals::Vector{<:Real}, evecs::Matrix, annh_ops::Vector{Matrix{ComplexF64}}, beta::Real, n_matsubara::Int, i::Int, j::Int)
     nfock = size(evecs, 1)
-    
+
     # Get annihilation operators for indices i and j
     c_i = annh_ops[i]
     c_j = annh_ops[j]
     c_j_dag = c_j'
 
     # Transform operators to the eigenbasis of the Hamiltonian
-    c_i_tilde = evecs' * Matrix(c_i) * evecs
-    c_j_dag_tilde = evecs' * Matrix(c_j_dag) * evecs
+    c_i_tilde = evecs' * c_i * evecs
+    c_j_dag_tilde = evecs' * c_j_dag * evecs
 
     # Shift energies so that ground state is at 0
     evals .-= minimum(evals)
@@ -221,6 +132,13 @@ function calculate_green_matsubara(evals::Vector{<:Real}, evecs::Matrix, annh_op
     g_iwn ./= Z
 
     return iomega_n, g_iwn
+end
+
+# Overload for BlockDenseOperator
+function calculate_green_matsubara(evals::Vector{<:Real}, evecs::Matrix, annh_ops::Vector{BlockDense.BlockDenseOperator}, beta::Real, n_matsubara::Int, i::Int, j::Int)
+    # Convert BlockDenseOperator to dense matrices
+    annh_ops_dense = [to_dense(op) for op in annh_ops]
+    return calculate_green_matsubara(evals, evecs, annh_ops_dense, beta, n_matsubara, i, j)
 end
 
 

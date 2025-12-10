@@ -40,12 +40,12 @@ end
 Base.show(io::IO, flux::OperatorFlux) = print(io, "OperatorFlux(", flux.delta_qn, ")")
 
 """
-    BlockSparseOperator
+    BlockDenseOperator
 
-A block-sparse matrix operator exploiting quantum number conservation.
+A block-dense matrix operator exploiting quantum number conservation.
 
 Fields:
-- `basis::BlockSparseBasis`: The basis this operator acts on
+- `basis::BlockDenseBasis`: The basis this operator acts on
 - `flux::OperatorFlux`: Quantum number change carried by this operator
 - `blocks::Dict{Tuple{Int,Int}, Matrix{ComplexF64}}`: Non-zero blocks
 
@@ -59,7 +59,7 @@ Example:
 ```julia
 # Create annihilation operator
 basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator_blocksparse(basis, 1)
+c1 = get_annihilator_blockdense(basis, 1)
 
 # Check flux
 println(c1.flux)  # OperatorFlux(QN_N(-1))
@@ -70,16 +70,16 @@ for ((target, source), block) in c1.blocks
 end
 ```
 """
-struct BlockSparseOperator
-    basis::BlockSparseBasis
+struct BlockDenseOperator
+    basis::BlockDenseBasis
     flux::OperatorFlux
     blocks::Dict{Tuple{Int,Int}, Matrix{ComplexF64}}
 end
 
 # Display
-function Base.show(io::IO, op::BlockSparseOperator)
+function Base.show(io::IO, op::BlockDenseOperator)
     QN_type = eltype(op.basis.site_qns)
-    println(io, "BlockSparseOperator{$QN_type}")
+    println(io, "BlockDenseOperator{$QN_type}")
     println(io, "  flux: ", op.flux.delta_qn)
     println(io, "  num_blocks: ", length(op.blocks))
 
@@ -88,16 +88,16 @@ function Base.show(io::IO, op::BlockSparseOperator)
 end
 
 """
-    get_annihilator_blocksparse(basis::BlockSparseBasis, flavor::Int) -> BlockSparseOperator
+    get_annihilator_blockdense(basis::BlockDenseBasis, flavor::Int) -> BlockDenseOperator
 
 Construct a fermionic annihilation operator for orbital `flavor`.
 
 Arguments:
-- `basis::BlockSparseBasis`: The many-body basis
+- `basis::BlockDenseBasis`: The many-body basis
 - `flavor::Int`: 1-indexed orbital index to annihilate
 
 Returns:
-- `BlockSparseOperator`: The annihilation operator c_{flavor}
+- `BlockDenseOperator`: The annihilation operator c_{flavor}
 
 The operator has flux `reverse_qn(basis.site_qns[flavor])`, which means:
 - Annihilating orbital k removes the quantum number site_qns[k]
@@ -123,15 +123,15 @@ site_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]  # [↑, ↓]
 basis = make_basis(site_qns)
 
 # Annihilate spin-up electron
-c_up = get_annihilator_blocksparse(basis, 1)
+c_up = get_annihilator_blockdense(basis, 1)
 # flux = QN_NSz(-1, -1)
 
 # Annihilate spin-down electron
-c_down = get_annihilator_blocksparse(basis, 2)
+c_down = get_annihilator_blockdense(basis, 2)
 # flux = QN_NSz(-1, 1)
 ```
 """
-function get_annihilator_blocksparse(basis::BlockSparseBasis, flavor::Int)
+function get_annihilator_blockdense(basis::BlockDenseBasis, flavor::Int)
     @assert 1 <= flavor <= basis.nflavors "flavor must be in 1:nflavors"
 
     # Determine flux: annihilating orbital k removes site_qns[k]
@@ -185,5 +185,5 @@ function get_annihilator_blocksparse(basis::BlockSparseBasis, flavor::Int)
         end
     end
 
-    return BlockSparseOperator(basis, flux, blocks)
+    return BlockDenseOperator(basis, flux, blocks)
 end

@@ -1,15 +1,15 @@
 """
-Phase 2 Tests: Block-Sparse Operators
+BlockDense Tests: Operator Construction
 
-Tests for BlockSparseOperator, OperatorFlux, and get_annihilator_blocksparse.
+Tests for BlockDenseOperator, OperatorFlux, and get_annihilator_blockdense.
 Validates operator construction, flux calculation, and fermionic properties.
 """
 
 using Test
-using Main.BlockSparse
+using Main.BlockDense
 using LinearAlgebra
 
-@testset "Phase 2: Operator Construction" begin
+@testset "BlockDense: Operator Construction" begin
 
     @testset "OperatorFlux type" begin
         # Test flux construction and display
@@ -31,7 +31,7 @@ using LinearAlgebra
         basis = make_basis(site_qns)
 
         # Create annihilator for orbital 1
-        c1 = get_annihilator_blocksparse(basis, 1)
+        c1 = get_annihilator_blockdense(basis, 1)
 
         # Check flux
         @test c1.flux.delta_qn == QN_N(-1)
@@ -47,7 +47,7 @@ using LinearAlgebra
         @test !any(((tgt, src),) -> src == vac_idx, keys(c1.blocks))
 
         # Create annihilator for orbital 2
-        c2 = get_annihilator_blocksparse(basis, 2)
+        c2 = get_annihilator_blockdense(basis, 2)
         @test c2.flux.delta_qn == QN_N(-1)
     end
 
@@ -56,11 +56,11 @@ using LinearAlgebra
         basis = make_basis(site_qns)
 
         # Annihilate spin-up
-        c_up = get_annihilator_blocksparse(basis, 1)
+        c_up = get_annihilator_blockdense(basis, 1)
         @test c_up.flux.delta_qn == QN_NSz(-1, -1)  # Removes (N=1, Sz=1)
 
         # Annihilate spin-down
-        c_down = get_annihilator_blocksparse(basis, 2)
+        c_down = get_annihilator_blockdense(basis, 2)
         @test c_down.flux.delta_qn == QN_NSz(-1, 1)  # Removes (N=1, Sz=-1)
 
         # Different fluxes for different spins
@@ -70,7 +70,7 @@ using LinearAlgebra
     @testset "Block structure for 2-flavor QN_N" begin
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
-        c1 = get_annihilator_blocksparse(basis, 1)
+        c1 = get_annihilator_blockdense(basis, 1)
 
         # Sectors: N=0 (vacuum), N=1 (single), N=2 (double)
         n0_idx = basis.qn_to_sector[QN_N(0)]
@@ -94,9 +94,9 @@ using LinearAlgebra
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
-        c2 = get_annihilator_blocksparse(basis, 2)
-        c3 = get_annihilator_blocksparse(basis, 3)
+        c1 = get_annihilator_blockdense(basis, 1)
+        c2 = get_annihilator_blockdense(basis, 2)
+        c3 = get_annihilator_blockdense(basis, 3)
 
         # Convention: state = bit pattern directly, |abc⟩ = 0babc (binary literal)
         # State |110⟩ = 0b110 = 6 (decimal), bits 1 and 2 set → orbitals 1,2 occupied → flavors 2,3 occupied
@@ -147,7 +147,7 @@ using LinearAlgebra
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
+        c1 = get_annihilator_blockdense(basis, 1)
 
         # Vacuum sector
         vac_idx = basis.qn_to_sector[QN_N(0)]
@@ -162,7 +162,7 @@ using LinearAlgebra
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
+        c1 = get_annihilator_blockdense(basis, 1)
 
         # All stored blocks should be non-zero
         for ((tgt, src), block) in c1.blocks
@@ -175,7 +175,7 @@ using LinearAlgebra
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
-        operators = [get_annihilator_blocksparse(basis, i) for i in 1:3]
+        operators = [get_annihilator_blockdense(basis, i) for i in 1:3]
 
         # All should have same flux
         @test all(op.flux.delta_qn == QN_N(-1) for op in operators)
@@ -193,7 +193,7 @@ using LinearAlgebra
         basis = make_basis(site_qns)
 
         # Create all annihilators
-        c = [get_annihilator_blocksparse(basis, i) for i in 1:4]
+        c = [get_annihilator_blockdense(basis, i) for i in 1:4]
 
         # Check fluxes
         @test c[1].flux.delta_qn == QN_NSz(-1, -1)  # ↑ on site 1
@@ -212,14 +212,14 @@ using LinearAlgebra
     @testset "Operator display" begin
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
-        c1 = get_annihilator_blocksparse(basis, 1)
+        c1 = get_annihilator_blockdense(basis, 1)
 
         # Should not error
         io = IOBuffer()
         show(io, c1)
         output = String(take!(io))
 
-        @test occursin("BlockSparseOperator", output)
+        @test occursin("BlockDenseOperator", output)
         @test occursin("flux", output)
         @test occursin("num_blocks", output)
         @test occursin("total_nonzeros", output)
@@ -228,7 +228,7 @@ using LinearAlgebra
     @testset "Nonzero count" begin
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
-        c1 = get_annihilator_blocksparse(basis, 1)
+        c1 = get_annihilator_blockdense(basis, 1)
 
         # Count total nonzeros
         total_nnz = sum(length(block) for block in values(c1.blocks))
@@ -246,15 +246,15 @@ using LinearAlgebra
         basis = make_basis(site_qns)
 
         # Should error for out-of-range flavor
-        @test_throws AssertionError get_annihilator_blocksparse(basis, 0)
-        @test_throws AssertionError get_annihilator_blocksparse(basis, 3)
+        @test_throws AssertionError get_annihilator_blockdense(basis, 0)
+        @test_throws AssertionError get_annihilator_blockdense(basis, 3)
     end
 
     @testset "Single flavor system" begin
         site_qns = [QN_N(1)]
         basis = make_basis(site_qns)
 
-        c1 = get_annihilator_blocksparse(basis, 1)
+        c1 = get_annihilator_blockdense(basis, 1)
 
         @test c1.flux.delta_qn == QN_N(-1)
         @test length(c1.blocks) == 1  # Only N=1 -> N=0
@@ -273,8 +273,8 @@ using LinearAlgebra
         # Verify specific matrix elements match expected values
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
-        c1 = get_annihilator_blocksparse(basis, 1)
-        c2 = get_annihilator_blocksparse(basis, 2)
+        c1 = get_annihilator_blockdense(basis, 1)
+        c2 = get_annihilator_blockdense(basis, 2)
 
         n1_idx = basis.qn_to_sector[QN_N(1)]
         n2_idx = basis.qn_to_sector[QN_N(2)]
@@ -310,7 +310,7 @@ using LinearAlgebra
         basis = make_basis(site_qns)
 
         for flavor in 1:4
-            c = get_annihilator_blocksparse(basis, flavor)
+            c = get_annihilator_blockdense(basis, flavor)
 
             for ((tgt_idx, src_idx), block) in c.blocks
                 tgt_sector = basis.sectors[tgt_idx]
@@ -331,7 +331,7 @@ using LinearAlgebra
         site_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]
         basis = make_basis(site_qns)
 
-        c_up = get_annihilator_blocksparse(basis, 1)  # Flux: (-1, -1)
+        c_up = get_annihilator_blockdense(basis, 1)  # Flux: (-1, -1)
 
         # Should only connect sectors where target = source + flux
         for ((tgt_idx, src_idx), block) in c_up.blocks
@@ -345,4 +345,3 @@ using LinearAlgebra
 
 end
 
-println("\nPhase 2: Operator Construction Tests Complete")

@@ -71,7 +71,6 @@ n_up = c[1]' * c[1]
 - `get_annihilators_blockdense` - Generate vector of annihilation operators
 - `build_hamiltonian_blockdense` - Construct Hamiltonian from input files
 - `solve_hamiltonian_blockdense` - Efficient block-diagonal diagonalization
-- `solve_hamiltonian_blockdense_efficient` - Returns BlockEigenResult with sector info
 
 ## Conversion
 - `to_dense`, `from_dense` - Convert between block-dense and dense matrix formats

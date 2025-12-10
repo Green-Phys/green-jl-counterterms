@@ -97,10 +97,10 @@ function build_hamiltonian_blockdense(
 
     # Get annihilation operators
     c = get_annihilators_blockdense(basis)
+    QN_type = typeof(basis.site_qns[1])
 
     # Build hopping Hamiltonian: H_hop = Σ_{ij} t_{ij} c_i' c_j
     # Start with zero operator (no blocks)
-    QN_type = typeof(basis.site_qns[1])
     H_hop = BlockDenseOperator(
         basis,
         OperatorFlux(zero_qn(QN_type)),
@@ -114,7 +114,6 @@ function build_hamiltonian_blockdense(
             j = parse(Int, parts[2]) + 1
             val = parse(Float64, parts[3]) + im * parse(Float64, parts[4])
 
-            # Add term: val * c_i' * c_j
             H_hop = H_hop + val * (c[i]' * c[j])
         end
     end
@@ -122,21 +121,20 @@ function build_hamiltonian_blockdense(
     # Build interaction Hamiltonian: H_int = 0.5 Σ_{ijkl} U_{ijkl} c_i' c_j' c_k c_l
     H_int = BlockDenseOperator(
         basis,
-        OperatorFlux(zero_qn(typeof(basis.site_qns[1]))),
+        OperatorFlux(zero_qn(QN_type)),
         Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
     )
 
     if length(coulomb_lines) > 1
         for line in coulomb_lines[2:end]
             parts = split(line)
-            i = parse(Int, parts[2]) + 1  # Convert to 1-indexed
-            j = parse(Int, parts[3]) + 1
-            k = parse(Int, parts[4]) + 1
-            l = parse(Int, parts[5]) + 1
+            fl_i = parse(Int, parts[2]) + 1
+            fl_j = parse(Int, parts[3]) + 1
+            fl_k = parse(Int, parts[4]) + 1
+            fl_l = parse(Int, parts[5]) + 1
             val = parse(Float64, parts[6]) + im * parse(Float64, parts[7])
 
-            # Add term: 0.5 * val * c_i' c_j' c_k c_l
-            H_int = H_int + 0.5 * val * (c[i]' * c[j]' * c[k] * c[l])
+            H_int = H_int + 0.5 * val * (c[fl_i]' * c[fl_j]' * c[fl_k] * c[fl_l])
         end
     end
 

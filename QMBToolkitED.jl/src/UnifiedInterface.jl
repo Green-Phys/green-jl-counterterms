@@ -146,8 +146,24 @@ Arguments:
 - `method::Symbol`: `:auto` (detect from type), `:dense`, or `:blockdense`
 
 Returns:
-- `AbstractSolverResult` (DenseSolverResult or BlockEigenResult)
-- Iterable, so `evals, evecs = solve_hamiltonian(H)` works.
+- `AbstractSolverResult`: A result object (`DenseSolverResult` or `BlockEigenResult`).
+  This object is iterable, allowing destructuring into `(evals, evecs)` for backward compatibility.
+  
+  - `evals::Vector{Float64}`: Eigenvalues
+  - `evecs::Matrix{ComplexF64}`: Eigenvectors
+
+Examples:
+```julia
+# Dense
+H, c = build_hamiltonian("hopping.txt", "coulomb.txt")
+evals, evecs = solve_hamiltonian(H)  # Auto-detects dense
+
+# Block-dense
+basis = BlockDense.make_basis([BlockDense.QN_N(1) for _ in 1:4])
+H, c = build_hamiltonian("hopping.txt", "coulomb.txt"; method=:blockdense, basis=basis)
+result = solve_hamiltonian(H)  # Returns BlockEigenResult
+evals, evecs = result          # Destructuring works (less efficient for Green's functions)
+```
 """
 function solve_hamiltonian(H::Union{Matrix, SparseMatrixCSC}; method::Symbol=:auto)
     if method == :auto || method == :dense

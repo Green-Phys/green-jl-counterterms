@@ -77,16 +77,18 @@ end
 """
     solve_hamiltonian_blockdense(H::BlockDenseOperator) -> BlockEigenResult
 
-Diagonalize a block-dense Hamiltonian by diagonalizing each sector independently.
+Diagonalize a block-dense Hamiltonian efficiently by processing each sector independently.
 
-This is the efficient way to diagonalize block-dense operators with flux=0.
-Each sector is diagonalized separately, providing massive speedup.
+This function leverages the block-diagonal structure of the Hamiltonian (implied by flux=0)
+to massive reduce computational cost compared to full diagonalization.
 
 Arguments:
 - `H::BlockDenseOperator`: Hamiltonian (must have flux=0)
 
 Returns:
-- `BlockEigenResult`: Structure containing eigenvalues and eigenvectors per sector
+- `BlockEigenResult`: Structure containing eigenvalues and eigenvectors per sector.
+  This result object is iterable, allowing destructuring into `(evals, evecs)` for 
+  backward compatibility, where `evals` and `evecs` are the full (dense) spectrum.
 
 Requirements:
 - H must have flux = 0 (block-diagonal in the chosen basis)
@@ -94,18 +96,18 @@ Requirements:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1), QN_N(1)])
+basis = make_basis([QN_N(1), QN_N(1)])
 c = get_annihilators_blockdense(basis)
-H = sum(c[i]' * c[i] for i in 1:3)  # Total number operator
+H = sum(c[i]' * c[i] for i in 1:2)
 
+# Get result object (recommended for efficient post-processing)
 result = solve_hamiltonian_blockdense(H)
 
-# Get ground state energy
-E0 = minimum(get_full_eigenvalues(result))
+# Calculate Green's function efficiently
+G = calculate_green_tau_blockdense(result, c[1], c[1]', 10.0, 100)
 
-# Get eigenvalues in specific sector (e.g., N=2)
-n2_idx = basis.qn_to_sector[QN_N(2)]
-evals_n2 = result.sector_eigenvalues[n2_idx]
+# Or get full spectrum (less efficient)
+evals, evecs = result
 ```
 
 Performance:

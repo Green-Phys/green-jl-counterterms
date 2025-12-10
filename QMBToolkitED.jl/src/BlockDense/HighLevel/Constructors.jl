@@ -29,18 +29,18 @@ c = get_annihilators_blockdense(basis)
 # c[i] is the annihilation operator for flavor i
 ```
 
-Comparison with sparse version:
+Comparison with Dense version:
 ```julia
-# Sparse version
-c_sparse = get_annihilators(3)
+# Dense version
+c_dense = get_annihilators(3)
 
-# Block-sparse version
+# BlockDense version
 basis = make_basis([QN_N(1), QN_N(1), QN_N(1)])
 c_block = get_annihilators_blockdense(basis)
 
-# Should match when converted to sparse
+# Should match when converted to dense
 for i in 1:3
-    @assert to_sparse(c_block[i]) ≈ c_sparse[i]
+    @assert to_dense(c_block[i]) ≈ c_dense[i]
 end
 ```
 """

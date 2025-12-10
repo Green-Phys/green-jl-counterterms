@@ -98,10 +98,7 @@ iwn, g_iwn = calculate_green_matsubara(evals, evecs, c, beta, 100, 1, 1)
 
 ```julia
 # Convert BlockDense operators to dense matrices
-using QMBToolkitED: to_dense, to_sparse
-
-c_dense = to_dense(c_blockdense)  # BlockDenseOperator → Matrix
-c_sparse = to_sparse(c_blockdense)  # BlockDenseOperator → SparseMatrix
+c_dense = to_dense(c_blockdense)  # BlockDenseOperator → Matrix{ComplexF64}
 ```
 
 ## Input Format

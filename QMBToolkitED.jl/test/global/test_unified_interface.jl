@@ -189,20 +189,20 @@ using SparseArrays
 
         # Check {c_i, c_j'} = δ_ij I for both methods
         for i in 1:nflavors, j in 1:nflavors
-            # Sparse
+            # Dense method
             anticomm_dense = c_dense[i] * c_dense[j]' + c_dense[j]' * c_dense[i]
 
-            # Block-dense
+            # BlockDense method
             anticomm_block = c_block[i] * c_block[j]' + c_block[j]' * c_block[i]
-            anticomm_block_sparse = to_sparse(anticomm_block)
+            anticomm_block_dense = to_dense(anticomm_block)
 
             if i == j
                 I_mat = Matrix{ComplexF64}(I, basis.total_dim, basis.total_dim)
                 @test anticomm_dense ≈ I_mat atol=1e-14
-                @test anticomm_block_sparse ≈ I_mat atol=1e-14
+                @test anticomm_block_dense ≈ I_mat atol=1e-14
             else
                 @test iszero(anticomm_dense)
-                @test iszero(anticomm_block_sparse)
+                @test iszero(anticomm_block_dense)
             end
         end
     end

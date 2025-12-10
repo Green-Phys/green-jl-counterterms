@@ -18,7 +18,7 @@ export get_annihilators, build_hamiltonian, solve_hamiltonian
 export calculate_green_tau, calculate_green_matsubara, get_Z
 
 # Export conversion functions (from BlockDense module)
-export to_dense, from_dense, to_sparse, from_sparse
+export to_dense, from_dense
 
 # Export submodules for direct access
 export Dense, BlockDense

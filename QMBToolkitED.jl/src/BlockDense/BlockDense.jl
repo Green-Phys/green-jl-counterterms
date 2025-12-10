@@ -75,7 +75,6 @@ n_up = c[1]' * c[1]
 
 ## Conversion
 - `to_dense`, `from_dense` - Convert between block-dense and dense matrix formats
-- `to_sparse`, `from_sparse` - Convert between block-dense and sparse matrix formats
 
 ## Eigenvalue decomposition utilities
 - `get_full_eigenvalues` - Extract all eigenvalues from BlockEigenResult
@@ -134,8 +133,8 @@ export get_annihilator_blockdense  # Single operator (low-level)
 # Utilities
 export sum_occupied_sites, compute_fermion_sign
 
-# Conversion
-export to_sparse, from_sparse, to_dense, from_dense
+# Conversion (to_sparse and from_sparse are internal, not exported from main module)
+export to_dense, from_dense
 
 # High-Level API (compatible with QMBToolkitED)
 export get_annihilators_blockdense        # Vector of operators

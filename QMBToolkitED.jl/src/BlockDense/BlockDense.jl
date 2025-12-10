@@ -114,6 +114,7 @@ include("Operations/Conversion.jl")
 include("HighLevel/Constructors.jl")
 include("HighLevel/Hamiltonian.jl")
 include("HighLevel/Diagonalization.jl")
+include("HighLevel/Greens.jl")
 
 # ============================================================================
 # Exports
@@ -140,7 +141,8 @@ export to_dense, from_dense
 export get_annihilators_blockdense        # Vector of operators
 export build_hamiltonian_blockdense        # Hamiltonian construction
 export solve_hamiltonian_blockdense        # Standard eigenvalue solver
-export solve_hamiltonian_blockdense_efficient  # Returns BlockEigenResult
+export calculate_green_tau_blockdense      # Green's function (imaginary time)
+export calculate_green_matsubara_blockdense # Green's function (Matsubara)
 
 # Eigenvalue decomposition results
 export BlockEigenResult

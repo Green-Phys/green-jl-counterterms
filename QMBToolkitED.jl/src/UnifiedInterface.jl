@@ -3,17 +3,45 @@ Unified interface for Dense and BlockDense methods.
 
 Provides a consistent API that works with both implementations, allowing users
 to choose the backend via the `method` keyword argument.
-
-Example:
-```julia
-# Dense (default, backwards compatible)
-c = get_annihilators(3)
-
-# Block-dense (requires basis)
-basis = BlockDense.make_basis([BlockDense.QN_N(1) for _ in 1:3])
-c = get_annihilators(basis; method=:blockdense)
-```
 """
+
+# Abstract type for solver results
+abstract type AbstractSolverResult end
+
+"""
+    DenseSolverResult
+
+Result of dense diagonalization.
+Wraps the eigenvalues and eigenvectors.
+"""
+struct DenseSolverResult <: AbstractSolverResult
+    evals::Vector{Float64}
+    evecs::Matrix{ComplexF64}
+end
+
+# Helper to get standard (evals, evecs) from any result
+function get_result_tuple(res::DenseSolverResult)
+    return res.evals, res.evecs
+end
+
+function get_result_tuple(res::BlockDense.BlockEigenResult)
+    evals = BlockDense.get_full_eigenvalues(res)
+    evecs = BlockDense.get_full_eigenvectors_sparse(res)
+    perm = sortperm(evals)
+    return evals[perm], evecs[:, perm]
+end
+
+# Make results iterable to support destructuring: evals, evecs = result
+Base.iterate(res::DenseSolverResult) = Base.iterate(get_result_tuple(res))
+Base.iterate(res::DenseSolverResult, state) = Base.iterate(get_result_tuple(res), state)
+Base.length(::DenseSolverResult) = 2
+Base.eltype(::Type{DenseSolverResult}) = Any
+
+# Explicitly add iteration for BlockEigenResult (duck typing)
+Base.iterate(res::BlockDense.BlockEigenResult) = Base.iterate(get_result_tuple(res))
+Base.iterate(res::BlockDense.BlockEigenResult, state) = Base.iterate(get_result_tuple(res), state)
+Base.length(::BlockDense.BlockEigenResult) = 2
+Base.eltype(::Type{BlockDense.BlockEigenResult}) = Any
 
 """
     get_annihilators(nflavors::Int; method::Symbol=:dense)
@@ -118,25 +146,13 @@ Arguments:
 - `method::Symbol`: `:auto` (detect from type), `:dense`, or `:blockdense`
 
 Returns:
-- `(eigenvalues::Vector{Float64}, eigenvectors::Matrix{ComplexF64})`
-
-The return format is the same for both methods (for compatibility).
-
-Examples:
-```julia
-# Dense
-H, c = build_hamiltonian("hopping.txt", "coulomb.txt")
-evals, evecs = solve_hamiltonian(H)  # Auto-detects dense
-
-# Block-dense
-basis = BlockDense.make_basis([BlockDense.QN_N(1) for _ in 1:4])
-H, c = build_hamiltonian("hopping.txt", "coulomb.txt"; method=:blockdense, basis=basis)
-evals, evecs = solve_hamiltonian(H)  # Auto-detects blockdense
-```
+- `AbstractSolverResult` (DenseSolverResult or BlockEigenResult)
+- Iterable, so `evals, evecs = solve_hamiltonian(H)` works.
 """
 function solve_hamiltonian(H::Union{Matrix, SparseMatrixCSC}; method::Symbol=:auto)
     if method == :auto || method == :dense
-        return Dense.solve_hamiltonian_dense(H)
+        evals, evecs = Dense.solve_hamiltonian_dense(H)
+        return DenseSolverResult(evals, evecs)
     else
         error("Hamiltonian is Matrix/SparseMatrixCSC, use method=:dense or method=:auto")
     end
@@ -144,8 +160,104 @@ end
 
 function solve_hamiltonian(H::BlockDense.BlockDenseOperator; method::Symbol=:auto)
     if method == :auto || method == :blockdense
+        # This returns a BlockEigenResult
         return BlockDense.solve_hamiltonian_blockdense(H)
     else
         error("Hamiltonian is BlockDenseOperator, use method=:blockdense or method=:auto")
     end
+end
+
+"""
+    calculate_green_tau(result, annh_ops, beta, n_tau, i, j)
+
+Unified interface for calculating imaginary-time Green's function.
+Dispatches to correct backend based on result type.
+"""
+function calculate_green_tau(
+    result::DenseSolverResult,
+    annh_ops::Vector{Matrix{ComplexF64}},
+    beta::Real,
+    n_tau::Int,
+    i::Int,
+    j::Int
+)
+    return Dense.calculate_green_tau_dense(result.evals, result.evecs, annh_ops, beta, n_tau, i, j)
+end
+
+function calculate_green_tau(
+    result::BlockDense.BlockEigenResult,
+    annh_ops::Vector{BlockDense.BlockDenseOperator},
+    beta::Real,
+    n_tau::Int,
+    i::Int,
+    j::Int
+)
+    return BlockDense.calculate_green_tau_blockdense(result, annh_ops[i], annh_ops[j], beta, n_tau)
+end
+
+# Backward compatibility for tuple input (Dense only)
+function calculate_green_tau(
+    evals::Vector{Float64},
+    evecs::Matrix{ComplexF64},
+    annh_ops::Vector{Matrix{ComplexF64}},
+    beta::Real,
+    n_tau::Int,
+    i::Int,
+    j::Int
+)
+    return Dense.calculate_green_tau_dense(evals, evecs, annh_ops, beta, n_tau, i, j)
+end
+
+"""
+    calculate_green_matsubara(result, annh_ops, beta, n_matsubara, i, j)
+
+Unified interface for calculating Matsubara Green's function.
+"""
+function calculate_green_matsubara(
+    result::DenseSolverResult,
+    annh_ops::Vector{Matrix{ComplexF64}},
+    beta::Real,
+    n_matsubara::Int,
+    i::Int,
+    j::Int
+)
+    return Dense.calculate_green_matsubara_dense(result.evals, result.evecs, annh_ops, beta, n_matsubara, i, j)
+end
+
+function calculate_green_matsubara(
+    result::BlockDense.BlockEigenResult,
+    annh_ops::Vector{BlockDense.BlockDenseOperator},
+    beta::Real,
+    n_matsubara::Int,
+    i::Int,
+    j::Int
+)
+    return BlockDense.calculate_green_matsubara_blockdense(result, annh_ops[i], annh_ops[j], beta, n_matsubara)
+end
+
+# Backward compatibility for tuple input (Dense only)
+function calculate_green_matsubara(
+    evals::Vector{<:Real},
+    evecs::Matrix,
+    annh_ops::Vector{Matrix{ComplexF64}},
+    beta::Real,
+    n_matsubara::Int,
+    i::Int,
+    j::Int
+)
+    return Dense.calculate_green_matsubara_dense(evals, evecs, annh_ops, beta, n_matsubara, i, j)
+end
+
+"""
+    get_Z(evals::Vector{<:Real}, beta::Real; shift_energy::Bool=false)
+
+Calculate the partition function Z = sum(exp(-beta * evals)).
+If `shift_energy` is true, the ground state energy is shifted to zero before calculation.
+"""
+function get_Z(evals::Vector{<:Real}, beta::Real; shift_energy::Bool=false)
+    local_evals = copy(evals)
+    if shift_energy
+        local_evals .-= minimum(local_evals)
+    end
+    return sum(exp.(-beta .* local_evals))
 end

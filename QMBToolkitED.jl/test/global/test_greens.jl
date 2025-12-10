@@ -18,18 +18,18 @@ using .GlobalTestUtils
     site_qns_n = [QN_N(1)]    
     site_qns_sz = [QN_NSz(1, 1)] 
     
-    verify_fn = (evals, evecs, annh) -> begin
+    verify_fn = (result, annh) -> begin
         beta = 10.0
         
         # Matsubara
         n_matsubara = 100
-        iwn, giwn = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 1)
+        iwn, giwn = calculate_green_matsubara(result, annh, beta, n_matsubara, 1, 1)
         giwn_analytical = 1 ./ (iwn .- ϵ)
         @test giwn ≈ giwn_analytical atol=1e-9
 
         # Imaginary-time
         n_tau = 100
-        tau_grid, gtau = calculate_green_tau(evals, evecs, annh, beta, n_tau, 1, 1)
+        tau_grid, gtau = calculate_green_tau(result, annh, beta, n_tau, 1, 1)
         Z_analytical = 1 + exp(-beta * ϵ)
         gtau_analytical = -exp.(-ϵ .* tau_grid) ./ Z_analytical
         @test gtau ≈ gtau_analytical atol=1e-9
@@ -60,24 +60,24 @@ end
     site_qns_n = [QN_N(1), QN_N(1)]
     site_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1)]
 
-    verify_fn = (evals, evecs, annh) -> begin
+    verify_fn = (result, annh) -> begin
         # Matsubara
         n_matsubara = 100
-        iwn, giwn = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 1)
+        iwn, giwn = calculate_green_matsubara(result, annh, beta, n_matsubara, 1, 1)
         giwn_analytical = 0.5 .* (1 ./ (iwn .+ U/2) .+ 1 ./ (iwn .- U/2))
         @test giwn ≈ giwn_analytical atol=1e-9
 
-        _, giwn_offdiag = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 2)
+        _, giwn_offdiag = calculate_green_matsubara(result, annh, beta, n_matsubara, 1, 2)
         @test all(isapprox.(giwn_offdiag, 0.0, atol=1e-9))
 
         # Imaginary-time
         n_tau = 100
-        tau_grid, gtau = calculate_green_tau(evals, evecs, annh, beta, n_tau, 1, 1)
+        tau_grid, gtau = calculate_green_tau(result, annh, beta, n_tau, 1, 1)
         Z_analytical = 2 * (1 + exp(-beta * U/2))
         gtau_analytical = -(exp.(-(beta .- tau_grid) .* (U/2)) .+ exp.(-tau_grid .* (U/2))) ./ Z_analytical
         @test gtau ≈ gtau_analytical atol=1e-9
 
-        _, gtau_offdiag = calculate_green_tau(evals, evecs, annh, beta, n_tau, 1, 2)
+        _, gtau_offdiag = calculate_green_tau(result, annh, beta, n_tau, 1, 2)
         @test all(isapprox.(gtau_offdiag, 0.0, atol=1e-9))
     end
 
@@ -117,9 +117,12 @@ end
     site_qns_n = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
     site_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
     
-    verify_fn = (evals, evecs, annh) -> begin
-        iwn, g11_numeric = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 1)
-        _, g12_numeric = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 3)
+    verify_fn = (result, annh) -> begin
+        beta = 20.0
+        n_matsubara = 100
+        
+        iwn, g11_numeric = calculate_green_matsubara(result, annh, beta, n_matsubara, 1, 1)
+        _, g12_numeric = calculate_green_matsubara(result, annh, beta, n_matsubara, 1, 3)
 
         c = sqrt(16*t^2 + U^2)
         c_minus_U = c - U
@@ -167,9 +170,9 @@ end
     3 1 $(-t_deg) 0.0
     """
     
-    verify_fn_deg = (evals, evecs, annh) -> begin
-        iwn, g11_numeric = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 1)
-        _, g12_numeric = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 3)
+    verify_fn_deg = (result, annh) -> begin
+        iwn, g11_numeric = calculate_green_matsubara(result, annh, beta, n_matsubara, 1, 1)
+        _, g12_numeric = calculate_green_matsubara(result, annh, beta, n_matsubara, 1, 3)
 
         c = sqrt(16*t_deg^2 + U^2)
         c_minus_U = c - U

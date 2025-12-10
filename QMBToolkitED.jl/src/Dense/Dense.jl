@@ -47,10 +47,13 @@ using SparseArrays
 include("Operators.jl")
 include("Hamiltonian.jl")
 include("Diagonalization.jl")
+include("Greens.jl")
 
 # Exports
 export get_annihilators_dense
 export build_hamiltonian_dense
 export solve_hamiltonian_dense
+export calculate_green_tau_dense
+export calculate_green_matsubara_dense
 
 end # module Dense

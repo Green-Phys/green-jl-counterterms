@@ -75,7 +75,7 @@ function get_full_eigenvectors_sparse(result::BlockEigenResult)
 end
 
 """
-    solve_hamiltonian_blockdense_efficient(H::BlockDenseOperator) -> BlockEigenResult
+    solve_hamiltonian_blockdense(H::BlockDenseOperator) -> BlockEigenResult
 
 Diagonalize a block-dense Hamiltonian by diagonalizing each sector independently.
 
@@ -98,7 +98,7 @@ basis = make_basis([QN_N(1), QN_N(1), QN_N(1)])
 c = get_annihilators_blockdense(basis)
 H = sum(c[i]' * c[i] for i in 1:3)  # Total number operator
 
-result = solve_hamiltonian_blockdense_efficient(H)
+result = solve_hamiltonian_blockdense(H)
 
 # Get ground state energy
 E0 = minimum(get_full_eigenvalues(result))
@@ -112,7 +112,7 @@ Performance:
 For a system with n sectors of dimension d each, this is O(n * d^3) instead
 of O((n*d)^3), a speedup of ~n^2 for equal-sized sectors.
 """
-function solve_hamiltonian_blockdense_efficient(H::BlockDenseOperator)
+function solve_hamiltonian_blockdense(H::BlockDenseOperator)
     basis = H.basis
 
     # Get concrete quantum number type from first element
@@ -160,44 +160,4 @@ function solve_hamiltonian_blockdense_efficient(H::BlockDenseOperator)
         sector_indices,
         basis
     )
-end
-
-"""
-    solve_hamiltonian_blockdense(H::BlockDenseOperator) -> Tuple{Vector{Float64}, Matrix{ComplexF64}}
-
-Diagonalize a block-dense Hamiltonian efficiently.
-
-This is the API-compatible version that returns eigenvalues and eigenvectors
-in the same format as the full-sparse `solve_hamiltonian`.
-
-For more control and sector-by-sector access, use `solve_hamiltonian_blockdense_efficient`.
-
-Arguments:
-- `H::BlockDenseOperator`: Hamiltonian
-
-Returns:
-- `Vector{Float64}`: All eigenvalues (concatenated from all sectors)
-- `Matrix{ComplexF64}`: All eigenvectors (columns) in global basis
-
-Example:
-```julia
-basis = make_basis([QN_N(1), QN_N(1)])
-H, c = build_hamiltonian_blockdense(basis, "hopping.txt", "coulomb.txt")
-
-evals, evecs = solve_hamiltonian_blockdense(H)
-E0 = evals[1]  # Ground state energy
-psi0 = evecs[:, 1]  # Ground state wavefunction
-```
-"""
-function solve_hamiltonian_blockdense(H::BlockDenseOperator)
-    # Use efficient block diagonalization
-    result = solve_hamiltonian_blockdense_efficient(H)
-
-    # Return in API-compatible format
-    evals = get_full_eigenvalues(result)
-    evecs = get_full_eigenvectors_sparse(result)
-
-    # Sort by energy (match behavior of full-sparse version)
-    perm = sortperm(evals)
-    return evals[perm], evecs[:, perm]
 end

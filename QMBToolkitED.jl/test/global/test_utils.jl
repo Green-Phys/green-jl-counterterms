@@ -36,27 +36,27 @@ end
     run_greens_test(test_name; hopping_str, coulomb_str, site_qns_n, site_qns_sz, beta, verify_fn)
 
 Runs a Green's function test across Dense, BlockDense (QN_N), and BlockDense (QN_NSz) backends.
-`verify_fn` should take `(evals, evecs, annh)` as arguments.
+`verify_fn` should take `(result, annh)` as arguments, where `result` is the solver output.
 """
 function run_greens_test(test_name; hopping_str, coulomb_str, site_qns_n, site_qns_sz, verify_fn)
     @testset "$test_name (Dense)" begin
         H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str); method=:dense)
-        evals, evecs = solve_hamiltonian(H)
-        verify_fn(evals, evecs, annh)
+        result = solve_hamiltonian(H)
+        verify_fn(result, annh)
     end
 
     @testset "$test_name (BlockDense QN_N)" begin
         basis = make_basis(site_qns_n)
         H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str); method=:blockdense, basis=basis)
-        evals, evecs = solve_hamiltonian(H)
-        verify_fn(evals, evecs, annh)
+        result = solve_hamiltonian(H)
+        verify_fn(result, annh)
     end
 
     @testset "$test_name (BlockDense QN_NSz)" begin
         basis = make_basis(site_qns_sz)
         H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str); method=:blockdense, basis=basis)
-        evals, evecs = solve_hamiltonian(H)
-        verify_fn(evals, evecs, annh)
+        result = solve_hamiltonian(H)
+        verify_fn(result, annh)
     end
 end
 

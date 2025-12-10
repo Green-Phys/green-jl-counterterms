@@ -7,6 +7,9 @@ These tests verify that the package functions correctly from a user's perspectiv
 
 using Test
 
+include("test_utils.jl")
+using .GlobalTestUtils
+
 include("test_operators.jl")
 include("test_hamiltonians.jl")
 include("test_greens.jl")

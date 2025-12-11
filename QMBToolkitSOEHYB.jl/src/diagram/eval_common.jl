@@ -94,7 +94,7 @@ Uses pre-allocated temp_buffer to avoid allocations.
 
 When `is_reverse=true`, swaps KPlus ↔ KMinus (used in reverse convolution).
 """
-@inline function apply_hybridization_inplace!(temp_buffer::Array{Float64,3}, target::Array{Float64,3}, hyb::HybridizationState, model_data::ModelData; is_reverse::Bool=false)
+@inline function apply_hybridization_inplace!(temp_buffer::Array{T,3}, target::Array{T,3}, hyb::HybridizationState, model_data::ModelData{T}; is_reverse::Bool=false) where {T<:Number}
     index = hyb.index
     if index != 0  # Not NoHyb
         # XOR determines if we should use KPlus: (positive and not reverse) OR (negative and reverse)
@@ -118,7 +118,7 @@ Pre-allocated buffers are reused across all diagram evaluations for efficiency:
 - `result_buffer`: Working buffer for accumulated result
 - `convolution_buffer`: Working buffer for convolution operands
 """
-function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData, propagator::DLRData, temp_buffer::Array{Float64,3}, result_buffer::Array{Float64,3}, convolution_buffer::Array{Float64,3})
+function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T}, propagator::DLRData{T}, temp_buffer::Array{T,3}, result_buffer::Array{T,3}, convolution_buffer::Array{T,3}) where {T<:Number}
     length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
     # calculate the multiplication and convolution from right to left ignoring the two boundary nodes
     # |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
@@ -163,7 +163,7 @@ end
 Calculate backbone diagram contribution via multiplication and convolution from left to right.
 Similar to `multiplication_convolution` but traverses in reverse direction with swapped K± hybridizations.
 """
-function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData, propagator::DLRData, temp_buffer::Array{Float64,3}, result_buffer::Array{Float64,3}, convolution_buffer::Array{Float64,3})
+function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T}, propagator::DLRData{T}, temp_buffer::Array{T,3}, result_buffer::Array{T,3}, convolution_buffer::Array{T,3}) where {T<:Number}
     length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
     # calculate the multiplication and convolution from left to right ignoring the two boundary nodes (the matrix multiplications is done in the original order)
     # |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
@@ -202,7 +202,7 @@ end
 
 
 # In-place version: writes result to temp_buffer, then caller copies back to input
-function _multiplication_23!(temp_buffer::Array{Float64,3}, A::Array{Float64,2}, B::Array{Float64,3})
+function _multiplication_23!(temp_buffer::Array{T,3}, A::Array{T,2}, B::Array{T,3}) where T<:Number
     n_tau = size(B, 1)
     @inbounds for k in 1:n_tau
         mul!(view(temp_buffer, k, :, :), A, view(B, k, :, :))
@@ -211,18 +211,18 @@ function _multiplication_23!(temp_buffer::Array{Float64,3}, A::Array{Float64,2},
 end
 
 # Allocating version for backward compatibility
-function _multiplication_23(A::Array{Float64,2}, B::Array{Float64,3})
+function _multiplication_23(A::Array{T,2}, B::Array{T,3}) where T<:Number
     n_tau = size(B, 1)
     o1 = size(B, 2)
     o2 = size(B, 3)
-    C = zeros(Float64, n_tau, o1, o2)
+    C = zeros(T, n_tau, o1, o2)
     for k in 1:n_tau
         C[k, :, :] = A * B[k, :, :]
     end
     return C
 end
 
-function _multiplication_32!(temp_buffer::Array{Float64,3}, A::Array{Float64,3}, B::Array{Float64,2})
+function _multiplication_32!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,2}) where T<:Number
     n_tau = size(A, 1)
     @inbounds for k in 1:n_tau
         mul!(view(temp_buffer, k, :, :), view(A, k, :, :), B)
@@ -230,18 +230,18 @@ function _multiplication_32!(temp_buffer::Array{Float64,3}, A::Array{Float64,3},
     return temp_buffer
 end
 
-function _multiplication_32(A::Array{Float64,3}, B::Array{Float64,2})
+function _multiplication_32(A::Array{T,3}, B::Array{T,2}) where T<:Number
     n_tau = size(A, 1)
     o1 = size(A, 2)
     o2 = size(A, 3)
-    C = zeros(Float64, n_tau, o1, o2)
+    C = zeros(T, n_tau, o1, o2)
     for k in 1:n_tau
         C[k, :, :] = A[k, :, :] * B
     end
     return C
 end
 
-function _multiplication_13!(temp_buffer::Array{Float64,3}, A::AbstractVector{Float64}, B::Array{Float64,3})
+function _multiplication_13!(temp_buffer::Array{T,3}, A::AbstractVector, B::Array{T,3}) where T<:Number
     n_tau = size(B, 1)
     @inbounds for k in 1:n_tau
         @views temp_buffer[k, :, :] .= A[k] .* B[k, :, :]
@@ -249,18 +249,18 @@ function _multiplication_13!(temp_buffer::Array{Float64,3}, A::AbstractVector{Fl
     return temp_buffer
 end
 
-function _multiplication_13(A::Array{Float64,1}, B::Array{Float64,3})
+function _multiplication_13(A::Array{<:Number,1}, B::Array{T,3}) where T<:Number
     n_tau = size(B, 1)
     o1 = size(B, 2)
     o2 = size(B, 3)
-    C = zeros(Float64, n_tau, o1, o2)
+    C = zeros(T, n_tau, o1, o2)
     for k in 1:n_tau
         C[k, :, :] = A[k] .* B[k, :, :]
     end
     return C
 end
 
-function _multiplication_33!(temp_buffer::Array{Float64,3}, A::Array{Float64,3}, B::Array{Float64,3})
+function _multiplication_33!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,3}) where T<:Number
     n_tau = size(A, 1)
     @inbounds for k in 1:n_tau
         mul!(view(temp_buffer, k, :, :), view(A, k, :, :), view(B, k, :, :))
@@ -268,11 +268,11 @@ function _multiplication_33!(temp_buffer::Array{Float64,3}, A::Array{Float64,3},
     return temp_buffer
 end
 
-function _multiplication_33(A::Array{Float64,3}, B::Array{Float64,3})
+function _multiplication_33(A::Array{T,3}, B::Array{T,3}) where T<:Number
     n_tau = size(B, 1)
     o1 = size(B, 2)
     o2 = size(B, 3)
-    C = zeros(Float64, n_tau, o1, o2)
+    C = zeros(T, n_tau, o1, o2)
     for k in 1:n_tau
         C[k, :, :] = A[k, :, :] * B[k, :, :]
     end
@@ -280,12 +280,13 @@ function _multiplication_33(A::Array{Float64,3}, B::Array{Float64,3})
 end
 
 
-function _trace_3(A::Array{Float64,3})
+function _trace_3(A::Array{T,3}) where T<:Number
     n_tau = size(A, 1)
     o1 = size(A, 2)
     o2 = size(A, 3)
     o1 == o2 || error("Matrix to be traced must be square: got dimensions $o1 x $o2")
-    trace_vals = zeros(Float64, n_tau)
+    TReal = real(T)  # Trace is always real even for complex matrices
+    trace_vals = zeros(TReal, n_tau)
     for k in 1:n_tau
         trace_vals[k] = tr(A[k, :, :])
     end
@@ -293,7 +294,7 @@ function _trace_3(A::Array{Float64,3})
 end
 
 # In-place version: writes result to trace_buffer
-function _trace_3!(trace_buffer::Vector{Float64}, A::Array{Float64,3})
+function _trace_3!(trace_buffer::Vector{<:Real}, A::Array{<:Number,3})
     n_tau = size(A, 1)
     o1 = size(A, 2)
     o2 = size(A, 3)

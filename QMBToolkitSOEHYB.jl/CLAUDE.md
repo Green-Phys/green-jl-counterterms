@@ -23,13 +23,19 @@ Pkg.test()
 ### Running the Solver
 The main entry point is the `run_soexca` executable:
 ```bash
-./bin/run_soexca <input_file.toml>
+./bin/run_soexca <input_file.toml> [number_of_processes]
 ```
 
-Example:
+Examples:
 ```bash
-./bin/run_soexca examples/non_interacting_Bethe/input.toml
+# Single process (serial execution)
+./bin/run_soexca examples/spinless_semicircular/input.toml
+
+# Multiple processes (parallel execution via MPI)
+./bin/run_soexca examples/spinless_semicircular/input.toml 4
 ```
+
+Note: The solver is MPI-enabled and uses `mpiexecjl` internally. Make sure MPI.jl is properly configured.
 
 ### Loading the Package in REPL
 ```julia

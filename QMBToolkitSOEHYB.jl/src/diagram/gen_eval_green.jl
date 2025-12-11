@@ -3,7 +3,7 @@ using MPI
 using QMBToolkitDLR
 
 """
-    ConvolutionBufferSet
+    ConvolutionBufferSet{T}
 
 Buffers for a single direction (forward or reverse) of backbone convolution.
 Reused across diagrams to avoid allocations during convolution operations.
@@ -12,20 +12,20 @@ Reused across diagrams to avoid allocations during convolution operations.
 - `backbone_accumulator`: Accumulates the backbone result through multiplication and convolution
 - `convolution_operand_buffer`: Prepares the operand for convolution operations
 """
-struct ConvolutionBufferSet
-    backbone_accumulator::Array{Float64,3}
-    convolution_operand_buffer::Array{Float64,3}
+struct ConvolutionBufferSet{T<:Number}
+    backbone_accumulator::Array{T,3}
+    convolution_operand_buffer::Array{T,3}
 end
 
-function ConvolutionBufferSet(n_tau::Int, n_fock::Int)
-    return ConvolutionBufferSet(
-        zeros(Float64, n_tau, n_fock, n_fock),
-        zeros(Float64, n_tau, n_fock, n_fock)
+function ConvolutionBufferSet{T}(n_tau::Int, n_fock::Int) where T<:Number
+    return ConvolutionBufferSet{T}(
+        zeros(T, n_tau, n_fock, n_fock),
+        zeros(T, n_tau, n_fock, n_fock)
     )
 end
 
 """
-    GreenConvolutionBuffers
+    GreenConvolutionBuffers{T}
 
 Container for forward and reverse convolution buffer sets.
 Both sets are required because forward and reverse convolutions are computed
@@ -36,20 +36,20 @@ are used simultaneously in operator products.
 - `fwd`: Forward convolution buffers
 - `rev`: Reverse convolution buffers
 """
-struct GreenConvolutionBuffers
-    fwd::ConvolutionBufferSet
-    rev::ConvolutionBufferSet
+struct GreenConvolutionBuffers{T<:Number}
+    fwd::ConvolutionBufferSet{T}
+    rev::ConvolutionBufferSet{T}
 end
 
-function GreenConvolutionBuffers(n_tau::Int, n_fock::Int)
-    return GreenConvolutionBuffers(
-        ConvolutionBufferSet(n_tau, n_fock),
-        ConvolutionBufferSet(n_tau, n_fock)
+function GreenConvolutionBuffers{T}(n_tau::Int, n_fock::Int) where T<:Number
+    return GreenConvolutionBuffers{T}(
+        ConvolutionBufferSet{T}(n_tau, n_fock),
+        ConvolutionBufferSet{T}(n_tau, n_fock)
     )
 end
 
 """
-    OperatorProductBuffers
+    OperatorProductBuffers{T}
 
 Buffers for operator multiplication operations.
 Reused across diagrams to avoid allocations during matrix products.
@@ -60,18 +60,18 @@ Reused across diagrams to avoid allocations during matrix products.
 - `final_product_buffer`: Holds final products before accumulation
 - `trace_result_buffer`: Holds trace computation results
 """
-struct OperatorProductBuffers
-    operator_product_buffer::Array{Float64,3}
-    annihilation_product_buffer::Array{Float64,3}
-    final_product_buffer::Array{Float64,3}
-    trace_result_buffer::Vector{Float64}
+struct OperatorProductBuffers{T<:Number}
+    operator_product_buffer::Array{T,3}
+    annihilation_product_buffer::Array{T,3}
+    final_product_buffer::Array{T,3}
+    trace_result_buffer::Vector{Float64}  # Trace is always real
 end
 
-function OperatorProductBuffers(n_tau::Int, n_fock::Int)
-    return OperatorProductBuffers(
-        zeros(Float64, n_tau, n_fock, n_fock),
-        zeros(Float64, n_tau, n_fock, n_fock),
-        zeros(Float64, n_tau, n_fock, n_fock),
+function OperatorProductBuffers{T}(n_tau::Int, n_fock::Int) where T<:Number
+    return OperatorProductBuffers{T}(
+        zeros(T, n_tau, n_fock, n_fock),
+        zeros(T, n_tau, n_fock, n_fock),
+        zeros(T, n_tau, n_fock, n_fock),
         zeros(Float64, n_tau)
     )
 end
@@ -144,7 +144,7 @@ Evaluate all Green's function diagrams at a given expansion order and accumulate
 Updates `solver_data.calc.green.vals` by accumulating contributions from all diagrams.
 Uses MPI parallelization to distribute diagram evaluation across ranks.
 """
-function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBone,4}, is_bold::Bool, comm::MPI.Comm)
+function eval_green_given_order!(solver_data::SolverData{T}, diagrams::Array{BackBone,4}, is_bold::Bool, comm::MPI.Comm) where {T<:Number}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 
@@ -160,7 +160,7 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
     end
 
     # Create local accumulator for this rank's work (only for this order)
-    local_result = zeros(Float64, size(solver_data.calc.green.vals))
+    local_result = zeros(T, size(solver_data.calc.green.vals))
 
     # ============================================================================
     # Buffer Allocation Strategy
@@ -190,8 +190,8 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_fock = solver_data.model.n_fock
 
-    op_buffers = OperatorProductBuffers(n_tau, n_fock)
-    conv_buffers = GreenConvolutionBuffers(n_tau, n_fock)
+    op_buffers = OperatorProductBuffers{T}(n_tau, n_fock)
+    conv_buffers = GreenConvolutionBuffers{T}(n_tau, n_fock)
 
     # Distribute topology loop across ranks: rank processes indices rank+1:nprocs:n_topology
     my_topologies = rank+1:nprocs:n_topology
@@ -200,7 +200,7 @@ function eval_green_given_order!(solver_data::SolverData, diagrams::Array{BackBo
         for j in 1:n_directions
             external_opts_loc = diagrams[i, j, 1, 1].external_opts_loc
             @assert length(external_opts_loc) == 2 && external_opts_loc[1] == 1 "External operator locations are invalid."
-            backbone_0_to_beta_with_ann = [zeros(Float64, size(propagator.vals)) for i in 1:solver_data.model.n_flavors_physical]
+            backbone_0_to_beta_with_ann = [zeros(T, size(propagator.vals)) for i in 1:solver_data.model.n_flavors_physical]
             for k in 1:n_line_flavors
                 for l in 1:n_hyb_exponents
                     diagram = diagrams[i, j, k, l]

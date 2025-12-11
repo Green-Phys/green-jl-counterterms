@@ -21,23 +21,30 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     isfile(hopping_path) || error("Hopping file not found: $hopping_path")
     isfile(interaction_path) || error("Interaction file not found: $interaction_path")
 
-    H, ann_opts = QMBToolkitED.build_hamiltonian(hopping_path, interaction_path)
-    ann_opts = vec([Matrix{Float64}(c) for c in ann_opts]) # convert to Float64
+    H, ann_opts_raw = QMBToolkitED.build_hamiltonian(hopping_path, interaction_path)
+    evals, evecs = QMBToolkitED.solve_hamiltonian(H)
+
+    # Infer numeric type from eigenvectors (Float64 or ComplexF64)
+    T = eltype(evecs)
+
+    # Convert operators to the correct type
+    ann_opts = vec([convert(Matrix{T}, c) for c in ann_opts_raw])
     n_flavors = length(ann_opts)
     n_fock = 1 << n_flavors
-    cre_opts = vec([Matrix{Float64}(adjoint(c)) for c in ann_opts])
-    evals, evecs = QMBToolkitED.solve_hamiltonian(H)
+    cre_opts = vec([Matrix{T}(adjoint(c)) for c in ann_opts])
     
     ### init DLR grid
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
     
     ### init bare propagator
     tau_grid = dlr_grid.tau
-    bare_propagator = zeros(Float64, length(tau_grid), n_fock, n_fock)
+    bare_propagator = zeros(T, length(tau_grid), n_fock, n_fock)
     E_shift = minimum(evals)
     evals_shifted = evals .- E_shift
     for (k, tau) in enumerate(tau_grid)
         U_tau = exp.(-tau * evals_shifted)
+        # Compute propagator: evecs * exp(-tau*H) * evecs^†
+        # For Hermitian H, this should be Hermitian, but may have small imaginary parts
         bare_propagator[k, :, :] = evecs * Diagonal(U_tau) * adjoint(evecs)
     end
    
@@ -76,8 +83,8 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
 
 
     # precompute annihilation and creation operators multiplied with SOE coefficients of the hybridization function
-    ann_opts_SOE = _gen_opts_SOE(ann_opts, hyb_soe.coeffs, false)
-    cre_opts_SOE = _gen_opts_SOE(cre_opts, hyb_soe.coeffs, true)
+    ann_opts_SOE = _gen_opts_SOE(T, ann_opts, hyb_soe.coeffs, false)
+    cre_opts_SOE = _gen_opts_SOE(T, cre_opts, hyb_soe.coeffs, true)
 
     # precompute K0_inverse
     K0_inverse = _gen_K0_inverse(hyb_poles, model_params.beta)
@@ -89,7 +96,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     kernel_cache = compute_kernel_cache(dlr_grid)
     r = length(dlr_grid.omega)
     n_tau = length(dlr_grid.tau)
-    convolution_workspace = ConvolutionWorkspace(r, n_fock, n_fock, n_tau)
+    convolution_workspace = ConvolutionWorkspace{T}(r, n_fock, n_fock, n_tau)
 
     return ModelData(
         model_params.beta,
@@ -115,29 +122,29 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
 end
 
 """
-    init_solver_data(model_data::ModelData, params::Params)
+    init_solver_data(model_data::ModelData)
 
-init a `SolverData` object from the `ModelData` and `Params`.
+init a `SolverData` object from the `ModelData`.
 """
-function init_solver_data(model_data::ModelData)
+function init_solver_data(model_data::ModelData{T}) where {T<:Number}
 
     calculation_data = CalculationData(
-        DLRData(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # pseudo-particle propagator
-        DLRData(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # pseudo-particle self-energy
-        DLRData(model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical), # physical Green's function
+        DLRData{T}(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # pseudo-particle propagator
+        DLRData{T}(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # pseudo-particle self-energy
+        DLRData{T}(model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical), # physical Green's function
         Float64[], # partition function by order (filled during eval_diagrams!)
-        Vector{Array{Float64,3}}(), # green numerator by order (filled during eval_diagrams!)
-        Vector{Array{Float64,3}}(), # green by order (computed at the end)
-        zeros(Float64, 0, 0, 0), # green_linear_grid (filled during post-processing)
+        Vector{Array{T,3}}(), # green numerator by order (filled during eval_diagrams!)
+        Vector{Array{T,3}}(), # green by order (computed at the end)
+        zeros(T, 0, 0, 0), # green_linear_grid (filled during post-processing)
         Float64[] # tau_linear_grid (filled during post-processing)
     )
     return SolverData(model_data, calculation_data)
 end
 
-function _gen_K0_inverse(exponents::Vector{Float64},beta::Float64)
+function _gen_K0_inverse(exponents::Vector{Float64}, beta::Float64)
     K0_inverse = zeros(Float64, length(exponents))
     for (i, omega) in enumerate(exponents)
-        if omega <=0
+        if omega <= 0
             K0_inverse[i] = 1.0 + exp(beta * omega)
         else
             K0_inverse[i] = 1.0 + exp(-beta * omega)
@@ -160,7 +167,7 @@ function _gen_K_on_DLRtau(exponents::Vector{Float64}, dlr_grid::DLRGrid)
 end
 
 
-function _gen_opts_SOE(opts::Vector{Matrix{Float64}}, coeffs::Array{Float64,3}, is_creation::Bool)
+function _gen_opts_SOE(::Type{T}, opts::Vector{Matrix{T}}, coeffs::Array{Float64,3}, is_creation::Bool) where {T<:Number}
     # coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation
     # \bar{F}^{\dagger}_{o, l} = \sum_{o'} Delta_{l, o', o} F^{\dagger}_{o'}
     # \bar{F}_{o, l} = \sum_{o'} Delta_{l, o, o'} F_{o'}
@@ -169,14 +176,14 @@ function _gen_opts_SOE(opts::Vector{Matrix{Float64}}, coeffs::Array{Float64,3}, 
     p = size(coeffs, 1)
     size(coeffs, 2) == n_flavors || error("Size mismatch between coeffs dimension 2 and number of flavors: expected $n_flavors, got $(size(coeffs, 2))")
     size(coeffs, 3) == n_flavors || error("Size mismatch between coeffs dimension 3 and number of flavors: expected $n_flavors, got $(size(coeffs, 3))")
-    opts_SOE = Matrix{Matrix{Float64}}(undef, n_flavors, p)
+    opts_SOE = Matrix{Matrix{T}}(undef, n_flavors, p)
     for o in 1:n_flavors
         for l in 1:p
-            mat = zeros(Float64, size(opts[1])...)
+            mat = zeros(T, size(opts[1])...)
             if is_creation
                 for o_prime in 1:n_flavors
                     mat .+= coeffs[l, o_prime, o] * opts[o_prime]
-                end 
+                end
             else
                 for o_prime in 1:n_flavors
                     mat .+= coeffs[l, o, o_prime] * opts[o_prime]

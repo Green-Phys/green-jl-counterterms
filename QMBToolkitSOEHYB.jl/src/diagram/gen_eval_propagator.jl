@@ -2,7 +2,7 @@
 using MPI
 
 """
-    PropagatorConvolutionBuffers
+    PropagatorConvolutionBuffers{T}
 
 Buffers for propagator backbone convolution calculations.
 Reused across diagrams to avoid allocations during convolution operations.
@@ -12,17 +12,17 @@ Reused across diagrams to avoid allocations during convolution operations.
 - `backbone_accumulator`: Accumulates the backbone result through multiplication and convolution
 - `convolution_operand_buffer`: Prepares the operand for convolution operations
 """
-struct PropagatorConvolutionBuffers
-    operator_product_buffer::Array{Float64,3}
-    backbone_accumulator::Array{Float64,3}
-    convolution_operand_buffer::Array{Float64,3}
+struct PropagatorConvolutionBuffers{T<:Number}
+    operator_product_buffer::Array{T,3}
+    backbone_accumulator::Array{T,3}
+    convolution_operand_buffer::Array{T,3}
 end
 
-function PropagatorConvolutionBuffers(n_tau::Int, n_fock::Int)
-    return PropagatorConvolutionBuffers(
-        zeros(Float64, n_tau, n_fock, n_fock),
-        zeros(Float64, n_tau, n_fock, n_fock),
-        zeros(Float64, n_tau, n_fock, n_fock)
+function PropagatorConvolutionBuffers{T}(n_tau::Int, n_fock::Int) where T<:Number
+    return PropagatorConvolutionBuffers{T}(
+        zeros(T, n_tau, n_fock, n_fock),
+        zeros(T, n_tau, n_fock, n_fock),
+        zeros(T, n_tau, n_fock, n_fock)
     )
 end
 
@@ -58,7 +58,7 @@ function gen_propagator_given_topology(M::Int, connected_pairs::Vector{Tuple{Int
 end
 
 
-function eval_propagator_given_order!(solver_data::SolverData, diagrams::Array{BackBone,4}, comm::MPI.Comm)
+function eval_propagator_given_order!(solver_data::SolverData{T}, diagrams::Array{BackBone,4}, comm::MPI.Comm) where {T<:Number}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 
@@ -66,7 +66,7 @@ function eval_propagator_given_order!(solver_data::SolverData, diagrams::Array{B
     n_diagrams = length(diagrams_flat)
 
     # Create local accumulator for this rank's work (only for this order)
-    local_result = zeros(Float64, size(solver_data.calc.propagator.vals))
+    local_result = zeros(T, size(solver_data.calc.propagator.vals))
 
     # ============================================================================
     # Buffer Allocation Strategy
@@ -86,7 +86,7 @@ function eval_propagator_given_order!(solver_data::SolverData, diagrams::Array{B
     # ============================================================================
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_fock = solver_data.model.n_fock
-    buffers = PropagatorConvolutionBuffers(n_tau, n_fock)
+    buffers = PropagatorConvolutionBuffers{T}(n_tau, n_fock)
 
     # Distribute diagrams across ranks: rank processes indices rank+1:nprocs:n_diagrams
     my_diagrams = rank+1:nprocs:n_diagrams

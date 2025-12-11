@@ -38,7 +38,7 @@ n_up = c[1]' * c[1]
 
 ## Operations/ - Low-level operations on operators
 - `Algebra.jl` - Operator algebra (*, +, adjoint, scalar operations)
-- `Conversion.jl` - Conversion to/from sparse matrices
+- `Conversion.jl` - Conversion to/from dense matrices
 
 ## HighLevel/ - High-level API matching QMBToolkitED interface
 - `Constructors.jl` - get_annihilators_blockdense (vector of operators)
@@ -82,7 +82,6 @@ n_up = c[1]' * c[1]
 module BlockDense
 
 using LinearAlgebra
-using SparseArrays
 
 # ============================================================================
 # Core Types and Data Structures
@@ -133,7 +132,7 @@ export get_annihilator_blockdense  # Single operator (low-level)
 # Utilities
 export sum_occupied_sites, compute_fermion_sign
 
-# Conversion (to_sparse and from_sparse are internal, not exported from main module)
+# Conversion
 export to_dense, from_dense
 
 # High-Level API (compatible with QMBToolkitED)

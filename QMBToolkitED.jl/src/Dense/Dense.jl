@@ -42,7 +42,6 @@ evals, evecs = solve_hamiltonian(H)
 module Dense
 
 using LinearAlgebra
-using SparseArrays
 
 include("Operators.jl")
 include("Hamiltonian.jl")

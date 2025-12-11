@@ -195,7 +195,7 @@ Internal implementation details specific to BlockDense:
 - Quantum number arithmetic (QN_N, QN_NSz)
 - Sector partitioning and basis construction
 - Operator flux computation from site_qns
-- Block-sparse algebra and conversions
+- Block-dense algebra and conversions
 
 ### Consistency Tests
 Cross-validates that Dense and BlockDense produce identical results:

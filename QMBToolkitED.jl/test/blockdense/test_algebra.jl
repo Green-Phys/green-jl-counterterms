@@ -1,12 +1,19 @@
-"""
-BlockDense Tests: Block Algebra
 
-Tests block-sparse operator algebra and conversions.
+"""
+BlockDense Algebra Tests
+
+Tests block-dense operator algebra and conversions.
 """
 
-using Test
-using Main.BlockDense
-using LinearAlgebra
+# This file is included by runtests.jl, so it uses the environment setup there.
+# If running standalone, uncomment the following:
+# using Test
+# using QMBToolkitED.BlockDense
+# using LinearAlgebra
+
+# We'll use the detailed tests in the 'detailed' directory
+include("detailed/test_linalg.jl")
+
 
 @testset "BlockDense: Block Algebra" begin
 

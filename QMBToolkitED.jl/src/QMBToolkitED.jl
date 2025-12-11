@@ -1,6 +1,6 @@
 module QMBToolkitED
 
-using LinearAlgebra, SparseArrays
+using LinearAlgebra
 
 # Include dense submodule
 include("Dense/Dense.jl")

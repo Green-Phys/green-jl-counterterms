@@ -12,7 +12,6 @@ using Test
 using QMBToolkitED
 using QMBToolkitED.BlockDense
 using LinearAlgebra
-using SparseArrays
 
 @testset "Unified Interface Tests" begin
 

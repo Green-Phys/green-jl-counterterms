@@ -9,7 +9,6 @@ using Test
 using QMBToolkitED
 using QMBToolkitED.BlockDense
 using LinearAlgebra
-using SparseArrays
 
 include("test_core.jl")
 include("test_algebra.jl")

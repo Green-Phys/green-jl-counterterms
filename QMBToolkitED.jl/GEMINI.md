@@ -12,7 +12,7 @@ The core functionality of this package includes:
 - Calculating the Matsubara Green's function $G(i\omega_n)$.
 - Calculating the partition function $Z$.
 
-The project is structured as a standard Julia package with source code in `src/`, tests in `test/`, and documentation in `docs/`. It depends on the `LinearAlgebra` and `SparseArrays` standard libraries.
+The project is structured as a standard Julia package with source code in `src/`, tests in `test/`, and documentation in `docs/`. It depends on the `LinearAlgebra` standard library.
 
 ## Input format
 Two text file is needed to specify the Hamiltonian:
@@ -81,7 +81,7 @@ julia --project=docs/ docs/make.jl
 
 - The main logic is contained within the `QMBToolkitED` module in `src/QMBToolkitED.jl`.
 - Public functions are exported and documented with docstrings.
-- The code leverages sparse matrices (`SparseMatrixCSC`) for efficient representation of quantum operators.
+- The code leverages block-dense matrices for efficient representation of quantum operators.
 
 ### Testing
 

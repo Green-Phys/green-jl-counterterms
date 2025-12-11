@@ -53,7 +53,7 @@ The package is organized as a single module in `src/QMBToolkitED.jl` that export
 ### Fermionic Operators
 - Uses occupation number basis where the i-th bit of an integer represents the i-th state's occupation
 - For `nflavors = 3`, state |100⟩ corresponds to integer 4
-- Operators are stored as `SparseMatrixCSC{Int8,Int}` for memory efficiency
+- Operators are stored as block-dense matrices for memory efficiency
 - Sign tracking ensures proper fermionic anti-commutation relations
 
 ### Hamiltonian Construction
@@ -86,7 +86,7 @@ Tests in `test/runtests.jl` validate:
    - Hubbard dimer (both non-degenerate and near-degenerate ground states)
 
 ## Dependencies
-- Julia 1.11.5 (standard library only: LinearAlgebra, SparseArrays)
+- Julia 1.11.5 (standard library only: LinearAlgebra)
 - Test dependencies: Test
 - Documentation: Documenter.jl
 

@@ -1,5 +1,5 @@
 """
-Block-sparse operators for quantum many-body systems.
+Block-dense operators for quantum many-body systems.
 
 Operators are stored as collections of dense matrix blocks, with each block
 connecting two symmetry sectors. The flux (quantum number change) determines
@@ -52,7 +52,7 @@ Fields:
 The blocks are indexed as `(target_sector, source_sector) → Matrix`.
 Matrix element `block[i,j]` maps state j in source sector to state i in target sector.
 
-This follows the sparse matrix convention: operator O has matrix element
+This follows the standard linear algebra convention: operator O has matrix element
 `O[α, β]` connecting state β (source) to state α (target).
 
 Example:

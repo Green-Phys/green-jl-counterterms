@@ -2,13 +2,12 @@
 BlockDense Tests: Linear Algebra Operations
 
 Tests for operator multiplication, addition, scalar multiplication, adjoint,
-and conversion to/from sparse matrices.
+and conversion to/from dense matrices.
 """
 
 using Test
 using Main.BlockDense
 using LinearAlgebra
-using SparseArrays
 
 @testset "BlockDense: Linear Algebra" begin
 
@@ -179,48 +178,45 @@ using SparseArrays
         anticomm_11 = c1 * c1_dag + c1_dag * c1
         @test anticomm_11.flux.delta_qn == QN_N(0)
 
-        # Convert to sparse to check it's identity
-        anticomm_11_sparse = to_sparse(anticomm_11)
+        # Convert to dense to check it's identity
+        anticomm_11_dense = to_dense(anticomm_11)
         I_matrix = Matrix{ComplexF64}(I, basis.total_dim, basis.total_dim)
-        @test anticomm_11_sparse ≈ I_matrix atol=1e-14
+        @test anticomm_11_dense ≈ I_matrix atol=1e-14
 
         # {c_1, c_2'} = 0 (different orbitals)
         anticomm_12 = c1 * c2_dag + c2_dag * c1
         @test anticomm_12.flux.delta_qn == QN_N(0)
 
-        anticomm_12_sparse = to_sparse(anticomm_12)
-        @test iszero(anticomm_12_sparse)
+        anticomm_12_dense = to_dense(anticomm_12)
+        @test iszero(anticomm_12_dense)
     end
 
-    @testset "Conversion to sparse" begin
+    @testset "Conversion to dense" begin
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
 
-        # Convert to sparse
-        c1_sparse = to_sparse(c1)
+        # Convert to dense
+        c1_dense = to_dense(c1)
 
         # Check dimensions
-        @test size(c1_sparse) == (basis.total_dim, basis.total_dim)
-        @test size(c1_sparse) == (4, 4)  # 2^2 = 4
+        @test size(c1_dense) == (basis.total_dim, basis.total_dim)
+        @test size(c1_dense) == (4, 4)  # 2^2 = 4
 
-        # Should be sparse
-        @test c1_sparse isa SparseMatrixCSC
-
-        # Check that it has the right number of nonzeros
-        @test nnz(c1_sparse) > 0
+        # Should be dense
+        @test c1_dense isa Matrix{ComplexF64}
     end
 
-    @testset "Conversion from sparse" begin
+    @testset "Conversion from dense" begin
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
 
-        # Round trip: block -> sparse -> block
-        c1_sparse = to_sparse(c1)
-        c1_reconstructed = from_sparse(c1_sparse, basis, c1.flux)
+        # Round trip: block -> dense -> block
+        c1_dense = to_dense(c1)
+        c1_reconstructed = from_dense(c1_dense, basis, c1.flux)
 
         # Should have same flux
         @test c1_reconstructed.flux.delta_qn == c1.flux.delta_qn
@@ -233,7 +229,7 @@ using SparseArrays
         end
     end
 
-    @testset "Sparse conversion consistency" begin
+    @testset "Dense conversion consistency" begin
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
@@ -246,14 +242,14 @@ using SparseArrays
         # Number operator
         n1 = c1_dag * c1
 
-        # Convert to sparse
-        n1_sparse = to_sparse(n1)
+        # Convert to dense
+        n1_dense = to_dense(n1)
 
         # Should be Hermitian (up to numerical precision)
-        @test n1_sparse ≈ adjoint(n1_sparse) atol=1e-14
+        @test n1_dense ≈ adjoint(n1_dense) atol=1e-14
 
         # Should have non-negative eigenvalues (number operator)
-        eigs = eigvals(Matrix(n1_sparse))
+        eigs = eigvals(n1_dense)
         @test all(real(eigs) .>= -1e-14)  # Allow small numerical errors
     end
 
@@ -270,10 +266,10 @@ using SparseArrays
         lhs = (c1 + c2) * c1_dag
         rhs = c1 * c1_dag + c2 * c1_dag
 
-        lhs_sparse = to_sparse(lhs)
-        rhs_sparse = to_sparse(rhs)
+        lhs_dense = to_dense(lhs)
+        rhs_dense = to_dense(rhs)
 
-        @test lhs_sparse ≈ rhs_sparse atol=1e-14
+        @test lhs_dense ≈ rhs_dense atol=1e-14
     end
 
     @testset "Scalar multiplication distributivity" begin
@@ -289,10 +285,10 @@ using SparseArrays
         lhs = α * (c1 + c2)
         rhs = α * c1 + α * c2
 
-        lhs_sparse = to_sparse(lhs)
-        rhs_sparse = to_sparse(rhs)
+        lhs_dense = to_dense(lhs)
+        rhs_dense = to_dense(rhs)
 
-        @test lhs_sparse ≈ rhs_sparse atol=1e-14
+        @test lhs_dense ≈ rhs_dense atol=1e-14
     end
 
     @testset "Adjoint distributivity" begin
@@ -306,10 +302,10 @@ using SparseArrays
         lhs = (c1 + c2)'
         rhs = c1' + c2'
 
-        lhs_sparse = to_sparse(lhs)
-        rhs_sparse = to_sparse(rhs)
+        lhs_dense = to_dense(lhs)
+        rhs_dense = to_dense(rhs)
 
-        @test lhs_sparse ≈ rhs_sparse atol=1e-14
+        @test lhs_dense ≈ rhs_dense atol=1e-14
 
         # (c1 * c2)' = c2' * c1' (note reversed order)
         c12 = c1 * c2
@@ -319,10 +315,10 @@ using SparseArrays
         c1_dag = c1'
         c2dag_c1dag = c2_dag * c1_dag
 
-        c12_dag_sparse = to_sparse(c12_dag)
-        c2dag_c1dag_sparse = to_sparse(c2dag_c1dag)
+        c12_dag_dense = to_dense(c12_dag)
+        c2dag_c1dag_dense = to_dense(c2dag_c1dag)
 
-        @test c12_dag_sparse ≈ c2dag_c1dag_sparse atol=1e-14
+        @test c12_dag_dense ≈ c2dag_c1dag_dense atol=1e-14
     end
 
     @testset "Total number operator" begin
@@ -335,14 +331,14 @@ using SparseArrays
 
         @test N.flux.delta_qn == QN_N(0)
 
-        # Convert to sparse and check eigenvalues
-        N_sparse = to_sparse(N)
+        # Convert to dense and check eigenvalues
+        N_dense = to_dense(N)
 
         # Should be Hermitian
-        @test N_sparse ≈ adjoint(N_sparse) atol=1e-14
+        @test N_dense ≈ adjoint(N_dense) atol=1e-14
 
         # Eigenvalues should be 0, 1, 2, 3 (particle numbers)
-        eigs = sort(real(eigvals(Matrix(N_sparse))))
+        eigs = sort(real(eigvals(N_dense)))
         expected_eigs = [0, 1, 1, 1, 2, 2, 2, 3]  # Degeneracies for 3 orbitals
 
         @test eigs ≈ expected_eigs atol=1e-14
@@ -363,9 +359,8 @@ using SparseArrays
         @test hopping.flux.delta_qn == QN_N(0)
 
         # Should be Hermitian
-        hopping_sparse = to_sparse(hopping)
-        @test hopping_sparse ≈ adjoint(hopping_sparse) atol=1e-14
+        hopping_dense = to_dense(hopping)
+        @test hopping_dense ≈ adjoint(hopping_dense) atol=1e-14
     end
 
 end
-

@@ -40,7 +40,7 @@ get_eigenvectors(result::DenseEigenResult) = result.evecs
 Diagonalize a Hamiltonian matrix and return eigenvalues and eigenvectors.
 
 Arguments:
-- `H::Union{Matrix{ComplexF64}, SparseMatrixCSC{ComplexF64}}`: Hamiltonian matrix
+- `H::Matrix{ComplexF64}`: Hamiltonian matrix
 
 Returns:
 - `DenseEigenResult`: Result object containing eigenvalues and eigenvectors.
@@ -54,14 +54,11 @@ evals, evecs = result  # Tuple unpacking works
 ```
 
 Implementation:
-Uses standard dense eigenvalue decomposition. If input is sparse, converts to dense first.
+Uses standard dense eigenvalue decomposition.
 """
-function solve_hamiltonian_dense(H::Union{Matrix{ComplexF64}, SparseMatrixCSC{ComplexF64}})
-    # Convert to dense if needed
-    H_dense = H isa Matrix ? H : Matrix(H)
-
+function solve_hamiltonian_dense(H::Matrix{ComplexF64})
     # Diagonalize using Hermitian solver for efficiency
-    sol = eigen(Hermitian(H_dense))
+    sol = eigen(Hermitian(H))
 
     return DenseEigenResult(sol.values, sol.vectors)
 end

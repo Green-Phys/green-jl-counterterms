@@ -37,7 +37,7 @@ Generate fermionic annihilation operators.
 
 Arguments:
 - `nflavors::Int`: Number of orbitals (for dense method)
-- `basis::BlockDenseBasis`: Block-sparse basis (for blockdense method)
+- `basis::BlockDenseBasis`: Block-dense basis (for blockdense method)
 - `method::Symbol`: `:dense` or `:blockdense`
 
 Returns:
@@ -151,11 +151,11 @@ result = solve_hamiltonian(H)  # Returns BlockEigenResult
 evals, evecs = result          # Destructuring works (less efficient for Green's functions)
 ```
 """
-function solve_hamiltonian(H::Union{Matrix, SparseMatrixCSC}; method::Symbol=:auto)
+function solve_hamiltonian(H::Matrix; method::Symbol=:auto)
     if method == :auto || method == :dense
         return Dense.solve_hamiltonian_dense(H)
     else
-        error("Hamiltonian is Matrix/SparseMatrixCSC, use method=:dense or method=:auto")
+        error("Hamiltonian is Matrix, use method=:dense or method=:auto")
     end
 end
 

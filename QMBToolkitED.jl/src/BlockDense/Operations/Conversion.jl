@@ -4,9 +4,6 @@ Conversion between BlockDenseOperator and Matrix{ComplexF64}.
 Functions:
 - to_dense: Convert BlockDenseOperator → Matrix{ComplexF64}
 - from_dense: Convert Matrix{ComplexF64} → BlockDenseOperator (with known flux)
-
-Note: Sparse matrices are an internal implementation detail of the Dense module.
-Conversions only operate between BlockDenseOperator and dense Matrix{ComplexF64}.
 """
 
 """

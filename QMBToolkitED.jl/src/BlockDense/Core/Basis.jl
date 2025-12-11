@@ -1,5 +1,5 @@
 """
-Block-sparse basis construction for quantum many-body systems.
+Block-dense basis construction for quantum many-body systems.
 
 The basis is constructed from a site quantum number list, which specifies
 the quantum numbers carried by each single-particle orbital. States are

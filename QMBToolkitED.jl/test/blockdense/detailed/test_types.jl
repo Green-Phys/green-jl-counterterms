@@ -317,7 +317,7 @@ using Main.BlockDense
             @test compute_fermion_sign(state, 4) == -1
         end
 
-        @testset "Sparse occupation" begin
+        @testset "Low occupation" begin
             # State |1010⟩ = 0b1010 = 10: bits 1,3 set → flavors 2,4 occupied
             state = 10
 

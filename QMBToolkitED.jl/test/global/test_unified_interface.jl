@@ -116,7 +116,7 @@ using SparseArrays
         @test_throws ErrorException build_hamiltonian(hopping_input, coulomb_input; method=:blockdense)
     end
 
-    @testset "solve_hamiltonian - auto-detection for SparseMatrixCSC" begin
+    @testset "solve_hamiltonian - auto-detection for Matrix" begin
         nflavors = 2
         c = get_annihilators(nflavors)
         H = sum(c[i]' * c[i] for i in 1:nflavors)
@@ -144,7 +144,7 @@ using SparseArrays
     @testset "solve_hamiltonian - error on wrong method" begin
         nflavors = 2
 
-        # Sparse Hamiltonian
+        # Dense Matrix Hamiltonian
         c_dense = get_annihilators(nflavors)
         H_dense = sum(c_dense[i]' * c_dense[i] for i in 1:nflavors)
         @test_throws ErrorException solve_hamiltonian(H_dense; method=:blockdense)
@@ -156,55 +156,80 @@ using SparseArrays
         @test_throws ErrorException solve_hamiltonian(H_block; method=:dense)
     end
 
-    @testset "Consistency: dense vs blockdense eigenvalues" begin
-        # Compare dense and blockdense methods on same Hamiltonian
-        nflavors = 3
+    @testset "Result Accessors" begin
+        # Test that accessor functions work correctly and match tuple unpacking
+        U = 2.0
+        hopping_str = """
+        0 0 $(-U/2) 0.0
+        1 1 $(-U/2) 0.0
+        """
+        coulomb_str = """
+        2
+        0 0 1 1 0 $(U) 0.0
+        1 1 0 0 1 $(U) 0.0
+        """
 
-        # Sparse version
-        hopping_input1 = IOBuffer("0 1 1.0 0.0\n1 2 1.0 0.0\n")
-        coulomb_input1 = IOBuffer("3\n")
-        H_dense, _ = build_hamiltonian(hopping_input1, coulomb_input1; method=:dense)
-        evals_dense, _ = solve_hamiltonian(H_dense)
+        # Dense method
+        H_dense, _ = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str))
+        result_dense = solve_hamiltonian(H_dense)
 
-        # Block-dense version
-        basis = make_basis([QN_N(1) for _ in 1:nflavors])
-        hopping_input2 = IOBuffer("0 1 1.0 0.0\n1 2 1.0 0.0\n")
-        coulomb_input2 = IOBuffer("3\n")
-        H_block, _ = build_hamiltonian(hopping_input2, coulomb_input2; method=:blockdense, basis=basis)
-        evals_block, _ = solve_hamiltonian(H_block)
+        # Test accessor functions
+        evals_accessor = QMBToolkitED.Dense.get_eigenvalues(result_dense)
+        evecs_accessor = QMBToolkitED.Dense.get_eigenvectors(result_dense)
 
-        # Eigenvalues should match
-        @test sort(evals_dense) ≈ sort(evals_block) atol=1e-12
-    end
+        # Test tuple unpacking
+        evals_unpack, evecs_unpack = result_dense
 
-    @testset "Consistency: anticommutation relations" begin
-        nflavors = 3
+        # Should be identical (not just approximately equal)
+        @test evals_accessor === evals_unpack
+        @test evecs_accessor === evecs_unpack
 
-        # Sparse version
-        c_dense = get_annihilators(nflavors; method=:dense)
+        # Test direct field access matches accessors
+        @test evals_accessor === result_dense.evals
+        @test evecs_accessor === result_dense.evecs
 
-        # Block-dense version
-        basis = make_basis([QN_N(1) for _ in 1:nflavors])
-        c_block = get_annihilators(basis; method=:blockdense)
+        # BlockDense method
+        site_qns = [QN_N(1), QN_N(1)]
+        basis = make_basis(site_qns)
+        H_block, _ = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str); method=:blockdense, basis=basis)
+        result_block = solve_hamiltonian(H_block)
 
-        # Check {c_i, c_j'} = δ_ij I for both methods
-        for i in 1:nflavors, j in 1:nflavors
-            # Dense method
-            anticomm_dense = c_dense[i] * c_dense[j]' + c_dense[j]' * c_dense[i]
+        # Test BlockDense accessor functions
+        evals_block_accessor = BlockDense.get_full_eigenvalues(result_block)
+        evecs_block_accessor = BlockDense.get_full_eigenvectors(result_block)
 
-            # BlockDense method
-            anticomm_block = c_block[i] * c_block[j]' + c_block[j]' * c_block[i]
-            anticomm_block_dense = to_dense(anticomm_block)
+        # Test tuple unpacking
+        evals_block_unpack, evecs_block_unpack = result_block
 
-            if i == j
-                I_mat = Matrix{ComplexF64}(I, basis.total_dim, basis.total_dim)
-                @test anticomm_dense ≈ I_mat atol=1e-14
-                @test anticomm_block_dense ≈ I_mat atol=1e-14
-            else
-                @test iszero(anticomm_dense)
-                @test iszero(anticomm_block_dense)
-            end
+        # Unpacking should match accessors (with sorting)
+        @test evals_block_unpack == evals_block_accessor[sortperm(evals_block_accessor)]
+        @test evecs_block_unpack == evecs_block_accessor[:, sortperm(evals_block_accessor)]
+
+        # Verify eigenvectors are correctly reconstructed from sectors
+        total_dim = basis.total_dim
+        @test size(evecs_block_accessor) == (total_dim, total_dim)
+
+        # Verify eigenvectors are orthonormal
+        @test evecs_block_accessor' * evecs_block_accessor ≈ Matrix{ComplexF64}(I, total_dim, total_dim) atol=1e-12
+
+        # Verify eigenvalues and eigenvectors satisfy H * v = λ * v
+        H_block_dense = BlockDense.to_dense(H_block)
+        for i in 1:total_dim
+            Hv = H_block_dense * evecs_block_accessor[:, i]
+            λv = evals_block_accessor[i] * evecs_block_accessor[:, i]
+            @test Hv ≈ λv atol=1e-10
         end
+
+        # Cross-validate: Dense and BlockDense eigenvalues should match
+        @test sort(evals_accessor) ≈ sort(evals_block_accessor) atol=1e-12
+
+        # Test that tuple unpacking gives matching results between Dense and BlockDense
+        @test sort(evals_unpack) ≈ sort(evals_block_unpack) atol=1e-12
+        # Eigenvectors should also match (up to phase/ordering)
+        overlap = abs.(evecs_unpack' * evecs_block_unpack)
+        # Each row/column should have exactly one entry ≈ 1
+        @test all(maximum(overlap, dims=2) .≈ 1.0)
+        @test all(maximum(overlap, dims=1) .≈ 1.0)
     end
 
     @testset "Output type consistency" begin

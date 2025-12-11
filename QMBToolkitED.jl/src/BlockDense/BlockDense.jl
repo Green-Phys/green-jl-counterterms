@@ -77,7 +77,7 @@ n_up = c[1]' * c[1]
 
 ## Eigenvalue decomposition utilities
 - `get_full_eigenvalues` - Extract all eigenvalues from BlockEigenResult
-- `get_full_eigenvectors_sparse` - Extract all eigenvectors in global basis
+- `get_full_eigenvectors` - Extract all eigenvectors in global basis
 """
 module BlockDense
 
@@ -145,6 +145,6 @@ export calculate_green_matsubara_blockdense # Green's function (Matsubara)
 
 # Eigenvalue decomposition results
 export BlockEigenResult
-export get_full_eigenvalues, get_full_eigenvectors_sparse
+export get_full_eigenvalues, get_full_eigenvectors
 
 end # module BlockDense

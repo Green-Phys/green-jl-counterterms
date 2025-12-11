@@ -5,37 +5,23 @@ Provides a consistent API that works with both implementations, allowing users
 to choose the backend via the `method` keyword argument.
 """
 
-# Abstract type for solver results
-abstract type AbstractSolverResult end
-
-"""
-    DenseSolverResult
-
-Result of dense diagonalization.
-Wraps the eigenvalues and eigenvectors.
-"""
-struct DenseSolverResult <: AbstractSolverResult
-    evals::Vector{Float64}
-    evecs::Matrix{ComplexF64}
-end
-
 # Helper to get standard (evals, evecs) from any result
-function get_result_tuple(res::DenseSolverResult)
-    return res.evals, res.evecs
+function get_result_tuple(res::Dense.DenseEigenResult)
+    return Dense.get_eigenvalues(res), Dense.get_eigenvectors(res)
 end
 
 function get_result_tuple(res::BlockDense.BlockEigenResult)
     evals = BlockDense.get_full_eigenvalues(res)
-    evecs = BlockDense.get_full_eigenvectors_sparse(res)
+    evecs = BlockDense.get_full_eigenvectors(res)
     perm = sortperm(evals)
     return evals[perm], evecs[:, perm]
 end
 
 # Make results iterable to support destructuring: evals, evecs = result
-Base.iterate(res::DenseSolverResult) = Base.iterate(get_result_tuple(res))
-Base.iterate(res::DenseSolverResult, state) = Base.iterate(get_result_tuple(res), state)
-Base.length(::DenseSolverResult) = 2
-Base.eltype(::Type{DenseSolverResult}) = Any
+Base.iterate(res::Dense.DenseEigenResult) = Base.iterate(get_result_tuple(res))
+Base.iterate(res::Dense.DenseEigenResult, state) = Base.iterate(get_result_tuple(res), state)
+Base.length(::Dense.DenseEigenResult) = 2
+Base.eltype(::Type{Dense.DenseEigenResult}) = Any
 
 # Explicitly add iteration for BlockEigenResult (duck typing)
 Base.iterate(res::BlockDense.BlockEigenResult) = Base.iterate(get_result_tuple(res))
@@ -146,9 +132,9 @@ Arguments:
 - `method::Symbol`: `:auto` (detect from type), `:dense`, or `:blockdense`
 
 Returns:
-- `AbstractSolverResult`: A result object (`DenseSolverResult` or `BlockEigenResult`).
+- `AbstractSolverResult`: A result object (`DenseEigenResult` or `BlockEigenResult`).
   This object is iterable, allowing destructuring into `(evals, evecs)` for backward compatibility.
-  
+
   - `evals::Vector{Float64}`: Eigenvalues
   - `evecs::Matrix{ComplexF64}`: Eigenvectors
 
@@ -167,8 +153,7 @@ evals, evecs = result          # Destructuring works (less efficient for Green's
 """
 function solve_hamiltonian(H::Union{Matrix, SparseMatrixCSC}; method::Symbol=:auto)
     if method == :auto || method == :dense
-        evals, evecs = Dense.solve_hamiltonian_dense(H)
-        return DenseSolverResult(evals, evecs)
+        return Dense.solve_hamiltonian_dense(H)
     else
         error("Hamiltonian is Matrix/SparseMatrixCSC, use method=:dense or method=:auto")
     end
@@ -190,14 +175,16 @@ Unified interface for calculating imaginary-time Green's function.
 Dispatches to correct backend based on result type.
 """
 function calculate_green_tau(
-    result::DenseSolverResult,
+    result::Dense.DenseEigenResult,
     annh_ops::Vector{Matrix{ComplexF64}},
     beta::Real,
     n_tau::Int,
     i::Int,
     j::Int
 )
-    return Dense.calculate_green_tau_dense(result.evals, result.evecs, annh_ops, beta, n_tau, i, j)
+    evals = Dense.get_eigenvalues(result)
+    evecs = Dense.get_eigenvectors(result)
+    return Dense.calculate_green_tau_dense(evals, evecs, annh_ops, beta, n_tau, i, j)
 end
 
 function calculate_green_tau(
@@ -230,14 +217,16 @@ end
 Unified interface for calculating Matsubara Green's function.
 """
 function calculate_green_matsubara(
-    result::DenseSolverResult,
+    result::Dense.DenseEigenResult,
     annh_ops::Vector{Matrix{ComplexF64}},
     beta::Real,
     n_matsubara::Int,
     i::Int,
     j::Int
 )
-    return Dense.calculate_green_matsubara_dense(result.evals, result.evecs, annh_ops, beta, n_matsubara, i, j)
+    evals = Dense.get_eigenvalues(result)
+    evecs = Dense.get_eigenvectors(result)
+    return Dense.calculate_green_matsubara_dense(evals, evecs, annh_ops, beta, n_matsubara, i, j)
 end
 
 function calculate_green_matsubara(

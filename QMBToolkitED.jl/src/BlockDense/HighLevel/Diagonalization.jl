@@ -35,14 +35,14 @@ function get_full_eigenvalues(result::BlockEigenResult)
 end
 
 """
-    get_full_eigenvectors_sparse(result::BlockEigenResult) -> Matrix{ComplexF64}
+    get_full_eigenvectors(result::BlockEigenResult) -> Matrix{ComplexF64}
 
-Get all eigenvectors in the global (sparse) basis.
+Get all eigenvectors in the full Hilbert space basis.
 
-Each column is an eigenvector in the full Hilbert space.
-Eigenvectors within a sector are placed at the appropriate global indices.
+Each column is an eigenvector in the full (global) basis.
+Eigenvectors from each sector are placed at the appropriate global indices.
 """
-function get_full_eigenvectors_sparse(result::BlockEigenResult)
+function get_full_eigenvectors(result::BlockEigenResult)
     basis = result.basis
     total_dim = basis.total_dim
     num_evals = sum(length(evals) for evals in result.sector_eigenvalues)

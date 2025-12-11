@@ -56,4 +56,8 @@ export solve_hamiltonian_dense
 export calculate_green_tau_dense
 export calculate_green_matsubara_dense
 
+# Eigenvalue decomposition results
+export DenseEigenResult
+export get_eigenvalues, get_eigenvectors
+
 end # module Dense

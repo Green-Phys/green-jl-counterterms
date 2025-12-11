@@ -29,9 +29,11 @@ evals, evecs = solve_hamiltonian(H)
 
 # Module Structure
 
-- `Operators.jl` - Fermionic operator construction
+## HighLevel/ - High-level API matching QMBToolkitED interface
+- `Constructors.jl` - Fermionic operator construction
 - `Hamiltonian.jl` - Hamiltonian building from input files
 - `Diagonalization.jl` - Eigenvalue decomposition
+- `Greens.jl` - Green's function calculations
 
 # Exported Functions
 
@@ -43,10 +45,14 @@ module Dense
 
 using LinearAlgebra
 
-include("Operators.jl")
-include("Hamiltonian.jl")
-include("Diagonalization.jl")
-include("Greens.jl")
+# ============================================================================
+# High-Level API
+# ============================================================================
+
+include("HighLevel/Constructors.jl")
+include("HighLevel/Hamiltonian.jl")
+include("HighLevel/Diagonalization.jl")
+include("HighLevel/Greens.jl")
 
 # Exports
 export get_annihilators_dense

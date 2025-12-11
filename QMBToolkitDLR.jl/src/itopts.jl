@@ -12,7 +12,7 @@ struct KernelCache
 end
 
 """
-    ConvolutionWorkspace
+    ConvolutionWorkspace{T<:Number}
 
 Pre-allocated workspace buffers for do_convolution_dlr2tau.
 Reusing these buffers across multiple convolution calls eliminates ~1.4 GB
@@ -26,19 +26,19 @@ of allocations per call.
 - `H1_tau`: Buffer for tau-space result of H1 (n_tau × o1 × o2)
 - `H2_tau`: Buffer for tau-space result of H2 (n_tau × o1 × o2)
 """
-struct ConvolutionWorkspace
-    H1_dlr::Array{Float64,3}
-    H2_dlr::Array{Float64,3}
-    term1::Array{Float64,2}
-    term2::Array{Float64,2}
-    H1_tau::Array{Float64,3}
-    H2_tau::Array{Float64,3}
+struct ConvolutionWorkspace{T<:Number}
+    H1_dlr::Array{T,3}
+    H2_dlr::Array{T,3}
+    term1::Array{T,2}
+    term2::Array{T,2}
+    H1_tau::Array{T,3}
+    H2_tau::Array{T,3}
 end
 
 """
     ConvolutionWorkspace(r::Int, o1::Int, o2::Int, n_tau::Int)
 
-Create a workspace for convolution operations with given dimensions.
+Create a workspace for convolution operations with given dimensions (defaults to Float64).
 
 # Arguments
 - `r`: DLR rank (number of DLR coefficients)
@@ -47,13 +47,35 @@ Create a workspace for convolution operations with given dimensions.
 - `n_tau`: Number of tau grid points
 """
 function ConvolutionWorkspace(r::Int, o1::Int, o2::Int, n_tau::Int)
-    return ConvolutionWorkspace(
+    return ConvolutionWorkspace{Float64}(
         zeros(Float64, r, o1, o2),
         zeros(Float64, r, o1, o2),
         zeros(Float64, o1, o2),
         zeros(Float64, o1, o2),
         zeros(Float64, n_tau, o1, o2),
         zeros(Float64, n_tau, o1, o2)
+    )
+end
+
+"""
+    ConvolutionWorkspace{T}(r::Int, o1::Int, o2::Int, n_tau::Int) where T<:Number
+
+Create a workspace for convolution operations with specified numeric type.
+
+# Arguments
+- `r`: DLR rank (number of DLR coefficients)
+- `o1`: First orbital dimension
+- `o2`: Second orbital dimension
+- `n_tau`: Number of tau grid points
+"""
+function ConvolutionWorkspace{T}(r::Int, o1::Int, o2::Int, n_tau::Int) where T<:Number
+    return ConvolutionWorkspace{T}(
+        zeros(T, r, o1, o2),
+        zeros(T, r, o1, o2),
+        zeros(T, o1, o2),
+        zeros(T, o1, o2),
+        zeros(T, n_tau, o1, o2),
+        zeros(T, n_tau, o1, o2)
     )
 end
 
@@ -124,21 +146,21 @@ function do_convolution_dlr2tau(dlr_grid::DLRGrid, kernel_cache::KernelCache, F_
 end
 
 """
-    do_convolution_dlr2tau!(workspace::ConvolutionWorkspace, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::Array{Float64,3}, G_dlr::Array{Float64,3})
+    do_convolution_dlr2tau!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::Array{T,3}, G_dlr::Array{T,3}) where T<:Number
 
 In-place version using pre-allocated workspace buffers.
 Eliminates ~1.4 GB of allocations per call by reusing workspace.
 
 This is the most optimized version. Create workspace once and reuse across calls.
 """
-function do_convolution_dlr2tau!(workspace::ConvolutionWorkspace, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::Array{Float64,3}, G_dlr::Array{Float64,3})
+function do_convolution_dlr2tau!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::Array{T,3}, G_dlr::Array{T,3}) where T<:Number
     r = size(F_dlr, 1)
     o1 = size(F_dlr, 2)
     o2 = size(F_dlr, 3)
 
     # Clear workspace buffers
-    fill!(workspace.H1_dlr, 0.0)
-    fill!(workspace.H2_dlr, 0.0)
+    fill!(workspace.H1_dlr, zero(T))
+    fill!(workspace.H2_dlr, zero(T))
 
     # Compute H1_dlr using workspace
     @inbounds for j in 1:r
@@ -147,8 +169,8 @@ function do_convolution_dlr2tau!(workspace::ConvolutionWorkspace, dlr_grid::DLRG
 
     # Compute H2_dlr using workspace with in-place operations
     @inbounds for j in 1:r
-        fill!(workspace.term1, 0.0)
-        fill!(workspace.term2, 0.0)
+        fill!(workspace.term1, zero(T))
+        fill!(workspace.term2, zero(T))
 
         # Accumulate terms without broadcasting allocations
         for k in 1:r
@@ -173,12 +195,12 @@ function do_convolution_dlr2tau!(workspace::ConvolutionWorkspace, dlr_grid::DLRG
     return H_tau
 end
 
-""" 
+"""
     Perform reflection operation: F(τ) = H(β - τ)
     where F is represented in the DLR basis, which is an Array of size (r,o1,o2).
     return the results on the DLR tau grid as an Array of size (r, o1, o2).
 """
-function do_reflection_dlr2tau(dlr_grid::DLRGrid, H_dlr::Array{Float64,3})
+function do_reflection_dlr2tau(dlr_grid::DLRGrid, H_dlr::Array{T,3}) where T<:Number
     tau_grid_reflected = dlr_grid.beta .- dlr_grid.tau
     F_tau = dlr2tau(dlr_grid, H_dlr, tau_grid_reflected)
     return F_tau
@@ -186,7 +208,7 @@ end
 
 
 # TODO: implement the more efficient version working directly in DLR representation
-function do_reflection_tau2tau(dlr_grid::DLRGrid, H_tau::Array{Float64,3})
+function do_reflection_tau2tau(dlr_grid::DLRGrid, H_tau::Array{T,3}) where T<:Number
     H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.tau)
     return do_reflection_dlr2tau(dlr_grid, H_dlr)
 end
@@ -195,8 +217,8 @@ end
 """
     Perform multiplication in DLR representation: H(tau) = F(tau) * G(tau)
 """
-function do_multiplication_tau2tau(F_tau::Array{Float64,3}, G_tau::Array{Float64,3})
-    H_tau = zeros(Float64, size(F_tau))
+function do_multiplication_tau2tau(F_tau::Array{T,3}, G_tau::Array{T,3}) where T<:Number
+    H_tau = zeros(T, size(F_tau))
     for k in 1:size(F_tau, 1)
         H_tau[k, :, :] = F_tau[k, :, :] * G_tau[k, :, :]
     end

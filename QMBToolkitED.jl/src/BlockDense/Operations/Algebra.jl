@@ -48,28 +48,65 @@ function Base.:*(A::BlockDenseOperator, B::BlockDenseOperator)
     # Storage for result blocks
     result_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
 
-    # For each potential (target, source) pair in result:
-    # result[target, source] = Σ_mid A[target, mid] * B[mid, source]
+    # Index B blocks by their "target" (mid) sector for O(1) lookup
+    # B.blocks keys are (mid, src). We want to look up by 'mid'.
+    B_by_mid = Dict{Int, Vector{Tuple{Int, Matrix{ComplexF64}}}}()
+    for ((mid, src), B_block) in B.blocks
+        if !haskey(B_by_mid, mid)
+            B_by_mid[mid] = Tuple{Int, Matrix{ComplexF64}}[]
+        end
+        push!(B_by_mid[mid], (src, B_block))
+    end
 
-    # Strategy: iterate over A's blocks and B's blocks
-    # If A connects (tgt, mid) and B connects (mid, src), contribute to result[tgt, src]
-
-    for ((a_tgt, a_mid), A_block) in A.blocks
-        for ((b_mid, b_src), B_block) in B.blocks
-            # Check if intermediate sectors match
-            if a_mid == b_mid
-                # This pair contributes to result[a_tgt, b_src]
-                key = (a_tgt, b_src)
-
-                # Compute contribution: A_block * B_block
-                contrib = A_block * B_block
-
-                # Add to result (accumulate if key already exists)
-                if haskey(result_blocks, key)
-                    result_blocks[key] += contrib
-                else
-                    result_blocks[key] = contrib
+    # Phase 1: Allocate result blocks
+    # Identify all (tgt, src) pairs that will be non-zero
+    for ((tgt, mid), _) in A.blocks
+        if haskey(B_by_mid, mid)
+            for (src, _) in B_by_mid[mid]
+                key = (tgt, src)
+                if !haskey(result_blocks, key)
+                    # Allocate zero matrix of correct size
+                    dim_tgt = size(A.blocks[(tgt, mid)], 1)
+                    dim_src = size(B.blocks[(mid, src)], 2) # Access B via B.blocks to be safe/clean? No, B_block is available in loop if we restructure
+                    # Wait, B_by_mid stores B_block.
+                    # We can't easily access B dimensions in this loop without the block itself.
+                    # Let's just allocate on first encounter in the main loop, but optimize the lookups.
+                    
+                    # Actually, the "Allocate on first encounter" pattern in the previous version IS the standard way.
+                    # Separating allocation requires iterating twice.
+                    # Let's stick to the single pass but optimize the inner loop slightly.
                 end
+            end
+        end
+    end
+    
+    # Let's retry the "Allocate First" strategy properly
+    # We need the dimensions.
+    
+    # 1. Identify active keys and allocate
+    for ((tgt, mid), A_block) in A.blocks
+        if haskey(B_by_mid, mid)
+            for (src, B_block) in B_by_mid[mid]
+                key = (tgt, src)
+                if !haskey(result_blocks, key)
+                    # Allocate
+                    result_blocks[key] = zeros(ComplexF64, size(A_block, 1), size(B_block, 2))
+                end
+            end
+        end
+    end
+
+    # 2. Compute and accumulate
+    # Now we know all keys exist, so we can skip haskey check? 
+    # No, we still need to find the specific blocks to multiply.
+    
+    for ((tgt, mid), A_block) in A.blocks
+        if haskey(B_by_mid, mid)
+            for (src, B_block) in B_by_mid[mid]
+                key = (tgt, src)
+                # In-place accumulation
+                # result += A * B
+                mul!(result_blocks[key], A_block, B_block, 1.0, 1.0)
             end
         end
     end
@@ -78,6 +115,82 @@ function Base.:*(A::BlockDenseOperator, B::BlockDenseOperator)
     filter!(((key, block),) -> !iszero(block), result_blocks)
 
     return BlockDenseOperator(A.basis, result_flux, result_blocks)
+end
+
+"""
+    Base.sum(ops::Vector{BlockDenseOperator}) -> BlockDenseOperator
+
+Efficiently sum a vector of block-dense operators.
+
+This optimization avoids intermediate allocations by determining the full structure
+of the result first and then accumulating blocks in-place.
+
+Arguments:
+- `ops::Vector{BlockDenseOperator}`: List of operators to sum
+
+Returns:
+- `BlockDenseOperator`: Sum of all operators
+
+Requirements:
+- All operators must act on the same basis
+- All operators must have the same flux
+"""
+function Base.sum(ops::Vector{BlockDenseOperator})
+    isempty(ops) && error("Cannot sum empty list of operators")
+    length(ops) == 1 && return ops[1]
+
+    # Verify basis and flux consistency
+    basis = ops[1].basis
+    flux = ops[1].flux
+    for i in 2:length(ops)
+        @assert ops[i].basis === basis "Operators must act on same basis"
+        @assert ops[i].flux.delta_qn == flux.delta_qn "Operators must have same flux to be added"
+    end
+
+    # Collect all unique block keys (target, source) present in any operator
+    # and pre-calculate the final block structure
+    # This avoids resizing dictionaries repeatedly
+    all_keys = Set{Tuple{Int,Int}}()
+    for op in ops
+        for key in keys(op.blocks)
+            push!(all_keys, key)
+        end
+    end
+
+    # Initialize result blocks
+    result_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
+    
+    # Iterate over all possible keys
+    for key in all_keys
+        (tgt, src) = key
+        dim_tgt = basis.sectors[tgt].dim
+        dim_src = basis.sectors[src].dim
+        
+        # Initialize accumulator for this block
+        # We start with zero matrix
+        acc = zeros(ComplexF64, dim_tgt, dim_src)
+        
+        # Accumulate contributions from all operators that have this block
+        is_nonzero = false
+        for op in ops
+            if haskey(op.blocks, key)
+                # acc .+= op.blocks[key]
+                # Use broadcast for in-place addition
+                acc .+= op.blocks[key]
+                is_nonzero = true
+            end
+        end
+        
+        # Store if non-zero (or even if zero, but typically we store non-zeros)
+        # Here we only store if at least one operator had a block there. 
+        # Ideally we should check if `acc` itself is zero, but standard sparse logic
+        # often keeps structural non-zeros. Let's check numerical zero to be cleaner.
+        if is_nonzero && !iszero(acc)
+            result_blocks[key] = acc
+        end
+    end
+
+    return BlockDenseOperator(basis, flux, result_blocks)
 end
 
 """

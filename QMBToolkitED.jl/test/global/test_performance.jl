@@ -2,23 +2,24 @@
 Performance Benchmark Tests
 
 Compares Dense vs BlockDense performance on moderately-sized systems.
+Includes benchmarks for:
+1. Diagonalization (Eigen decomposition)
+2. Operator Multiplication
 """
 
 using Test
 using QMBToolkitED
 using QMBToolkitED.BlockDense
+using LinearAlgebra
+using Printf
 
-@testset "Performance Benchmark" begin
-    # 6 sites = 12 orbitals (spinful) -> 2^12 = 4096 states
-    n_sites = 6
-    n_flavors = 2 * n_sites
-    t = 1.0
-    U = 4.0
-
+# Helper to generate 1D Hubbard model inputs
+function generate_hubbard_1d(n_sites::Int, t::Float64, U::Float64)
     # Construct inputs
     hopping_io = IOBuffer()
     for i in 0:(n_sites-2)
         # Hopping between i and i+1
+        # Use simple string concatenation instead of @printf into buffer for simplicity
         println(hopping_io, "$(2*i) $(2*(i+1)) $(-t) 0.0")
         println(hopping_io, "$(2*(i+1)) $(2*i) $(-t) 0.0")
         println(hopping_io, "$(2*i+1) $(2*(i+1)+1) $(-t) 0.0")
@@ -32,96 +33,153 @@ using QMBToolkitED.BlockDense
     coulomb_io = IOBuffer()
     println(coulomb_io, "$n_sites")
     for i in 0:(n_sites-1)
+        # Coulomb U * n_up * n_down
         println(coulomb_io, "$i $(2*i) $(2*i+1) $(2*i+1) $(2*i) $U 0.0")
     end
 
-    hopping_str = String(take!(hopping_io))
-    coulomb_str = String(take!(coulomb_io))
+    return String(take!(hopping_io)), String(take!(coulomb_io))
+end
 
-    println("\n--- Performance Benchmark: 1D Hubbard Chain ($n_sites sites, $n_flavors orbitals) ---")
-    println("Hilbert Space Dimension: $(2^n_flavors)")
+@testset "Performance Benchmark" begin
 
-    # Theoretical estimate
-    site_qns = [QN_NSz(1, isodd(i) ? 1 : -1) for i in 1:n_flavors]
-    basis = make_basis(site_qns)
+    # Shared Parameters
+    t = 1.0
+    U = 4.0
 
-    total_dim = 2^n_flavors
-    sum_dim_cubed = sum(Float64(s.dim)^3 for s in basis.sectors)
-    theory_speedup = (Float64(total_dim)^3) / sum_dim_cubed
-    println("Theoretical Speedup (sum d_i^3 vs D^3): $(round(theory_speedup, digits=2))x")
+    @testset "Diagonalization Benchmark" begin
+        # System: 4 sites (8 orbitals) -> 2^8 = 256 states
+        # Small enough for fast Dense diag, good for comparison
+        n_sites = 4
+        n_flavors = 2 * n_sites
+        dim = 2^n_flavors
+        
+        hop_str, coul_str = generate_hubbard_1d(n_sites, t, U)
 
-    # BlockDense timing
-    H_block, _ = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str); method=:blockdense, basis=basis)
+        @printf("\n%s\n", "="^60)
+        @printf("BENCHMARK: Diagonalization (Full Spectrum)\n")
+        @printf("System: 1D Hubbard Chain (%d sites, %d orbitals)\n", n_sites, n_flavors)
+        @printf("Hilbert Space Dimension: %d\n", dim)
+        @printf("%s\n", "-"^60)
+        @printf("%--15s | %-12s | %-12s\n", "Method", "Time (ms)", "Memory (MB)")
+        @printf("%s\n", "-"^60)
 
-    println("Running BlockDense diagonalization...")
-    solve_hamiltonian(H_block)  # Compile run
+        # --- Dense Method ---
+        H_dense, _ = build_hamiltonian(IOBuffer(hop_str), IOBuffer(coul_str); method=:dense)
+        
+        # Warmup
+        solve_hamiltonian(H_dense)
+        
+        # Benchmark
+        stats_dense = @timed solve_hamiltonian(H_dense)
+        t_dense = stats_dense.time * 1000
+        m_dense = stats_dense.bytes / 1024^2
+        
+        @printf("%--15s | %12.4f | %12.2f\n", "Dense", t_dense, m_dense)
 
-    stats_block = @timed solve_hamiltonian(H_block)
-    time_block = stats_block.time
-    mem_block = stats_block.bytes / 1024^2
+        # --- BlockDense Method ---
+        site_qns = [QN_NSz(1, isodd(i) ? 1 : -1) for i in 1:n_flavors]
+        basis = make_basis(site_qns)
+        H_block, _ = build_hamiltonian(IOBuffer(hop_str), IOBuffer(coul_str); method=:blockdense, basis=basis)
+        
+        # Warmup
+        solve_hamiltonian(H_block)
+        
+        # Benchmark
+        stats_block = @timed solve_hamiltonian(H_block)
+        t_block = stats_block.time * 1000
+        m_block = stats_block.bytes / 1024^2
+        
+        @printf("%--15s | %12.4f | %12.2f\n", "BlockDense", t_block, m_block)
+        @printf("%s\n", "-"^60)
+        
+        # Calculate comparison metrics
+        speedup = t_dense / t_block
+        mem_saving = m_dense / m_block
+        
+        # Theoretical speedup calculation
+        sum_dim_cubed = sum(Float64(s.dim)^3 for s in basis.sectors)
+        theory_speedup = (Float64(dim)^3) / sum_dim_cubed
 
-    println("BlockDense: $(round(time_block, digits=4)) s, $(round(mem_block, digits=2)) MB")
+        # Theoretical memory saving calculation
+        sum_dim_squared = sum(Float64(s.dim)^2 for s in basis.sectors)
+        theory_mem_saving = (Float64(dim)^2) / sum_dim_squared
 
-    # Comparative benchmark with smaller system
-    n_sites_comp = 4
-    n_flavors_comp = 2 * n_sites_comp
-    println("\n--- Comparative Benchmark: 1D Hubbard Chain ($n_sites_comp sites, $n_flavors_comp orbitals) ---")
-    println("Hilbert Space Dimension: $(2^n_flavors_comp) ($(2^n_flavors_comp))")
-
-    # Generate inputs for smaller system
-    hopping_io_comp = IOBuffer()
-    for i in 0:(n_sites_comp-2)
-        println(hopping_io_comp, "$(2*i) $(2*(i+1)) $(-t) 0.0")
-        println(hopping_io_comp, "$(2*(i+1)) $(2*i) $(-t) 0.0")
-        println(hopping_io_comp, "$(2*i+1) $(2*(i+1)+1) $(-t) 0.0")
-        println(hopping_io_comp, "$(2*(i+1)+1) $(2*i+1) $(-t) 0.0")
+        @printf("%--15s | %-12s | %-12s\n", "Metric", "Actual", "Theoretical")
+        @printf("%s\n", "-"^60)
+        @printf("%--15s | %11.2fx | %11.2fx\n", "Speedup", speedup, theory_speedup)
+        @printf("%--15s | %11.2fx | %11.2fx\n", "Memory Saving", mem_saving, theory_mem_saving)
+        @printf("%s\n", "="^60)
+        
+        @test speedup > 1.0
     end
-    for i in 0:(2*n_sites_comp-1)
-        println(hopping_io_comp, "$i $i $(-U/2) 0.0")
+
+    @testset "Operator Multiplication Benchmark" begin
+        # System: 4 sites (8 orbitals) -> 2^8 = 256 states
+        # Use matrix-matrix multiplication (H * H) as proxy for complex operations
+        n_sites = 4
+        n_flavors = 2 * n_sites
+        dim = 2^n_flavors
+        
+        hop_str, coul_str = generate_hubbard_1d(n_sites, t, U)
+
+        @printf("\n%s\n", "="^60)
+        @printf("BENCHMARK: Operator Multiplication (H * H)\n")
+        @printf("System: 1D Hubbard Chain (%d sites, %d orbitals)\n", n_sites, n_flavors)
+        @printf("Hilbert Space Dimension: %d\n", dim)
+        @printf("%s\n", "-"^60)
+        @printf("%--15s | %-12s | %-12s\n", "Method", "Time (ms)", "Memory (MB)")
+        @printf("%s\n", "-"^60)
+
+        # --- Dense Method ---
+        # Note: We construct Dense H but avoid full diagonalization as it might be slow
+        # We focus on multiplication H * H
+        H_dense, _ = build_hamiltonian(IOBuffer(hop_str), IOBuffer(coul_str); method=:dense)
+        
+        # Warmup
+        _ = H_dense * H_dense
+        
+        # Benchmark
+        stats_dense = @timed (H_dense * H_dense)
+        t_dense = stats_dense.time * 1000
+        m_dense = stats_dense.bytes / 1024^2
+        
+        @printf("%--15s | %12.4f | %12.2f\n", "Dense", t_dense, m_dense)
+
+        # --- BlockDense Method ---
+        site_qns = [QN_NSz(1, isodd(i) ? 1 : -1) for i in 1:n_flavors]
+        basis = make_basis(site_qns)
+        H_block, _ = build_hamiltonian(IOBuffer(hop_str), IOBuffer(coul_str); method=:blockdense, basis=basis)
+        
+        # Warmup
+        _ = H_block * H_block
+        
+        # Benchmark
+        stats_block = @timed (H_block * H_block)
+        t_block = stats_block.time * 1000
+        m_block = stats_block.bytes / 1024^2
+        
+        @printf("%--15s | %12.4f | %12.2f\n", "BlockDense", t_block, m_block)
+        @printf("%s\n", "-"^60)
+        
+        # Calculate comparison metrics
+        speedup = t_dense / t_block
+        mem_saving = m_dense / m_block
+        
+        # Theoretical speedup calculation
+        sum_dim_cubed = sum(Float64(s.dim)^3 for s in basis.sectors)
+        theory_speedup = (Float64(dim)^3) / sum_dim_cubed
+
+        # Theoretical memory saving calculation
+        sum_dim_squared = sum(Float64(s.dim)^2 for s in basis.sectors)
+        theory_mem_saving = (Float64(dim)^2) / sum_dim_squared
+
+        @printf("%--15s | %-12s | %-12s\n", "Metric", "Actual", "Theoretical")
+        @printf("%s\n", "-"^60)
+        @printf("%--15s | %11.2fx | %11.2fx\n", "Speedup", speedup, theory_speedup)
+        @printf("%--15s | %11.2fx | %11.2fx\n", "Memory Saving", mem_saving, theory_mem_saving)
+        @printf("%s\n", "="^60)
+
+        @test speedup > 1.0
     end
-    coulomb_io_comp = IOBuffer()
-    println(coulomb_io_comp, "$n_sites_comp")
-    for i in 0:(n_sites_comp-1)
-        println(coulomb_io_comp, "$i $(2*i) $(2*i+1) $(2*i+1) $(2*i) $U 0.0")
-    end
 
-    hop_str_c = String(take!(hopping_io_comp))
-    coul_str_c = String(take!(coulomb_io_comp))
-
-    # Dense run
-    H_dense_c, _ = build_hamiltonian(IOBuffer(hop_str_c), IOBuffer(coul_str_c))
-    println("Running Dense diagonalization...")
-    solve_hamiltonian(H_dense_c)  # Compile
-    stats_dense = @timed solve_hamiltonian(H_dense_c)
-
-    # BlockDense run
-    site_qns_c = [QN_NSz(1, isodd(i) ? 1 : -1) for i in 1:n_flavors_comp]
-    basis_c = make_basis(site_qns_c)
-    H_block_c, _ = build_hamiltonian(IOBuffer(hop_str_c), IOBuffer(coul_str_c); method=:blockdense, basis=basis_c)
-    println("Running BlockDense diagonalization...")
-    solve_hamiltonian(H_block_c)  # Compile
-    stats_block_c = @timed solve_hamiltonian(H_block_c)
-
-    # Results
-    t_dense = stats_dense.time
-    t_block = stats_block_c.time
-    m_dense = stats_dense.bytes / 1024^2
-    m_block = stats_block_c.bytes / 1024^2
-
-    println("Dense:      $(round(t_dense, digits=4)) s, $(round(m_dense, digits=2)) MB")
-    println("BlockDense: $(round(t_block, digits=4)) s, $(round(m_block, digits=2)) MB")
-
-    speedup = t_dense / t_block
-    mem_saving = m_dense / m_block
-
-    println("Speedup: $(round(speedup, digits=2))x")
-    println("Memory Saving: $(round(mem_saving, digits=2))x")
-
-    # Theoretical speedup for comparative benchmark
-    total_dim_c = 2^n_flavors_comp
-    sum_dim_cubed_c = sum(Float64(s.dim)^3 for s in basis_c.sectors)
-    theory_speedup_comp = (Float64(total_dim_c)^3) / sum_dim_cubed_c
-    println("Theoretical Speedup (N=$(n_flavors_comp)): $(round(theory_speedup_comp, digits=2))x")
-
-    @test speedup > 1.0  # Should be faster
 end

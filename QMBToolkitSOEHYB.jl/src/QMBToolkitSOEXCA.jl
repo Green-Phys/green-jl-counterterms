@@ -3,6 +3,7 @@ module QMBToolkitSOEXCA
 using MPI
 
 include("util/Params.jl")
+include("solver/Representation.jl")
 include("solver/Data.jl")
 include("util/io.jl")
 include("util/init_data.jl")
@@ -11,6 +12,16 @@ include("solver/solve.jl")
 include("diagram/DiagramStructure.jl")
 include("diagram/print_diagram.jl")
 include("diagram/gen_common.jl")
+
+# Dense operations (current implementation)
+include("dense/operator_ops.jl")
+include("dense/hybridization.jl")
+include("dense/convolution_eval.jl")
+include("dense/propagator.jl")
+
+# BlockDense stubs (Phase 5 will implement)
+include("blockdense/stubs.jl")
+
 include("diagram/eval_common.jl")
 include("diagram/gen_eval_propagator.jl")
 include("diagram/gen_eval_green.jl")

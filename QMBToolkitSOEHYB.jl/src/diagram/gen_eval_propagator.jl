@@ -1,31 +1,30 @@
-# Propagator diagram for bare expansion
+# Propagator diagram generation and evaluation for bare expansion
+#
+# This file contains format-independent diagram generation functions.
+# Format-specific evaluation is in src/dense/propagator.jl and src/blockdense/propagator.jl
+
 using MPI
 
 """
-    PropagatorConvolutionBuffers{T}
+    gen_propagator_given_order(expansion_order, n_flavors, exponents)
 
-Buffers for propagator backbone convolution calculations.
-Reused across diagrams to avoid allocations during convolution operations.
+Generate all propagator diagrams for a given expansion order.
 
-# Fields
-- `operator_product_buffer`: General-purpose buffer for operator multiplications
-- `backbone_accumulator`: Accumulates the backbone result through multiplication and convolution
-- `convolution_operand_buffer`: Prepares the operand for convolution operations
+This function is format-independent - it only generates diagram structure/topology.
+
+# Arguments
+- `expansion_order::Int`: Order of the expansion (number of hybridization line pairs)
+- `n_flavors::Int`: Number of fermion flavors
+- `exponents::Vector{Float64}`: SOE exponents for hybridization decomposition
+
+# Returns
+- `Array{BackBone,3}`: Array of diagrams with dimensions (topology, flavor_combination, soe_combination)
+
+# Algorithm
+1. Generate all distinct pairing topologies with crossing counts
+2. For each topology, generate all flavor and SOE combinations
+3. Stack all results into a single array
 """
-struct PropagatorConvolutionBuffers{T<:Number}
-    operator_product_buffer::Array{T,3}
-    backbone_accumulator::Array{T,3}
-    convolution_operand_buffer::Array{T,3}
-end
-
-function PropagatorConvolutionBuffers{T}(n_tau::Int, n_fock::Int) where T<:Number
-    return PropagatorConvolutionBuffers{T}(
-        zeros(T, n_tau, n_fock, n_fock),
-        zeros(T, n_tau, n_fock, n_fock),
-        zeros(T, n_tau, n_fock, n_fock)
-    )
-end
-
 function gen_propagator_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64})
     pairings_with_crossings = _generate_pairings(expansion_order)
     diagrams_list = Vector{Array{BackBone,3}}()
@@ -38,10 +37,31 @@ function gen_propagator_given_order(expansion_order::Int, n_flavors::Int, expone
     return diagrams
 end
 
+"""
+    gen_propagator_given_topology(M, connected_pairs, crossing_parity, n_flavors, exponents)
+
+Generate all diagrams for a fixed topology (pairing structure).
+
+This function is format-independent - it only generates diagram structure.
+
+# Arguments
+- `M::Int`: Total number of nodes (M = 2 + 2*expansion_order)
+- `connected_pairs::Vector{Tuple{Int,Int}}`: Pairs of nodes connected by hybridization lines
+- `crossing_parity::Float64`: Sign factor from crossing count (-1)^(crossing_count)
+- `n_flavors::Int`: Number of fermion flavors
+- `exponents::Vector{Float64}`: SOE exponents
+
+# Returns
+- `Array{BackBone,3}`: Diagrams for this topology
+
+# Notes
+- Nodes 1 and M are empty boundary nodes
+- Internal nodes (2 to M-1) are paired according to connected_pairs
+- Uses `gen_diagram_combinations` to enumerate all flavor and SOE assignments
+"""
 function gen_propagator_given_topology(M::Int, connected_pairs::Vector{Tuple{Int,Int}}, crossing_parity::Float64, n_flavors::Int, exponents::Vector{Float64})
     external_opts_loc = Int[]
     empty_node = BackBoneNode(:empty, -1, -1, NoHyb())
-    p = length(exponents)
 
     # Validate connected_pairs structure
     @assert length(connected_pairs) == (M - 2) ÷ 2 "Number of connected pairs does not match M"
@@ -58,6 +78,61 @@ function gen_propagator_given_topology(M::Int, connected_pairs::Vector{Tuple{Int
 end
 
 
+"""
+    _generate_pairings(N)
+
+Generate all valid pairings for N pairs of points with crossing counts.
+
+This function is format-independent - it only generates combinatorial structure.
+
+# Arguments
+- `N::Int`: Number of hybridization line pairs (expansion order)
+
+# Returns
+- `Vector{Tuple{Vector{Tuple{Int,Int}}, Int}}`: Each element is (pairing, crossing_count)
+  - pairing: Vector of node pairs that are connected
+  - crossing_count: Number of line crossings in this pairing
+
+# Algorithm
+Points are labeled 2, 3, ..., 2N+1 (excluding boundary nodes 1 and 2N+2).
+Uses recursive enumeration (via `recurse_pairs`) to generate all valid pairings,
+then counts crossings for each (via `count_pair_crossings`).
+"""
+function _generate_pairings(N::Int)
+    # The set of points: 2, 3, ..., 2N+1
+    points = collect(2:(2*N+1))
+
+    # Generate all configurations using shared recurse_pairs function
+    all_configs = recurse_pairs(points)
+
+    # Map to (configuration, crossing_count) using shared count_pair_crossings function
+    return map(config -> (config, count_pair_crossings(config)), all_configs)
+end
+
+
+"""
+    eval_propagator_given_order!(solver_data, diagrams, comm)
+
+Evaluate all propagator diagrams at a given order and accumulate into solver_data.
+
+This is the format-independent wrapper that handles MPI distribution and accumulation.
+Format-specific evaluation is delegated to `allocate_propagator_buffers` and
+`eval_propagator_backbone`.
+
+# Arguments
+- `solver_data::SolverData{T}`: Solver data containing model and calculation results
+- `diagrams::Array{BackBone,4}`: All diagrams for this order
+- `comm::MPI.Comm`: MPI communicator for parallel evaluation
+
+# Side Effects
+- Updates `solver_data.calc.propagator.vals` by adding contributions from all diagrams
+
+# Parallelization
+- Diagrams are distributed across MPI ranks in round-robin fashion
+- Each rank evaluates its assigned diagrams and accumulates locally
+- Results are summed across all ranks using MPI.Allreduce
+- The global sum is added to the existing propagator values
+"""
 function eval_propagator_given_order!(solver_data::SolverData{T}, diagrams::Array{BackBone,4}, comm::MPI.Comm) where {T<:Number}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
@@ -68,25 +143,8 @@ function eval_propagator_given_order!(solver_data::SolverData{T}, diagrams::Arra
     # Create local accumulator for this rank's work (only for this order)
     local_result = zeros(T, size(solver_data.calc.propagator.vals))
 
-    # ============================================================================
-    # Buffer Allocation Strategy
-    # ============================================================================
-    # Pre-allocate work buffers that are reused across all diagram evaluations
-    # to avoid repeated allocations in the hot loop. All buffers are grouped in
-    # PropagatorConvolutionBuffers for clarity.
-    #
-    # Buffer reuse pattern:
-    # - operator_product_buffer: Used by apply_hybridization_inplace! and _multiplication_* functions
-    # - backbone_accumulator: Accumulates propagator result through multiplication_convolution
-    # - convolution_operand_buffer: Prepares the second operand for DLR convolutions
-    #
-    # Each diagram evaluation reuses the same buffers, overwriting previous values.
-    # This is safe because diagram contributions are accumulated into local_result
-    # after each evaluation completes.
-    # ============================================================================
-    n_tau = length(solver_data.model.dlr_grid.tau)
-    n_fock = solver_data.model.n_fock
-    buffers = PropagatorConvolutionBuffers{T}(n_tau, n_fock)
+    # Allocate format-specific buffers (dense vs blockdense)
+    buffers = allocate_propagator_buffers(solver_data)
 
     # Distribute diagrams across ranks: rank processes indices rank+1:nprocs:n_diagrams
     my_diagrams = rank+1:nprocs:n_diagrams
@@ -94,24 +152,13 @@ function eval_propagator_given_order!(solver_data::SolverData{T}, diagrams::Arra
     # Evaluate diagrams assigned to this rank
     for i in my_diagrams
         diagram = diagrams_flat[i]
-        backbone_0_to_tau = multiplication_convolution(diagram.nodes, diagram.edges, solver_data.model.dlr_grid, solver_data.model, solver_data.model.bare_propagator, buffers.operator_product_buffer, buffers.backbone_accumulator, buffers.convolution_operand_buffer)
+        # Format-specific backbone evaluation
+        contribution = eval_propagator_backbone(diagram, solver_data, buffers)
         prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
-        local_result .+= prefactor .* backbone_0_to_tau
+        local_result .+= prefactor .* contribution
     end
 
     # Sum results from all ranks for this order, then ADD to existing propagator values
     order_result = MPI.Allreduce(local_result, MPI.SUM, comm)
     solver_data.calc.propagator.vals .+= order_result
-end
-
-
-function _generate_pairings(N::Int)
-    # The set of points: 2, 3, ..., 2N+1
-    points = collect(2:(2*N+1))
-
-    # Generate all configurations using shared recurse_pairs function
-    all_configs = recurse_pairs(points)
-
-    # Map to (configuration, crossing_count) using shared count_pair_crossings function
-    return map(config -> (config, count_pair_crossings(config)), all_configs)
 end

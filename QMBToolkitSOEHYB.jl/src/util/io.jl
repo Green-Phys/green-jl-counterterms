@@ -65,11 +65,16 @@ function read_input(file_path::String)
         dict["solver"]["dlr"]["rtol"]
     )
 
+    # Read format (default to "dense" for backward compatibility)
+    format = get(dict["solver"], "format", "dense")
+    @assert format in ["dense", "blockdense"] "format must be 'dense' or 'blockdense', got: $format"
+
     solver_params = SolverParams(
         propagator_params,
         green_params,
         dlr_params,
-        output_path
+        output_path,
+        format
     )
 
     return Params(model_params, solver_params)

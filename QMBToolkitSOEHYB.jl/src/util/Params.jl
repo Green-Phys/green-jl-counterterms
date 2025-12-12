@@ -39,6 +39,7 @@ struct SolverParams
     green::GreenParams
     dlr::DLRParams
     output_path::String
+    format::String  # "dense" or "blockdense"
 end
 
 """

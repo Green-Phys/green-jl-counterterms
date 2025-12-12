@@ -19,8 +19,12 @@ include("dense/hybridization.jl")
 include("dense/convolution_eval.jl")
 include("dense/propagator.jl")
 
-# BlockDense stubs (Phase 5 will implement)
-include("blockdense/stubs.jl")
+# BlockDense operations (Phase 5 implementation)
+include("blockdense/algebra.jl")
+include("blockdense/operator_ops.jl")
+include("blockdense/hybridization.jl")
+include("blockdense/propagator.jl")
+include("blockdense/convolution_eval.jl")
 
 include("diagram/eval_common.jl")
 include("diagram/gen_eval_propagator.jl")
@@ -36,8 +40,11 @@ Main entry point for the solver. Reads parameters from the input file
 and starts the calculation.
 """
 function run(input_file::String)
-    # Initialize MPI
-    MPI.Init()
+    # Initialize MPI (only if not already initialized)
+    mpi_was_initialized = MPI.Initialized()
+    if !mpi_was_initialized
+        MPI.Init()
+    end
     comm = MPI.COMM_WORLD
     rank = MPI.Comm_rank(comm)
 
@@ -51,8 +58,14 @@ function run(input_file::String)
     # 1. Read the input parameters
     params = read_input(input_file)
 
-    # 2. Initialize model data from files
-    model_data = init_model_data(params.model, params.solver.dlr)
+    # 2. Initialize model data from files (format-dependent)
+    if params.solver.format == "dense"
+        model_data = init_model_data(params.model, params.solver.dlr)
+    elseif params.solver.format == "blockdense"
+        model_data = init_model_data_blockdense(params.model, params.solver.dlr)
+    else
+        error("Unknown format: $(params.solver.format)")
+    end
 
     # 3. Initialize solver data
     solver_data = init_solver_data(model_data)
@@ -65,8 +78,10 @@ function run(input_file::String)
     # 4. Start the calculation using the parameters
     solve(solver_data, params.solver, comm)
 
-    # Finalize MPI
-    MPI.Finalize()
+    # Finalize MPI (only if we initialized it in this function)
+    if !mpi_was_initialized
+        MPI.Finalize()
+    end
 end
 
 end

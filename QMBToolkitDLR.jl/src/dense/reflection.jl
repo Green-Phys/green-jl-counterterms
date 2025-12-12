@@ -7,9 +7,14 @@ using Lehmann
 """
     do_reflection_dlr2tau(dlr_grid::DLRGrid, H_dlr::Array{T,3}) where T<:Number
 
-Perform reflection operation: F(τ) = H(β - τ)
-where F is represented in the DLR basis, which is an Array of size (r,o1,o2).
-return the results on the DLR tau grid as an Array of size (r, o1, o2).
+Perform reflection operation: G(τ) = H(β - τ).
+
+# Arguments
+- `dlr_grid`: DLR grid used for the transformation.
+- `H_dlr`: Input function H in DLR representation, size (r, o1, o2).
+
+# Returns
+- `G_tau`: Result G evaluated on the DLR tau grid, size (n_tau, o1, o2).
 """
 function do_reflection_dlr2tau(dlr_grid::DLRGrid, H_dlr::Array{T,3}) where T<:Number
     tau_grid_reflected = dlr_grid.beta .- dlr_grid.tau

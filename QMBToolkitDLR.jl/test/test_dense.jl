@@ -26,7 +26,7 @@ using Printf
     H_tau = do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, reshape(F_dlr, :, 1, 1), reshape(G_dlr, :, 1, 1))
     H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.tau)
 
-    ### calculat error on an equidistant grid
+    ### calculate error on an equidistant grid
     tau_grid_test = collect(LinRange(0.0, beta, 10000))
     H_reconstructed_test = dlr2tau(dlr_grid, reshape(H_dlr, :,), tau_grid_test)
     H_analytical_test = [ (kernel_tau(tau, omega_G, beta)*kernel_tau(0.0, omega_F, beta) - kernel_tau(tau, omega_F, beta)*kernel_tau(0.0, omega_G, beta)) / (omega_F - omega_G) for tau in tau_grid_test]

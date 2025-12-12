@@ -1,33 +1,67 @@
 # Project Overview
 
-This project, `QMBToolkitDLR.jl`, is a Julia package that provides functions for performing numerical operations in the Discrete Lehmann Representation (DLR). The DLR is a compact basis for representing single-particle Green's functions and other imaginary-time correlation functions in quantum many-body physics.
+`QMBToolkitDLR.jl` is a Julia package providing high-performance numerical operations in the Discrete Lehmann Representation (DLR) for quantum many-body physics. It builds upon the `Lehmann.jl` package and extends it with optimized convolution and reflection routines, supporting both standard dense arrays and block-sparse structures (via `QMBToolkitED.jl`).
 
-The core functionality of this package includes:
-- `do_convolution_dlr`: Performs convolution of two functions represented in the DLR basis.
-- `do_reflection_dlr`: Performs a reflection operation `G(tau) = H(beta - tau)`.
-- `do_multiplication_dlr`: Performs element-wise multiplication of two functions in the DLR basis.
+## Core Functionality
 
-The project uses the `Lehmann.jl` package for the underlying DLR implementation.
+The package offers two main modes of operation:
+
+### 1. Dense Operations (`src/dense/`)
+Designed for standard dense tensors (e.g., Green's functions `G[τ, i, j]`).
+- **Convolution**: `do_convolution_dlr2tau!`
+  - Computes `H(τ) = ∫ dτ' F(τ-τ') G(τ')`.
+  - Optimized with pre-allocated workspaces and kernel caching to minimize allocations.
+- **Reflection**: `do_reflection_tau2tau`
+  - Performs `G(τ) => G(β - τ)`.
+
+### 2. BlockDense Operations (`src/blockdense/`)
+Designed for systems with symmetries (Quantum Numbers), where operators are block-diagonal in specific sectors.
+- **Data Structure**: `BlockDenseArray` (from `QMBToolkitED` context)
+  - Handles sector-specific data (e.g., N=0, N=1 blocks).
+- **Convolution**: `do_convolution_dlr2tau_blockdense!`
+- **Reflection**: `do_reflection_blockdense`
+- **Conversions**: `tau2dlr_blockdense`, `dlr2tau_blockdense`
+
+## Key Structures
+
+### Workspace & Caching (`src/workspace.jl`)
+To achieve high performance, especially in inner loops, the package uses:
+- **`ConvolutionWorkspace`**: Pre-allocates buffers for intermediate calculations, saving GBs of allocations in heavy workloads.
+- **`KernelCache`**: Pre-computes DLR kernel evaluations `K(0, ω, β)`.
+
+## Dependencies
+
+- **`Lehmann.jl`**: Core DLR basis implementation.
+- **`QMBToolkitED.jl`**: Provides the `BlockDense` infrastructure and quantum number handling.
 
 # Building and Running
 
-This is a Julia project. To use it, you would typically add it to your Julia project's dependencies.
-
-## Running Tests
-
-To run the tests for this project, you can use the Julia package manager:
-
+## Installation
+Add the package to your Julia environment:
 ```julia
 using Pkg
-Pkg.test("QMBToolkitDLR")
+Pkg.add(path=".") # For local development
 ```
 
-Alternatively, from the shell, you can run:
+## Running Tests
+The test suite covers both dense and BlockDense operations, comparing numerical results against analytical solutions.
 
 ```bash
 julia --project -e 'using Pkg; Pkg.test()'
 ```
 
+Or from the Julia REPL:
+```julia
+using Pkg
+Pkg.test("QMBToolkitDLR")
+```
+
 # Development Conventions
 
-The code is written in Julia. The tests in the `test/` directory demonstrate how to use the functions in this package. The tests construct analytical functions, convert them to the DLR basis, perform the operations, and then convert back to the time domain to compare with the analytical result. This is a good pattern to follow for adding new tests.
+- **Code Structure**:
+  - `src/dense`: Standard array implementations.
+  - `src/blockdense`: Block-sparse implementations using `QMBToolkitED` types.
+  - `src/workspace.jl`: Shared types and performance utilities.
+- **Testing**:
+  - Tests verify numerical accuracy against analytical functions (e.g., simple poles).
+  - New features should include similar analytical verifications.

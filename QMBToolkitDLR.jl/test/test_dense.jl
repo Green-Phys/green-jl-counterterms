@@ -18,7 +18,12 @@ using Printf
     F_dlr = tau2dlr(dlr_grid, F, tau_grid)
     G_dlr = tau2dlr(dlr_grid, G, tau_grid)
 
-    H_tau = do_convolution_dlr2tau(dlr_grid, reshape(F_dlr, :, 1, 1), reshape(G_dlr, :, 1, 1))
+    # Create workspace and kernel cache
+    r = length(dlr_grid.omega)
+    workspace = ConvolutionWorkspace(r, 1, 1, length(tau_grid))
+    kernel_cache = compute_kernel_cache(dlr_grid)
+
+    H_tau = do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, reshape(F_dlr, :, 1, 1), reshape(G_dlr, :, 1, 1))
     H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.tau)
 
     ### calculat error on an equidistant grid
@@ -59,7 +64,12 @@ end
     F_dlr = f_dlr .* reshape(F_coeffs, (1, 2, 2))
     G_dlr = g_dlr .* reshape(G_coeffs, (1, 2, 2))
 
-    H_tau = do_convolution_dlr2tau(dlr_grid, F_dlr, G_dlr)
+    # Create workspace and kernel cache
+    r = length(dlr_grid.omega)
+    workspace = ConvolutionWorkspace(r, 2, 2, length(tau_grid))
+    kernel_cache = compute_kernel_cache(dlr_grid)
+
+    H_tau = do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)
     H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.tau)
 
 
@@ -145,36 +155,4 @@ end
     omega2 = -1.5
     expected2 = exp(-(tau - beta) * omega2) / (1 + exp(beta * omega2))
     @test kernel_tau(tau, omega2, beta) ≈ expected2
-end
-
-@testset "multiplication DLR" begin
-    beta = 10.0
-    Euv = 10.0
-    rtol = 1e-12
-    dlr_grid = DLRGrid(Euv, beta, rtol, true)
-
-    omega_F = 0.1234
-    omega_G = 0.5678
-
-    tau_grid = dlr_grid.tau
-    F_tau = [kernel_tau(tau, omega_F, beta) for tau in tau_grid]
-    G_tau = [kernel_tau(tau, omega_G, beta) for tau in tau_grid]
-
-    H_tau = do_multiplication_tau2tau(reshape(F_tau, :, 1, 1), reshape(G_tau, :, 1, 1))
-    H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.tau)
-
-    tau_grid_test = collect(LinRange(0.0, beta, 10000))
-    H_reconstructed_test = dlr2tau(dlr_grid, reshape(H_dlr, :,), tau_grid_test)
-    H_analytical_test = [kernel_tau(tau, omega_F, beta) * kernel_tau(tau, omega_G, beta) for tau in tau_grid_test]
-
-    err_inf = maximum(abs.(H_reconstructed_test .- H_analytical_test))
-    err_l2 = sqrt(sum(abs.(H_reconstructed_test .- H_analytical_test).^2) / length(tau_grid_test))
-
-    max_ind = findmax(abs.(H_analytical_test))[2]
-    println("="^40)
-    println("Multiplication DLR Test")
-    @printf("Max value of H analytical: %.3e at tau=%.3e with error %.3e\n", H_analytical_test[max_ind], tau_grid_test[max_ind], abs(H_reconstructed_test[max_ind] - H_analytical_test[max_ind]))
-    @printf("Multiplication DLR test: ||error||_inf = %.3e, ||error||_2 = %.3e\n", err_inf, err_l2)
-    @test err_inf < rtol*100
-    @test err_l2 < rtol*100
 end

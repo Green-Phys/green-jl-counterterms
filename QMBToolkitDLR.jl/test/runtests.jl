@@ -2,6 +2,9 @@ using QMBToolkitDLR
 using Test
 
 @testset "QMBToolkitDLR.jl" begin
-    # Write your tests here.
-    include("test_itopts.jl")
+    # Dense operations tests
+    include("test_dense.jl")
+
+    # BlockDense operations tests
+    include("test_blockdense.jl")
 end

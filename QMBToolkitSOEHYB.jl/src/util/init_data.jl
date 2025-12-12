@@ -28,7 +28,8 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     T = eltype(evecs)
 
     # Convert operators to the correct type
-    ann_opts = vec([convert(Matrix{T}, c) for c in ann_opts_raw])
+    # ann_opts = vec([convert(Matrix{T}, c) for c in ann_opts_raw])
+    ann_opts = vec([ evecs' * convert(Matrix{T}, c) * evecs for c in ann_opts_raw])
     n_flavors = length(ann_opts)
     n_fock = 1 << n_flavors
     cre_opts = vec([Matrix{T}(adjoint(c)) for c in ann_opts])
@@ -45,7 +46,8 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
         U_tau = exp.(-tau * evals_shifted)
         # Compute propagator: evecs * exp(-tau*H) * evecs^†
         # For Hermitian H, this should be Hermitian, but may have small imaginary parts
-        bare_propagator[k, :, :] = evecs * Diagonal(U_tau) * adjoint(evecs)
+        # bare_propagator[k, :, :] = evecs * Diagonal(U_tau) * adjoint(evecs)
+        bare_propagator[k, :, :] = Diagonal(U_tau)
     end
    
     ### Load hybridization function data

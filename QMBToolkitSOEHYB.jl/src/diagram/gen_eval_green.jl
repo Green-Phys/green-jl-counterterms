@@ -134,6 +134,7 @@ end
     eval_green_given_order!(solver_data, diagrams, is_bold, comm)
 
 Evaluate all Green's function diagrams at a given expansion order and accumulate results.
+Format-dispatched wrapper that calls Dense or BlockDense implementation.
 
 # Arguments
 - `solver_data::SolverData`: The solver data containing model information and calculation results
@@ -144,7 +145,20 @@ Evaluate all Green's function diagrams at a given expansion order and accumulate
 Updates `solver_data.calc.green.vals` by accumulating contributions from all diagrams.
 Uses MPI parallelization to distribute diagram evaluation across ranks.
 """
-function eval_green_given_order!(solver_data::SolverData{T}, diagrams::Array{BackBone,4}, is_bold::Bool, comm::MPI.Comm) where {T<:Number}
+function eval_green_given_order!(solver_data::SolverData{T, DenseFormat}, diagrams::Array{BackBone,4}, is_bold::Bool, comm::MPI.Comm) where {T<:Number}
+    eval_green_given_order_dense!(solver_data, diagrams, is_bold, comm)
+end
+
+function eval_green_given_order!(solver_data::SolverData{T, BlockDenseFormat}, diagrams::Array{BackBone,4}, is_bold::Bool, comm::MPI.Comm) where {T<:Number}
+    eval_green_given_order_blockdense!(solver_data, diagrams, is_bold, comm)
+end
+
+"""
+    eval_green_given_order_dense!(solver_data, diagrams, is_bold, comm)
+
+Dense format implementation of Green's function diagram evaluation.
+"""
+function eval_green_given_order_dense!(solver_data::SolverData{T, DenseFormat}, diagrams::Array{BackBone,4}, is_bold::Bool, comm::MPI.Comm) where {T<:Number}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 
@@ -223,6 +237,176 @@ function eval_green_given_order!(solver_data::SolverData{T}, diagrams::Array{Bac
                     _multiplication_32!(op_buffers.annihilation_product_buffer, backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index])
                     _trace_3!(op_buffers.trace_result_buffer, op_buffers.annihilation_product_buffer)
                     local_result[:, ann_index, cre_index] .+= op_buffers.trace_result_buffer
+                end
+            end
+        end
+    end
+
+    # Sum results from all ranks for this order, then ADD to existing green values
+    order_result = MPI.Allreduce(local_result, MPI.SUM, comm)
+    solver_data.calc.green.vals .+= order_result
+end
+
+
+"""
+    eval_green_given_order_blockdense!(solver_data, diagrams, is_bold, comm)
+
+BlockDense format implementation of Green's function diagram evaluation.
+"""
+function eval_green_given_order_blockdense!(solver_data::SolverData{T, BlockDenseFormat}, diagrams::Array{BackBone,4}, is_bold::Bool, comm::MPI.Comm) where {T<:Number}
+    rank = MPI.Comm_rank(comm)
+    nprocs = MPI.Comm_size(comm)
+
+    n_topology = size(diagrams, 1)
+    n_directions = size(diagrams, 2)
+    n_line_flavors = size(diagrams, 3)
+    n_hyb_exponents = size(diagrams, 4)
+
+    if is_bold
+        propagator = solver_data.calc.propagator_blockdense
+    else
+        propagator = solver_data.model.bare_propagator_blockdense
+    end
+
+    # Create local accumulator for this rank's work (only for this order)
+    local_result = zeros(T, size(solver_data.calc.green.vals))
+
+    # Get basis info for BlockDense arrays
+    n_tau = length(solver_data.model.dlr_grid.tau)
+    basis = propagator.basis
+    flux = propagator.flux  # Zero flux for propagator
+
+    # For BlockDense we don't pre-allocate buffers - each convolution creates appropriate buffers
+    # based on the block structure at that point
+    trace_result_buffer = zeros(Float64, n_tau)
+
+    # Distribute topology loop across ranks: rank processes indices rank+1:nprocs:n_topology
+    my_topologies = rank+1:nprocs:n_topology
+
+    for i in my_topologies
+        for j in 1:n_directions
+            external_opts_loc = diagrams[i, j, 1, 1].external_opts_loc
+            @assert length(external_opts_loc) == 2 && external_opts_loc[1] == 1 "External operator locations are invalid."
+
+            # Initialize backbone accumulators as nothing - will be created on first contribution
+            backbone_0_to_beta_with_ann = Vector{Union{Nothing, BlockDenseArray{T}}}([nothing for _ in 1:solver_data.model.n_flavors_physical])
+
+            # Create buffers for multiplication and convolution (will be lazily allocated)
+            buffers = PropagatorConvolutionBuffersBlockDense{T}(basis, Dict{Tuple{Int,Int}, Tuple{Array{T,3}, Array{T,3}, Array{T,3}}}())
+
+            for k in 1:n_line_flavors
+                for l in 1:n_hyb_exponents
+                    diagram = diagrams[i, j, k, l]
+                    @assert diagram.external_opts_loc == external_opts_loc "External operator locations do not match among diagrams of the same topology and direction."
+
+                    # Compute forward and reverse contributions using BlockDense functions
+                    contrib_0_to_tau = multiplication_convolution_blockdense(
+                        diagram.nodes[1:external_opts_loc[2]],
+                        diagram.edges[1:external_opts_loc[2]-1],
+                        solver_data.model.dlr_grid,
+                        solver_data.model,
+                        propagator,
+                        buffers
+                    )
+
+                    contrib_tau_to_beta = multiplication_convolution_reverse_blockdense(
+                        diagram.nodes[external_opts_loc[2]:end],
+                        diagram.edges[external_opts_loc[2]:end],
+                        solver_data.model.dlr_grid,
+                        solver_data.model,
+                        propagator,
+                        buffers
+                    )
+
+                    # Reflection: tau -> beta - tau
+                    contrib_tau_to_beta = do_reflection_tau2tau_blockdense(solver_data.model.dlr_grid, contrib_tau_to_beta)
+
+                    prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
+
+                    for ann_index in 1:solver_data.model.n_flavors_physical
+                        # Apply annihilation operator: ann_opt * contrib_0_to_tau
+                        ann_opt = solver_data.model.ann_opts_blockdense[ann_index]
+                        op_flux = OperatorFlux(combine_qn(ann_opt.flux.delta_qn, contrib_0_to_tau.flux.delta_qn))
+
+                        # Compute which blocks exist in the product
+                        ann_result_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+                        for ((tgt, mid), ann_block) in ann_opt.blocks
+                            for ((mid2, src), contrib_block) in contrib_0_to_tau.blocks
+                                if mid == mid2
+                                    key = (tgt, src)
+                                    if !haskey(ann_result_blocks, key)
+                                        dim_tgt = basis.sectors[tgt].dim
+                                        dim_src = basis.sectors[src].dim
+                                        ann_result_blocks[key] = zeros(T, n_tau, dim_tgt, dim_src)
+                                    end
+                                end
+                            end
+                        end
+                        annihilation_product = BlockDenseArray{T}(basis, op_flux, ann_result_blocks)
+                        _multiplication_23_blockdense!(annihilation_product, ann_opt, contrib_0_to_tau)
+
+                        # Multiply: contrib_tau_to_beta * annihilation_product
+                        final_flux = OperatorFlux(combine_qn(contrib_tau_to_beta.flux.delta_qn, annihilation_product.flux.delta_qn))
+                        final_result_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+                        for ((tgt, mid), contrib_block) in contrib_tau_to_beta.blocks
+                            for ((mid2, src), ann_block) in annihilation_product.blocks
+                                if mid == mid2
+                                    key = (tgt, src)
+                                    if !haskey(final_result_blocks, key)
+                                        dim_tgt = basis.sectors[tgt].dim
+                                        dim_src = basis.sectors[src].dim
+                                        final_result_blocks[key] = zeros(T, n_tau, dim_tgt, dim_src)
+                                    end
+                                end
+                            end
+                        end
+                        final_product = BlockDenseArray{T}(basis, final_flux, final_result_blocks)
+                        _multiplication_33_blockdense!(final_product, contrib_tau_to_beta, annihilation_product)
+
+                        # Accumulate: backbone_0_to_beta_with_ann[ann_index] += prefactor * final_product
+                        if backbone_0_to_beta_with_ann[ann_index] === nothing
+                            # First contribution - initialize with this term
+                            backbone_0_to_beta_with_ann[ann_index] = prefactor * final_product
+                        else
+                            # Subsequent contributions - add scaled
+                            add_scaled!(backbone_0_to_beta_with_ann[ann_index], prefactor, final_product)
+                        end
+                    end
+                end
+            end
+
+            # Compute final Green's function by applying creation operators and taking trace
+            for ann_index in 1:solver_data.model.n_flavors_physical
+                # Skip if there were no contributions for this annihilation index
+                if backbone_0_to_beta_with_ann[ann_index] === nothing
+                    continue
+                end
+
+                for cre_index in 1:solver_data.model.n_flavors_physical
+                    # Apply creation operator: backbone * cre_opt
+                    cre_opt = solver_data.model.cre_opts_blockdense[cre_index]
+                    cre_flux = OperatorFlux(combine_qn(backbone_0_to_beta_with_ann[ann_index].flux.delta_qn, cre_opt.flux.delta_qn))
+
+                    # Compute which blocks exist
+                    cre_result_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+                    for ((tgt, mid), backbone_block) in backbone_0_to_beta_with_ann[ann_index].blocks
+                        for ((mid2, src), cre_block) in cre_opt.blocks
+                            if mid == mid2
+                                key = (tgt, src)
+                                if !haskey(cre_result_blocks, key)
+                                    dim_tgt = basis.sectors[tgt].dim
+                                    dim_src = basis.sectors[src].dim
+                                    cre_result_blocks[key] = zeros(T, n_tau, dim_tgt, dim_src)
+                                end
+                            end
+                        end
+                    end
+                    cre_product = BlockDenseArray{T}(basis, cre_flux, cre_result_blocks)
+                    _multiplication_32_blockdense!(cre_product, backbone_0_to_beta_with_ann[ann_index], cre_opt)
+
+                    # Take trace
+                    _trace_3_blockdense!(trace_result_buffer, cre_product)
+                    local_result[:, ann_index, cre_index] .+= trace_result_buffer
                 end
             end
         end

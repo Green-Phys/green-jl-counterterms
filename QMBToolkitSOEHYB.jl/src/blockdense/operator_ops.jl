@@ -225,6 +225,12 @@ In-place version: writes trace results to trace_buffer.
 - `trace_buffer`: The input buffer with trace values written
 """
 function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDenseArray{<:Number})
+    # Handle empty case
+    if isempty(A.blocks)
+        fill!(trace_buffer, 0.0)
+        return trace_buffer
+    end
+
     # Get time dimension from any block
     n_tau = size(first(values(A.blocks)), 1)
     @assert length(trace_buffer) == n_tau "Trace buffer must have length n_tau"
@@ -245,4 +251,83 @@ function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDenseArray{<
     end
 
     return trace_buffer
+end
+
+"""
+    _multiplication_33_blockdense!(temp_buffer::BlockDenseArray{T}, A::BlockDenseArray{T}, B::BlockDenseArray{T}) where T<:Number
+
+In-place tensor-tensor multiplication for BlockDense: temp_buffer[τ,:,:] = A[τ,:,:] * B[τ,:,:].
+
+For each time slice τ, performs block-aware multiplication where only blocks allowed by
+quantum number conservation are computed.
+
+# Arguments
+- `temp_buffer::BlockDenseArray{T}`: Output buffer (will be overwritten)
+- `A::BlockDenseArray{T}`: First time-dependent tensor
+- `B::BlockDenseArray{T}`: Second time-dependent tensor
+
+# Returns
+- `temp_buffer`: The input buffer with results written
+
+# Algorithm
+For each block (target, source) in the result:
+- Sum over intermediate sectors: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src](τ)
+"""
+function _multiplication_33_blockdense!(temp_buffer::BlockDenseArray{T}, A::BlockDenseArray{T}, B::BlockDenseArray{T}) where T<:Number
+    @assert A.basis === B.basis "Both arrays must use same basis"
+    @assert temp_buffer.basis === A.basis "Buffer must use same basis as inputs"
+
+    # Handle empty A or B case
+    if isempty(A.blocks) || isempty(B.blocks)
+        for (key, block) in temp_buffer.blocks
+            fill!(block, zero(T))
+        end
+        return temp_buffer
+    end
+
+    # Get time dimension
+    n_tau = size(first(values(A.blocks)), 1)
+
+    # Result flux is composition of input fluxes
+    result_flux = OperatorFlux(combine_qn(A.flux.delta_qn, B.flux.delta_qn))
+    @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
+
+    # Index B blocks by their target (mid) sector for efficient lookup
+    B_by_mid = Dict{Int, Vector{Tuple{Int, Array{T,3}}}}()
+    for ((mid, src), B_block) in B.blocks
+        if !haskey(B_by_mid, mid)
+            B_by_mid[mid] = Tuple{Int, Array{T,3}}[]
+        end
+        push!(B_by_mid[mid], (src, B_block))
+    end
+
+    # For each result block, compute: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src](τ)
+    for (result_key, result_block) in temp_buffer.blocks
+        (tgt, src) = result_key
+
+        # Zero out the buffer block
+        fill!(result_block, zero(T))
+
+        # Accumulate contributions from all intermediate sectors
+        for ((A_tgt, mid), A_block) in A.blocks
+            if A_tgt != tgt
+                continue
+            end
+
+            if haskey(B_by_mid, mid)
+                for (B_src, B_block) in B_by_mid[mid]
+                    if B_src != src
+                        continue
+                    end
+
+                    # For each time point: result[tgt, src](τ) += A[tgt, mid](τ) * B[mid, src](τ)
+                    @inbounds for k in 1:n_tau
+                        mul!(view(result_block, k, :, :), view(A_block, k, :, :), view(B_block, k, :, :), 1.0, 1.0)
+                    end
+                end
+            end
+        end
+    end
+
+    return temp_buffer
 end

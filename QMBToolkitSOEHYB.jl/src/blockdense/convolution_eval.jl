@@ -68,13 +68,7 @@ Starting from the rightmost edge, accumulates:
 function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDenseArray{T}, buffers::PropagatorConvolutionBuffersBlockDense{T}) where {T<:Number}
     length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
-    # Get buffers - we'll manually manage them per block
-    # For now, use the first available buffer set (all blocks should have compatible structure)
-    first_buffer_key = first(keys(buffers.block_buffers))
-    (temp_buffer_3d, result_buffer_3d, convolution_buffer_3d) = buffers.block_buffers[first_buffer_key]
-
-    # We need BlockDenseArray versions of the buffers
-    # Create them by wrapping the block buffers
+    # Get basis and flux
     basis = propagator.basis
     flux = propagator.flux
 

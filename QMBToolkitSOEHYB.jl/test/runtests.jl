@@ -1,4 +1,4 @@
-using QMBToolkitSOEXCA
+using QMBToolkitSOEHYB
 using Test
 using HDF5
 using MPI
@@ -6,7 +6,7 @@ using MPI
 # Initialize MPI once for all tests
 MPI.Init()
 
-@testset "QMBToolkitSOEXCA.jl" begin
+@testset "QMBToolkitSOEHYB.jl" begin
 
     @testset "Bare expansion - Analytical comparison" begin
         # Test directory
@@ -20,7 +20,7 @@ MPI.Init()
         end
 
         # Run solver
-        QMBToolkitSOEXCA.run(input_file)
+        QMBToolkitSOEHYB.run(input_file)
 
         # Check output file exists
         @test isfile(output_file)
@@ -104,7 +104,7 @@ MPI.Init()
         end
 
         # Run solver with BlockDense format
-        QMBToolkitSOEXCA.run(input_file)
+        QMBToolkitSOEHYB.run(input_file)
 
         # Check output file exists
         @test isfile(output_file)

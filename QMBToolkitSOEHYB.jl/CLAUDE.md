@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-QMBToolkitSOEXCA is a Julia package implementing a bold hybridization expansion solver based on the Sum of Exponentials (SOE) representation. The solver computes quantum many-body propagators and Green's functions using diagrammatic expansions with Discrete Lehmann Representation (DLR) for efficient representation in imaginary time.
+QMBToolkitSOEHYB is a Julia package implementing a bold hybridization expansion solver based on the Sum of Exponentials (SOE) representation. The solver computes quantum many-body propagators and Green's functions using diagrammatic expansions with Discrete Lehmann Representation (DLR) for efficient representation in imaginary time.
 
 ## Development Commands
 
@@ -39,8 +39,8 @@ Note: The solver is MPI-enabled and uses `mpiexecjl` internally. Make sure MPI.j
 
 ### Loading the Package in REPL
 ```julia
-using QMBToolkitSOEXCA
-QMBToolkitSOEXCA.run("path/to/input.toml")
+using QMBToolkitSOEHYB
+QMBToolkitSOEHYB.run("path/to/input.toml")
 ```
 
 ## Architecture
@@ -112,7 +112,7 @@ where K(τ,ω) = exp(-ω*τ)/(1+exp(-β*ω)) for K⁺ and K(τ,-ω) for K⁻.
 
 ### File Organization
 
-- `src/QMBToolkitSOEXCA.jl` - Main module, defines `run()` entry point
+- `src/QMBToolkitSOEHYB.jl` - Main module, defines `run()` entry point
 - `src/util/` - Utilities: I/O, parameter handling, data initialization
 - `src/solver/` - Core solver logic and data structures
 - `src/diagram/` - Diagram generation and evaluation

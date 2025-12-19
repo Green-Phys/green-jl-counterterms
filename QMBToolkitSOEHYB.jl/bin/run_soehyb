@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# QMBToolkitSOEXCA MPI-enabled runner script
-# Usage: ./run_soexca <input_file.toml> [number_of_processes]
+# QMBToolkitSOEHYB MPI-enabled runner script
+# Usage: ./run_soehyb <input_file.toml> [number_of_processes]
 
 if [ $# -lt 1 ]; then
     echo "Usage: $0 <input_file.toml> [number_of_processes]"
@@ -19,6 +19,6 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Run with mpiexecjl
 ~/.julia/bin/mpiexecjl -n "$NPROCS" julia --project="$PROJECT_DIR" -e "
-using QMBToolkitSOEXCA
-QMBToolkitSOEXCA.run(\"$INPUT_FILE\")
+using QMBToolkitSOEHYB
+QMBToolkitSOEHYB.run(\"$INPUT_FILE\")
 "

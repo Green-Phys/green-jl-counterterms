@@ -278,6 +278,6 @@ function print_timing_summary(
     println()
 
     println("========================================")
-    println("  QMBToolkitSOEXCA Solver Finished  ")
+    println("  QMBToolkitSOEHYB Solver Finished  ")
     println("========================================")
 end

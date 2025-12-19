@@ -20,13 +20,13 @@ This is a Julia project. The following commands can be used to work with it:
 
 *   **Load the module:**
     ```julia
-    using QMBToolkitSOEXCA
+    using QMBToolkitSOEHYB
     ```
 
 *   **Run the solver:**
     The main entry point of the solver is the `run` function, which takes an input file as an argument.
     ```julia
-    using QMBToolkitSOEXCA
+    using QMBToolkitSOEHYB
     run("path/to/your/input.toml")
     ```
 
@@ -35,9 +35,9 @@ This is a Julia project. The following commands can be used to work with it:
 *   The project follows the standard Julia package structure.
 *   Source code is located in the `src` directory.
 *   Tests are located in the `test` directory.
-*   The main project file is `src/QMBToolkitSOEXCA.jl`.
+*   The main project file is `src/QMBToolkitSOEHYB.jl`.
 *   The project uses `Test.jl` for testing.
-*   The main entry point is the `run` function in `src/QMBToolkitSOEXCA.jl`.
+*   The main entry point is the `run` function in `src/QMBToolkitSOEHYB.jl`.
 *   The core solver logic is located in `src/solver/solve.jl`.
 *   Diagram generation and evaluation logic is in the `src/diagram` directory.
 *   Utility functions are in the `src/util` directory.

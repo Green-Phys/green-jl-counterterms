@@ -1,4 +1,4 @@
-module QMBToolkitSOEXCA
+module QMBToolkitSOEHYB
 
 using MPI
 
@@ -51,7 +51,7 @@ function run(input_file::String)
     # Only rank 0 prints output
     if rank == 0
         println("========================================")
-        println("  QMBToolkitSOEXCA Solver Starting Up  ")
+        println("  QMBToolkitSOEHYB Solver Starting Up  ")
         println("========================================")
     end
 

@@ -1,7 +1,7 @@
 # BlockDense Implementation Plan
 
 **Date**: 2025-12-11
-**Goal**: Add BlockDense support to QMBToolkitSOEXCA via parametric type system
+**Goal**: Add BlockDense support to QMBToolkitSOEHYB via parametric type system
 
 ## Overall Architecture
 
@@ -11,7 +11,7 @@ QMBToolkitDLR/
   src/
     dense/             (Current DLR operations, refactored)
     blockdense/        (New BlockDense DLR operations)
-QMBToolkitSOEXCA/
+QMBToolkitSOEHYB/
   src/
     dense/             (Current diagram operations, refactored)
     blockdense/        (New BlockDense diagram operations)
@@ -37,7 +37,7 @@ QMBToolkitSOEXCA/
 - Define `DenseFormat` and `BlockDenseFormat` concrete types
 - Add trait dispatch helpers: `representation_format(::Val{:dense})` etc.
 
-**Update**: `src/QMBToolkitSOEXCA.jl`
+**Update**: `src/QMBToolkitSOEHYB.jl`
 - Include `Representation.jl` before `Data.jl`
 
 **Testing**: `julia --project=. -e 'using Pkg; Pkg.test()'`
@@ -74,7 +74,7 @@ QMBToolkitDLR/src/
 
 **Folder structure**:
 ```
-QMBToolkitSOEXCA/src/
+QMBToolkitSOEHYB/src/
   dense/
     propagator.jl        (build_bare_propagator_dense, compute_bare_propagator_error)
     operator_ops.jl      (_multiplication_23!, etc.)
@@ -91,7 +91,7 @@ QMBToolkitSOEXCA/src/
 - Extract hybridization to `dense/hybridization.jl`
 - Create `blockdense/stubs.jl` with error messages
 
-**Update**: `src/QMBToolkitSOEXCA.jl`
+**Update**: `src/QMBToolkitSOEHYB.jl`
 - Include all new files
 
 **Testing**: Full SOEXCA test suite
@@ -302,7 +302,7 @@ Green's function is **always dense** because:
 
 ## References
 
-- SOEXCA: `/Users/yangyu/src/QMBToolkit/QMBToolkitSOEXCA.jl`
+- SOEXCA: `/Users/yangyu/src/QMBToolkit/QMBToolkitSOEHYB.jl`
 - DLR: `/Users/yangyu/src/QMBToolkit/QMBToolkitDLR.jl`
 - ED: `/Users/yangyu/src/QMBToolkit/QMBToolkitED.jl`
 

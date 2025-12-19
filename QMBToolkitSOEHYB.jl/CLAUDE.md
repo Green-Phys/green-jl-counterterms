@@ -20,136 +20,237 @@ using Pkg
 Pkg.test()
 ```
 
+The test suite runs two test cases comparing against analytical results:
+- `test/bare/` - Dense format test with 1 orbital
+- `test/bare_blockdense/` - BlockDense format test with 1 orbital
+
+Both validate partition function and Green's function to 12-digit precision against Mathematica results in `test/bare/analytic.nb`.
+
 ### Running the Solver
-The main entry point is the `run_soexca` executable:
+
+**Executable script:**
 ```bash
-./bin/run_soexca <input_file.toml> [number_of_processes]
+./bin/run_soehyb <input_file.toml> [number_of_processes]
 ```
 
-Examples:
-```bash
-# Single process (serial execution)
-./bin/run_soexca examples/spinless_semicircular/input.toml
-
-# Multiple processes (parallel execution via MPI)
-./bin/run_soexca examples/spinless_semicircular/input.toml 4
-```
-
-Note: The solver is MPI-enabled and uses `mpiexecjl` internally. Make sure MPI.jl is properly configured.
-
-### Loading the Package in REPL
+**From Julia REPL:**
 ```julia
 using QMBToolkitSOEHYB
 QMBToolkitSOEHYB.run("path/to/input.toml")
 ```
 
+**Direct Julia invocation (for testing):**
+```bash
+julia --project=. -e 'using QMBToolkitSOEHYB; QMBToolkitSOEHYB.run("test/bare/input.toml")'
+```
+
+Note: The solver is MPI-enabled and uses `mpiexecjl` internally.
+
 ## Architecture
 
 ### Core Data Flow
 
-The solver follows a sequential pipeline:
-
-1. **Input Reading** (`src/util/io.jl::read_input`) - Parses TOML configuration into `Params` structs
-2. **Model Initialization** (`src/util/init_data.jl::init_model_data`) - Loads model data from files and constructs SOE representation
-3. **Solver Initialization** (`src/util/init_data.jl::init_solver_data`) - Initializes calculation data structures
-4. **Solve** (`src/solver/solve.jl::solve`) - Main calculation loop
+1. **Input Reading** (`src/util/io.jl::read_input`) - Parses TOML into `Params` structs
+2. **Model Initialization** (`src/util/init_data.jl::init_model_data` or `init_model_data_blockdense`) - Loads Hamiltonian, performs exact diagonalization, builds SOE representation
+3. **Solver Initialization** (`src/util/init_data.jl::init_solver_data`) - Creates empty `CalculationData`
+4. **Solve** (`src/solver/solve.jl::solve`) - Generates and evaluates diagrams, computes partition function and Green's function
 
 ### Data Structure Hierarchy
 
 **ModelData** (`src/solver/Data.jl`):
-- Contains model information: Hamiltonian operators, hybridization function, DLR grid
-- Stores SOE representation: `SOEData` with coefficients, exponents, and K±(τ) values
-- Holds exact diagonalization results: eigenvalues, eigenvectors, creation/annihilation operators
+- Hamiltonian eigenvalues/eigenvectors from exact diagonalization
+- Creation/annihilation operators in energy eigenbasis
+- SOE representation: `SOEData` with coefficients, exponents, and K±(τ) on DLR grid
+- Bare propagator as `DLRData`
+- Pre-computed caches: `KernelCache`, `ConvolutionWorkspace`
+- Format-dependent fields for BlockDense operators
 
 **CalculationData** (`src/solver/Data.jl`):
-- Mutable container for results: propagator, self-energy, Green's function
-- All quantities stored as `DLRData` (values on DLR τ-grid + DLR coefficients)
+- Propagator and self-energy (format-dependent storage)
+- Green's function (always dense - physical observable)
+- `partition_function_by_order`, `green_by_order` arrays
 
 **SolverData** (`src/solver/Data.jl`):
 - Combines `ModelData` and `CalculationData`
-- Main data structure passed through the solver pipeline
+- Parametrized by `{T<:Number, Format<:RepresentationFormat}`
 
-### Diagram Generation and Evaluation
+### Diagram Structure
 
-The package implements a sophisticated diagrammatic expansion system:
+**BackBone** (`src/diagram/DiagramStructure.jl`):
+Diagrams are linear chains of M nodes and M-1 edges:
+```
+|Node(M)| --- Edge(M-1) --- |Node(M-1)| --- ... --- |Node(1)|
+```
 
-**BackBone Structure** (`src/diagram/DiagramStructure.jl`):
-- Diagrams are represented as linear chains (backbones) of nodes and edges
-- Each diagram consists of M nodes connected by M-1 edges
-- Nodes contain creation/annihilation operators and attached hybridization functions
-- Edges contain hybridization lines connecting operators
-- Three diagram types: `:propagator_diagram`, `:selfenergy_diagram`, `:green_diagram`
+**BackBoneNode**:
+- `opt_type`: `:c` (annihilation), `:cdag` (creation), or `:empty`
+- `flavor`: orbital index
+- `bar_index`: SOE index (1 to p) or -1 for undecorated
+- `attached_hyb`: K⁺ₗ, K⁻ₗ, or NoHyb
 
-**Hybridization States**:
-- `NoHyb()` - No hybridization attached (encoded as index=0)
-- `KPlus(l)` - Decomposed hybridization K⁺ₗ(τ) (encoded as index=l, l>0)
-- `KMinus(l)` - Decomposed hybridization K⁻ₗ(τ) (encoded as index=-l, l>0)
+**HybridizationState** (efficient integer encoding):
+- `index == 0`: NoHyb
+- `index > 0`: KPlus(index)
+- `index < 0`: KMinus(-index)
 
-Note: Uses efficient integer encoding instead of abstract types for optimal performance.
+### Generation and Evaluation Pipeline
 
-**Generation Pipeline**:
-1. `gen_diagrams` (`src/diagram/gen_common.jl`) - Top-level: generates all diagrams for given order
-2. `gen_propagator_given_order` or `gen_green_given_order` - Order-specific generation
-3. `gen_diagram_combinations` - Generates all valid hybridization attachments
-4. `eval_diagrams!` - Evaluates all diagrams and accumulates into `CalculationData`
+1. `gen_diagrams` (`src/diagram/gen_common.jl`) - Top-level dispatcher
+2. `gen_propagator_given_order` / `gen_green_given_order` - Generate topologies and flavor/SOE combinations
+3. `eval_diagrams!` (`src/diagram/eval_common.jl`) - Format dispatch wrapper
+4. `multiplication_convolution` (`src/dense/convolution_eval.jl` or `src/blockdense/convolution_eval.jl`) - Core evaluation
 
 ### Key Architectural Points
 
-**SOE Representation**: The hybridization function Δ(τ) is decomposed as:
+**SOE Representation**: Hybridization Δᵢⱼ(τ) decomposed as:
 ```
 Δᵢⱼ(τ) = Σₗ coeffs[l,i,j] * K(τ, exponents[l])
 ```
-where K(τ,ω) = exp(-ω*τ)/(1+exp(-β*ω)) for K⁺ and K(τ,-ω) for K⁻.
+where K⁺(τ,ω) = exp(-ωτ)/(1+exp(-βω)) and K⁻(τ,-ω) for the adjoint.
+
+**DLR Integration**:
+- `DLRData.vals`: Values on DLR τ-grid
+- `DLRData.coeffs`: DLR expansion coefficients
+- Efficient τ ↔ ω transformations via QMBToolkitDLR
+
+**Energy Shift**: Hamiltonian shifted by E_shift = min(eigenvalues) for numerical stability. Partition function corrected in post-processing.
 
 **Bare vs Bold Expansion**:
-- Bare expansion: Expands using unperturbed propagator
-- Bold expansion: Expands using self-consistently determined propagator
-- Both propagator and Green's function must use same expansion type
-
-**DLR Integration**: All imaginary-time quantities are represented using DLR:
-- `DLRData.vals`: Values on DLR τ-grid (for efficient evaluation)
-- `DLRData.coeffs`: DLR expansion coefficients (for transformations)
+- Both must be consistently bare or both bold
+- Propagator order must equal Green's function order - 1
 
 ### File Organization
 
-- `src/QMBToolkitSOEHYB.jl` - Main module, defines `run()` entry point
-- `src/util/` - Utilities: I/O, parameter handling, data initialization
-- `src/solver/` - Core solver logic and data structures
-- `src/diagram/` - Diagram generation and evaluation
-  - `DiagramStructure.jl` - Data types for diagram representation
-  - `gen_*.jl` - Diagram generation algorithms
-  - `eval_*.jl` - Diagram evaluation algorithms
-  - `print_diagram.jl` - Diagram visualization utilities
-- `examples/` - Example calculations with input files
-- `bin/run_soexca` - Executable script for running calculations
+```
+src/
+├── QMBToolkitSOEHYB.jl     # Main module, run() entry point
+├── solver/
+│   ├── Data.jl             # ModelData, CalculationData, SolverData
+│   ├── Representation.jl   # DenseFormat, BlockDenseFormat traits
+│   └── solve.jl            # Main control loop
+├── util/
+│   ├── io.jl               # TOML parsing, HDF5 output
+│   ├── Params.jl           # Parameter structs
+│   ├── init_data.jl        # Model/solver initialization
+│   └── others.jl           # Helper functions
+├── diagram/
+│   ├── DiagramStructure.jl # BackBone, BackBoneNode, BackBoneEdge
+│   ├── gen_common.jl       # Common generation infrastructure
+│   ├── gen_eval_propagator.jl
+│   ├── gen_eval_green.jl
+│   ├── gen_eval_selfenergy.jl  # Stub (not implemented)
+│   ├── eval_common.jl      # Format-independent evaluation
+│   └── print_diagram.jl    # Visualization
+├── dense/                  # Dense matrix operations
+│   ├── operator_ops.jl     # _multiplication_23!, _multiplication_32!, etc.
+│   ├── hybridization.jl    # apply_hybridization_inplace!
+│   ├── propagator.jl       # eval_propagator_backbone
+│   └── convolution_eval.jl # multiplication_convolution
+└── blockdense/             # Block-sparse operations
+    ├── algebra.jl          # BlockDenseArray arithmetic
+    ├── operator_ops.jl     # Block-aware multiplications
+    ├── hybridization.jl    # Block-aware hybridization
+    ├── propagator.jl       # Block-aware propagator evaluation
+    └── convolution_eval.jl # multiplication_convolution_blockdense
+```
+
+### Representation Formats
+
+Two formats (`src/solver/Representation.jl`):
+- **DenseFormat**: Full dense matrices in Fock space (default)
+- **BlockDenseFormat**: Block-sparse exploiting particle number conservation
+
+Set via `format = "dense"` or `format = "blockdense"` in `[solver]` section.
 
 ### Input File Format
 
-TOML format with sections:
-- `[model]` - Physical parameters: β, file paths for Hamiltonian, hybridization, etc.
-- `[solver.propagator]` - Propagator expansion: order, bare/bold
-- `[solver.green]` - Green's function expansion: order, bare/bold
-- `[solver.dlr]` - DLR parameters: Euv (UV cutoff), rtol (tolerance)
-- `[solver]` - Output path
+TOML with sections:
+```toml
+[model]
+beta = 10.0
+file_path = "."                           # Relative to input file directory
+hopping_file = "hopping.txt"
+interaction_file = "Uijkl.txt"
+hybridization_poles_file = "hyb_poles.txt"
+hybridization_weights_file = "hyb_weights.txt"
 
-See `examples/non_interacting_Bethe/input.toml` for reference.
+[solver.propagator]
+is_bold = false
+expansion_order = 2
+
+[solver.green]
+is_bold = false
+expansion_order = 3                       # Must be propagator order + 1
+save_linear_size = 1001                   # Output grid points
+
+[solver.dlr]
+rtol = 1e-14
+Euv = 500.0
+
+[solver]
+output_path = "."
+format = "dense"                          # or "blockdense"
+```
+
+### Data File Formats
+
+**hopping.txt**: `i j re im` (0-indexed orbital indices)
+```
+0 0 2.0 0.0
+```
+
+**Uijkl.txt**: Interaction matrix (sparse format)
+
+**hyb_poles.txt**: One exponent (ω) per line
+```
+1.0
+-2.0
+```
+
+**hyb_weights.txt**: `ind_poles orb_1 orb_2 weight` (0-indexed)
+```
+0 0 0 -3.0
+1 0 0 -1.0
+```
+Must have complete (n_poles × n_orb × n_orb) entries.
+
+### Output Format (HDF5)
+
+Saved to `<output_path>/sim.h5`:
+```
+/green/
+  linear_grid/green_tau, tau
+  dlr_grid/green_tau, tau, coeffs
+  by_order/green_order_1, green_order_2, ...
+/partition_function/
+  partition_function, partition_function_by_order, partition_function_corrected
+/model/
+  E_shift, beta, Z_counterterms
+/timing/
+  total_wall_time, total_cpu_time
+```
 
 ### Current Implementation Status
 
 **Implemented**:
-- Bare expansion for propagator
-- Green's function calculation (bare and bold modes)
+- Bare expansion for propagator (dense and blockdense)
+- Green's function calculation (bare mode, both formats)
 - DLR-based representation
 - SOE decomposition of hybridization
+- MPI parallelization for diagram evaluation
 
-**Not Yet Implemented** (will error):
-- Bold propagator calculation (raises error in `solve.jl:18`)
+**Not Yet Implemented**:
+- Bold propagator calculation (error at `solve.jl:37`)
 - Self-energy diagram evaluation (`gen_eval_selfenergy.jl` is stub)
 
 ## Dependencies
 
-Key external packages:
-- `QMBToolkitDLR` - Discrete Lehmann Representation utilities
-- `QMBToolkitED` - Exact diagonalization solver
-- `HDF5` - Output file format
-- `QuadGK` - Numerical integration
+**Internal (QMBToolkit ecosystem)**:
+- `QMBToolkitDLR` - DLR grid and transformations
+- `QMBToolkitED` - Exact diagonalization, BlockDense types
+
+**External**:
+- `HDF5` - Output format
+- `TOML` - Input parsing
+- `MPI` - Parallel execution
+- `LinearAlgebra`, `DelimitedFiles`

@@ -30,6 +30,6 @@ export do_reflection_tau2tau
 export BlockDenseArray
 export BlockDenseConvolutionWorkspace, create_blockdense_convolution_workspace
 export tau2dlr_blockdense, dlr2tau_blockdense
-export do_convolution_dlr2tau_blockdense!, do_reflection_blockdense
+export do_convolution_dlr2tau_blockdense!, do_reflection_blockdense, do_reflection_tau2tau_blockdense
 
 end

@@ -32,6 +32,10 @@ end
 
 Create workspace for block-dense convolution.
 
+For each output block H[target→source], we may need to sum over multiple intermediate
+sectors with different dimensions. The workspace is sized to handle the maximum
+intermediate dimension encountered.
+
 # Arguments
 - `basis`: The block-dense basis
 - `flux_F`: Flux of first operator
@@ -47,7 +51,7 @@ function create_blockdense_convolution_workspace(basis::BlockDenseBasis, flux_F:
     flux_result = OperatorFlux(combine_qn(flux_F.delta_qn, flux_G.delta_qn))
     block_workspaces = Dict{Tuple{Int,Int}, ConvolutionWorkspace{T}}()
 
-    # Determine which output blocks exist
+    # Determine which output blocks exist and find maximum intermediate dimension
     for (target_idx, target_sector) in enumerate(basis.sectors)
         for (source_idx, source_sector) in enumerate(basis.sectors)
             # Check if this block can exist: target_qn = source_qn + flux_result
@@ -56,8 +60,28 @@ function create_blockdense_convolution_workspace(basis::BlockDenseBasis, flux_F:
                 target_dim = target_sector.dim
                 source_dim = source_sector.dim
 
-                # Create workspace for this block
-                block_workspaces[(target_idx, source_idx)] = ConvolutionWorkspace{T}(r, target_dim, source_dim, n_tau)
+                # Find maximum intermediate dimension for this block
+                # H[target→source] = Σ_γ F[target→γ] * G[γ→source]
+                # We need to check which intermediate sectors γ can contribute
+                max_intermediate_dim = 0
+                for (intermediate_idx, intermediate_sector) in enumerate(basis.sectors)
+                    # Check if F[target→intermediate] can exist: target_qn = intermediate_qn + flux_F
+                    # Check if G[intermediate→source] can exist: intermediate_qn = source_qn + flux_G
+                    if target_sector.qn == combine_qn(intermediate_sector.qn, flux_F.delta_qn) &&
+                       intermediate_sector.qn == combine_qn(source_sector.qn, flux_G.delta_qn)
+                        max_intermediate_dim = max(max_intermediate_dim, intermediate_sector.dim)
+                    end
+                end
+
+                # Create workspace with proper dimensions: F (r × target_dim × intermediate_dim) * G (r × intermediate_dim × source_dim)
+                # Use max_intermediate_dim to handle all possible intermediate sectors
+                if max_intermediate_dim > 0
+                    block_workspaces[(target_idx, source_idx)] = ConvolutionWorkspace{T}(r, target_dim, max_intermediate_dim, source_dim, n_tau)
+                else
+                    # No intermediate sectors contribute - this shouldn't happen if the block exists
+                    # but handle it gracefully by creating a minimal workspace
+                    block_workspaces[(target_idx, source_idx)] = ConvolutionWorkspace{T}(r, target_dim, 1, source_dim, n_tau)
+                end
             end
         end
     end

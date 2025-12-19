@@ -32,3 +32,21 @@ function do_reflection_blockdense(dlr_grid::DLRGrid, H_dlr::BlockDenseArray{T}) 
 
     return BlockDenseArray{T}(H_dlr.basis, H_dlr.flux, F_tau_blocks)
 end
+
+"""
+    do_reflection_tau2tau_blockdense(dlr_grid::DLRGrid, H_tau::BlockDenseArray{T}) where T<:Number
+
+Perform reflection operation on tau-space BlockDense data: F(τ) = H(β - τ).
+First transforms to DLR, then applies reflection.
+
+# Arguments
+- `dlr_grid::DLRGrid`: DLR grid
+- `H_tau::BlockDenseArray{T}`: Block-dense array on tau grid
+
+# Returns
+- `BlockDenseArray{T}`: Reflected array on tau grid
+"""
+function do_reflection_tau2tau_blockdense(dlr_grid::DLRGrid, H_tau::BlockDenseArray{T}) where T<:Number
+    H_dlr = tau2dlr_blockdense(dlr_grid, H_tau, dlr_grid.tau)
+    return do_reflection_blockdense(dlr_grid, H_dlr)
+end

@@ -2,6 +2,7 @@ module GlobalTestUtils
 
 using Test
 using QMBToolkitED
+using QMBToolkitED.Dense
 using QMBToolkitED.BlockDense
 using LinearAlgebra
 
@@ -70,14 +71,15 @@ Verifies fermionic anticommutation relations:
 function verify_anticommutation(c, c_dag, dim; atol=1e-9)
     nflavors = length(c)
     
+    # Helper to convert to raw matrix (use the unified to_matrix function)
+    _to_mat(op::DenseOperator) = to_matrix(op)
+    _to_mat(op::BlockDenseOperator) = to_matrix(op)
+    _to_mat(op::Matrix) = op
+
     # Test {c_i, c_j} = 0
     for i in 1:nflavors
         for j in (i+1):nflavors
-            res = c[i] * c[j] + c[j] * c[i]
-            # Convert to dense if it's blockdense, just to check zero
-            if !isa(res, Matrix)
-                 res = to_dense(res)
-            end
+            res = _to_mat(c[i] * c[j] + c[j] * c[i])
             @test res ≈ zeros(ComplexF64, dim, dim) atol=atol
         end
     end
@@ -85,11 +87,7 @@ function verify_anticommutation(c, c_dag, dim; atol=1e-9)
     # Test {c_i, c_j†} = δ_ij * I
     for i in 1:nflavors
         for j in 1:nflavors
-            res = c[i] * c_dag[j] + c_dag[j] * c[i]
-             if !isa(res, Matrix)
-                 res = to_dense(res)
-            end
-            
+            res = _to_mat(c[i] * c_dag[j] + c_dag[j] * c[i])
             if i == j
                 @test res ≈ Matrix{ComplexF64}(I, dim, dim) atol=atol
             else

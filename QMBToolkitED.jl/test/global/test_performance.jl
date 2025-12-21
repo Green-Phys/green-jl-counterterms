@@ -217,14 +217,18 @@ end
         site_qns = [QN_NSz(1, isodd(i) ? 1 : -1) for i in 1:n_flavors]
         basis = make_basis(site_qns)
         H_block, _ = build_hamiltonian(IOBuffer(hop_str), IOBuffer(coul_str); method=:blockdense, basis=basis)
-        
+
+        # Warmup both + and sum
+        _ = H_block + H_block
+        ops = [H_block, H_block]
+        _ = sum(ops)
+
         # Test standard addition (+)
         stats_plus = @timed (H_block + H_block)
         t_plus = stats_plus.time * 1000
         m_plus = stats_plus.bytes / 1024^2
-        
+
         # Test efficient sum()
-        ops = [H_block, H_block]
         stats_sum = @timed sum(ops)
         t_sum = stats_sum.time * 1000
         m_sum = stats_sum.bytes / 1024^2

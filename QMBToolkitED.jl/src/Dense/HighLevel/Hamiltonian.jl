@@ -5,7 +5,7 @@ Builds Hamiltonians from hopping and Coulomb interaction input files.
 """
 
 """
-    build_hamiltonian_dense(hopping_input, coulomb_input) -> (Matrix{ComplexF64}, Vector{Matrix{ComplexF64}})
+    build_hamiltonian_dense(hopping_input, coulomb_input) -> (DenseOperator, Vector{DenseOperator})
 
 Construct a Hamiltonian from hopping and Coulomb interaction input files.
 
@@ -19,8 +19,8 @@ Arguments:
   Format: First line is nflavors, then "# i j k l Re(U_ijkl) Im(U_ijkl)" (0-indexed)
 
 Returns:
-- `Matrix{ComplexF64}`: The total Hamiltonian H
-- `Vector{Matrix{ComplexF64}}`: Annihilation operators used to build H
+- `DenseOperator`: The total Hamiltonian H
+- `Vector{DenseOperator}`: Annihilation operators used to build H
 
 Example:
 ```julia
@@ -28,7 +28,7 @@ H, c = build_hamiltonian_dense("hopping.txt", "coulomb.txt")
 ```
 
 Implementation:
-Operators are dense matrices. Hamiltonian construction uses dense matrix operations.
+Operators are DenseOperators. Hamiltonian construction uses operator algebra.
 """
 function build_hamiltonian_dense(
     hopping_matrix_input::Union{String, IO},
@@ -48,25 +48,25 @@ function build_hamiltonian_dense(
         end
     end
     nflavors = max_flavor + 1
-    nfock = 1 << nflavors
 
-    # Get annihilation operators
-    annh = get_annihilators_dense(nflavors)
+    # Create basis and get annihilation operators
+    basis = make_basis_dense(nflavors)
+    annh = get_annihilators_dense(basis)
 
     # Build hopping Hamiltonian: H_hop = Σ_{ij} t_{ij} c_i† c_j
-    H_hop = zeros(ComplexF64, nfock, nfock)
+    H_hop = DenseOperator(basis, zeros(ComplexF64, basis.dim, basis.dim))
     if !isempty(hopping_lines)
         for line in hopping_lines
             parts = split(line)
             i = parse(Int, parts[1]) + 1  # Convert to 1-indexed
             j = parse(Int, parts[2]) + 1
             val = parse(Float64, parts[3]) + im * parse(Float64, parts[4])
-            H_hop += val * (annh[i]' * annh[j])
+            H_hop = H_hop + val * (annh[i]' * annh[j])
         end
     end
 
     # Build interaction Hamiltonian: H_int = 0.5 Σ_{ijkl} U_{ijkl} c_i† c_j† c_k c_l
-    H_int = zeros(ComplexF64, nfock, nfock)
+    H_int = DenseOperator(basis, zeros(ComplexF64, basis.dim, basis.dim))
     if length(coulomb_lines) > 1
         for line in coulomb_lines[2:end]
             parts = split(line)
@@ -75,7 +75,7 @@ function build_hamiltonian_dense(
             k = parse(Int, parts[4]) + 1
             l = parse(Int, parts[5]) + 1
             val = parse(Float64, parts[6]) + im * parse(Float64, parts[7])
-            H_int += 0.5 * val * (annh[i]' * annh[j]' * annh[k] * annh[l])
+            H_int = H_int + 0.5 * val * (annh[i]' * annh[j]' * annh[k] * annh[l])
         end
     end
 

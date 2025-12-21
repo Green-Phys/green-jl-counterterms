@@ -39,15 +39,15 @@ include("detailed/test_linalg.jl")
         @test c1_dag.flux.delta_qn == QN_N(1)
     end
 
-    @testset "Block-to-Dense Conversion" begin
+    @testset "Block-to-Matrix Conversion" begin
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
         c = get_annihilators_blockdense(basis)
 
         # Conversion produces correct type and size
-        c1_dense = to_dense(c[1])
-        @test c1_dense isa Matrix{ComplexF64}
-        @test size(c1_dense) == (basis.total_dim, basis.total_dim)
+        c1_mat = to_matrix(c[1])
+        @test c1_mat isa Matrix{ComplexF64}
+        @test size(c1_mat) == (basis.total_dim, basis.total_dim)
     end
 
 end

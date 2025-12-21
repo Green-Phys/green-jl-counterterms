@@ -31,23 +31,29 @@ Base.eltype(::Type{BlockDense.BlockEigenResult}) = Any
 
 """
     get_annihilators(nflavors::Int; method::Symbol=:dense)
+    get_annihilators(basis::Dense.DenseBasis; method::Symbol=:dense)
     get_annihilators(basis::BlockDense.BlockDenseBasis; method::Symbol=:blockdense)
 
 Generate fermionic annihilation operators.
 
 Arguments:
 - `nflavors::Int`: Number of orbitals (for dense method)
+- `basis::DenseBasis`: Dense basis (for dense method)
 - `basis::BlockDenseBasis`: Block-dense basis (for blockdense method)
 - `method::Symbol`: `:dense` or `:blockdense`
 
 Returns:
-- For `:dense`: `Vector{Matrix{ComplexF64}}`
+- For `:dense`: `Vector{DenseOperator}`
 - For `:blockdense`: `Vector{BlockDenseOperator}`
 
 Examples:
 ```julia
-# Dense (default)
+# Dense (default) - convenience method
 c_dense = get_annihilators(3)
+
+# Dense with explicit basis
+basis = Dense.make_basis_dense(3)
+c_dense = get_annihilators(basis)
 
 # Block-dense
 basis = BlockDense.make_basis([BlockDense.QN_N(1) for _ in 1:3])
@@ -61,6 +67,16 @@ function get_annihilators(nflavors::Int; method::Symbol=:dense)
         error("For block-dense method, pass a BlockDenseBasis instead of nflavors. " *
               "Example: basis = BlockDense.make_basis([BlockDense.QN_N(1) for _ in 1:$nflavors]); " *
               "get_annihilators(basis)")
+    end
+end
+
+# Dispatch for dense basis
+function get_annihilators(basis::Dense.DenseBasis; method::Symbol=:dense)
+    if method == :dense
+        return Dense.get_annihilators_dense(basis)
+    else
+        error("Cannot use :blockdense method with DenseBasis. " *
+              "Use get_annihilators(BlockDenseBasis) instead.")
     end
 end
 
@@ -78,7 +94,7 @@ end
     build_hamiltonian(
         hopping_input, coulomb_input;
         method::Symbol=:dense,
-        basis::Union{Nothing,BlockDense.BlockDenseBasis}=nothing
+        basis::Union{Nothing,Dense.DenseBasis,BlockDense.BlockDenseBasis}=nothing
     )
 
 Construct a Hamiltonian from input files.
@@ -87,10 +103,10 @@ Arguments:
 - `hopping_input`: Path to hopping matrix file or IO
 - `coulomb_input`: Path to Coulomb tensor file or IO
 - `method::Symbol`: `:dense` or `:blockdense`
-- `basis::BlockDenseBasis`: Required for `:blockdense` method
+- `basis`: Required for `:blockdense` method, optional for `:dense`
 
 Returns:
-- For `:dense`: `(Matrix{ComplexF64}, Vector{Matrix{ComplexF64}})`
+- For `:dense`: `(DenseOperator, Vector{DenseOperator})`
 - For `:blockdense`: `(BlockDenseOperator, Vector{BlockDenseOperator})`
 
 Examples:
@@ -107,7 +123,7 @@ function build_hamiltonian(
     hopping_matrix_input::Union{String, IO},
     coulomb_tensor_input::Union{String, IO};
     method::Symbol=:dense,
-    basis::Union{Nothing,BlockDense.BlockDenseBasis}=nothing
+    basis::Union{Nothing,Dense.DenseBasis,BlockDense.BlockDenseBasis}=nothing
 )
     if method == :dense
         return Dense.build_hamiltonian_dense(hopping_matrix_input, coulomb_tensor_input)
@@ -115,6 +131,9 @@ function build_hamiltonian(
         if basis === nothing
             error("basis argument is required for :blockdense method. " *
                   "Create a basis using BlockDense.make_basis([BlockDense.QN_N(1), ...])")
+        end
+        if !(basis isa BlockDense.BlockDenseBasis)
+            error("basis must be a BlockDenseBasis for :blockdense method")
         end
         return BlockDense.build_hamiltonian_blockdense(basis, hopping_matrix_input, coulomb_tensor_input)
     else
@@ -128,19 +147,19 @@ end
 Diagonalize a Hamiltonian.
 
 Arguments:
-- `H`: Hamiltonian (Matrix or BlockDenseOperator)
+- `H`: Hamiltonian (DenseOperator or BlockDenseOperator)
 - `method::Symbol`: `:auto` (detect from type), `:dense`, or `:blockdense`
 
 Returns:
-- `AbstractSolverResult`: A result object (`DenseEigenResult` or `BlockEigenResult`).
-  This object is iterable, allowing destructuring into `(evals, evecs)` for backward compatibility.
+- Result object (`DenseEigenResult` or `BlockEigenResult`).
+  This object is iterable, allowing destructuring into `(evals, evecs)`.
 
   - `evals::Vector{Float64}`: Eigenvalues
   - `evecs::Matrix{ComplexF64}`: Eigenvectors
 
 Examples:
 ```julia
-# Dense
+# Dense with DenseOperator
 H, c = build_hamiltonian("hopping.txt", "coulomb.txt")
 evals, evecs = solve_hamiltonian(H)  # Auto-detects dense
 
@@ -151,13 +170,14 @@ result = solve_hamiltonian(H)  # Returns BlockEigenResult
 evals, evecs = result          # Destructuring works (less efficient for Green's functions)
 ```
 """
-function solve_hamiltonian(H::Matrix; method::Symbol=:auto)
+function solve_hamiltonian(H::Dense.DenseOperator; method::Symbol=:auto)
     if method == :auto || method == :dense
         return Dense.solve_hamiltonian_dense(H)
     else
-        error("Hamiltonian is Matrix, use method=:dense or method=:auto")
+        error("Hamiltonian is DenseOperator, use method=:dense or method=:auto")
     end
 end
+
 
 function solve_hamiltonian(H::BlockDense.BlockDenseOperator; method::Symbol=:auto)
     if method == :auto || method == :blockdense
@@ -176,15 +196,13 @@ Dispatches to correct backend based on result type.
 """
 function calculate_green_tau(
     result::Dense.DenseEigenResult,
-    annh_ops::Vector{Matrix{ComplexF64}},
+    annh_ops::Vector{Dense.DenseOperator},
     beta::Real,
     n_tau::Int,
     i::Int,
     j::Int
 )
-    evals = Dense.get_eigenvalues(result)
-    evecs = Dense.get_eigenvectors(result)
-    return Dense.calculate_green_tau_dense(evals, evecs, annh_ops, beta, n_tau, i, j)
+    return Dense.calculate_green_tau_dense(result, annh_ops[i], annh_ops[j], beta, n_tau)
 end
 
 function calculate_green_tau(
@@ -198,18 +216,6 @@ function calculate_green_tau(
     return BlockDense.calculate_green_tau_blockdense(result, annh_ops[i], annh_ops[j], beta, n_tau)
 end
 
-# Backward compatibility for tuple input (Dense only)
-function calculate_green_tau(
-    evals::Vector{Float64},
-    evecs::Matrix{ComplexF64},
-    annh_ops::Vector{Matrix{ComplexF64}},
-    beta::Real,
-    n_tau::Int,
-    i::Int,
-    j::Int
-)
-    return Dense.calculate_green_tau_dense(evals, evecs, annh_ops, beta, n_tau, i, j)
-end
 
 """
     calculate_green_matsubara(result, annh_ops, beta, n_matsubara, i, j)
@@ -218,15 +224,13 @@ Unified interface for calculating Matsubara Green's function.
 """
 function calculate_green_matsubara(
     result::Dense.DenseEigenResult,
-    annh_ops::Vector{Matrix{ComplexF64}},
+    annh_ops::Vector{Dense.DenseOperator},
     beta::Real,
     n_matsubara::Int,
     i::Int,
     j::Int
 )
-    evals = Dense.get_eigenvalues(result)
-    evecs = Dense.get_eigenvectors(result)
-    return Dense.calculate_green_matsubara_dense(evals, evecs, annh_ops, beta, n_matsubara, i, j)
+    return Dense.calculate_green_matsubara_dense(result, annh_ops[i], annh_ops[j], beta, n_matsubara)
 end
 
 function calculate_green_matsubara(
@@ -240,18 +244,6 @@ function calculate_green_matsubara(
     return BlockDense.calculate_green_matsubara_blockdense(result, annh_ops[i], annh_ops[j], beta, n_matsubara)
 end
 
-# Backward compatibility for tuple input (Dense only)
-function calculate_green_matsubara(
-    evals::Vector{<:Real},
-    evecs::Matrix,
-    annh_ops::Vector{Matrix{ComplexF64}},
-    beta::Real,
-    n_matsubara::Int,
-    i::Int,
-    j::Int
-)
-    return Dense.calculate_green_matsubara_dense(evals, evecs, annh_ops, beta, n_matsubara, i, j)
-end
 
 """
     get_Z(evals::Vector{<:Real}, beta::Real; shift_energy::Bool=false)
@@ -266,3 +258,4 @@ function get_Z(evals::Vector{<:Real}, beta::Real; shift_energy::Bool=false)
     end
     return sum(exp.(-beta .* local_evals))
 end
+

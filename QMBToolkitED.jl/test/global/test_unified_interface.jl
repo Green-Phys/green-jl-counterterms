@@ -10,6 +10,7 @@ Tests that the unified interface:
 
 using Test
 using QMBToolkitED
+using QMBToolkitED.Dense
 using QMBToolkitED.BlockDense
 using LinearAlgebra
 
@@ -21,7 +22,7 @@ using LinearAlgebra
         c = get_annihilators(nflavors)
 
         @test length(c) == nflavors
-        @test all(x -> isa(x, Matrix{ComplexF64}), c)
+        @test all(x -> isa(x, DenseOperator), c)
 
         # Check dimensions
         nfock = 1 << nflavors
@@ -33,9 +34,9 @@ using LinearAlgebra
         c_default = get_annihilators(nflavors)
         c_dense = get_annihilators(nflavors; method=:dense)
 
-        # Should be identical
+        # Should be identical (DenseOperators)
         for i in 1:nflavors
-            @test c_default[i] == c_dense[i]
+            @test to_matrix(c_default[i]) == to_matrix(c_dense[i])
         end
     end
 
@@ -71,9 +72,9 @@ using LinearAlgebra
 
         H, c = build_hamiltonian(hopping_input, coulomb_input)
 
-        @test isa(H, Matrix)
+        @test isa(H, DenseOperator)
         @test length(c) == 2
-        @test all(x -> isa(x, Matrix{ComplexF64}), c)
+        @test all(x -> isa(x, DenseOperator), c)
     end
 
     @testset "build_hamiltonian - explicit method=:dense" begin
@@ -85,10 +86,10 @@ using LinearAlgebra
         coulomb_input2 = IOBuffer("2\n")
         H_dense, c_dense = build_hamiltonian(hopping_input2, coulomb_input2; method=:dense)
 
-        # Should be identical
-        @test H_default == H_dense
+        # Should be identical (use to_matrix to compare underlying matrices)
+        @test to_matrix(H_default) == to_matrix(H_dense)
         for i in 1:length(c_default)
-            @test c_default[i] == c_dense[i]
+            @test to_matrix(c_default[i]) == to_matrix(c_dense[i])
         end
     end
 
@@ -143,7 +144,7 @@ using LinearAlgebra
     @testset "solve_hamiltonian - error on wrong method" begin
         nflavors = 2
 
-        # Dense Matrix Hamiltonian
+        # DenseOperator Hamiltonian
         c_dense = get_annihilators(nflavors)
         H_dense = sum(c_dense[i]' * c_dense[i] for i in 1:nflavors)
         @test_throws ErrorException solve_hamiltonian(H_dense; method=:blockdense)
@@ -212,9 +213,9 @@ using LinearAlgebra
         @test evecs_block_accessor' * evecs_block_accessor ≈ Matrix{ComplexF64}(I, total_dim, total_dim) atol=1e-12
 
         # Verify eigenvalues and eigenvectors satisfy H * v = λ * v
-        H_block_dense = BlockDense.to_dense(H_block)
+        H_block_mat = to_matrix(H_block)
         for i in 1:total_dim
-            Hv = H_block_dense * evecs_block_accessor[:, i]
+            Hv = H_block_mat * evecs_block_accessor[:, i]
             λv = evals_block_accessor[i] * evecs_block_accessor[:, i]
             @test Hv ≈ λv atol=1e-10
         end
@@ -232,15 +233,15 @@ using LinearAlgebra
     end
 
     @testset "Output type consistency" begin
-        # Verify that method=:dense returns dense types
+        # Verify that method=:dense returns DenseOperator types
         nflavors = 2
         c_dense = get_annihilators(nflavors; method=:dense)
-        @test all(x -> isa(x, Matrix), c_dense)
+        @test all(x -> isa(x, DenseOperator), c_dense)
 
         hopping_input = IOBuffer("0 1 1.0 0.0\n")
         coulomb_input = IOBuffer("2\n")
         H_dense, _ = build_hamiltonian(hopping_input, coulomb_input; method=:dense)
-        @test isa(H_dense, Matrix)
+        @test isa(H_dense, DenseOperator)
 
         evals_dense, evecs_dense = solve_hamiltonian(H_dense)
         @test isa(evals_dense, Vector{Float64})

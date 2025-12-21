@@ -2,7 +2,7 @@
 BlockDense Tests: Linear Algebra Operations
 
 Tests for operator multiplication, addition, scalar multiplication, adjoint,
-and conversion to/from dense matrices.
+and conversion to/from matrices.
 """
 
 using Test
@@ -178,45 +178,45 @@ using LinearAlgebra
         anticomm_11 = c1 * c1_dag + c1_dag * c1
         @test anticomm_11.flux.delta_qn == QN_N(0)
 
-        # Convert to dense to check it's identity
-        anticomm_11_dense = to_dense(anticomm_11)
+        # Convert to matrix to check it's identity
+        anticomm_11_mat = to_matrix(anticomm_11)
         I_matrix = Matrix{ComplexF64}(I, basis.total_dim, basis.total_dim)
-        @test anticomm_11_dense ≈ I_matrix atol=1e-14
+        @test anticomm_11_mat ≈ I_matrix atol=1e-14
 
         # {c_1, c_2'} = 0 (different orbitals)
         anticomm_12 = c1 * c2_dag + c2_dag * c1
         @test anticomm_12.flux.delta_qn == QN_N(0)
 
-        anticomm_12_dense = to_dense(anticomm_12)
-        @test iszero(anticomm_12_dense)
+        anticomm_12_mat = to_matrix(anticomm_12)
+        @test iszero(anticomm_12_mat)
     end
 
-    @testset "Conversion to dense" begin
+    @testset "Conversion to matrix" begin
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
 
-        # Convert to dense
-        c1_dense = to_dense(c1)
+        # Convert to matrix
+        c1_mat = to_matrix(c1)
 
         # Check dimensions
-        @test size(c1_dense) == (basis.total_dim, basis.total_dim)
-        @test size(c1_dense) == (4, 4)  # 2^2 = 4
+        @test size(c1_mat) == (basis.total_dim, basis.total_dim)
+        @test size(c1_mat) == (4, 4)  # 2^2 = 4
 
-        # Should be dense
-        @test c1_dense isa Matrix{ComplexF64}
+        # Should be Matrix type
+        @test c1_mat isa Matrix{ComplexF64}
     end
 
-    @testset "Conversion from dense" begin
+    @testset "Conversion from matrix" begin
         site_qns = [QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
 
-        # Round trip: block -> dense -> block
-        c1_dense = to_dense(c1)
-        c1_reconstructed = from_dense(c1_dense, basis, c1.flux)
+        # Round trip: block -> matrix -> block
+        c1_mat = to_matrix(c1)
+        c1_reconstructed = from_matrix(c1_mat, basis, c1.flux)
 
         # Should have same flux
         @test c1_reconstructed.flux.delta_qn == c1.flux.delta_qn
@@ -229,7 +229,7 @@ using LinearAlgebra
         end
     end
 
-    @testset "Dense conversion consistency" begin
+    @testset "Matrix conversion consistency" begin
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
         basis = make_basis(site_qns)
 
@@ -242,14 +242,14 @@ using LinearAlgebra
         # Number operator
         n1 = c1_dag * c1
 
-        # Convert to dense
-        n1_dense = to_dense(n1)
+        # Convert to matrix
+        n1_mat = to_matrix(n1)
 
         # Should be Hermitian (up to numerical precision)
-        @test n1_dense ≈ adjoint(n1_dense) atol=1e-14
+        @test n1_mat ≈ adjoint(n1_mat) atol=1e-14
 
         # Should have non-negative eigenvalues (number operator)
-        eigs = eigvals(n1_dense)
+        eigs = eigvals(n1_mat)
         @test all(real(eigs) .>= -1e-14)  # Allow small numerical errors
     end
 
@@ -266,10 +266,10 @@ using LinearAlgebra
         lhs = (c1 + c2) * c1_dag
         rhs = c1 * c1_dag + c2 * c1_dag
 
-        lhs_dense = to_dense(lhs)
-        rhs_dense = to_dense(rhs)
+        lhs_mat = to_matrix(lhs)
+        rhs_mat = to_matrix(rhs)
 
-        @test lhs_dense ≈ rhs_dense atol=1e-14
+        @test lhs_mat ≈ rhs_mat atol=1e-14
     end
 
     @testset "Scalar multiplication distributivity" begin
@@ -285,10 +285,10 @@ using LinearAlgebra
         lhs = α * (c1 + c2)
         rhs = α * c1 + α * c2
 
-        lhs_dense = to_dense(lhs)
-        rhs_dense = to_dense(rhs)
+        lhs_mat = to_matrix(lhs)
+        rhs_mat = to_matrix(rhs)
 
-        @test lhs_dense ≈ rhs_dense atol=1e-14
+        @test lhs_mat ≈ rhs_mat atol=1e-14
     end
 
     @testset "Adjoint distributivity" begin
@@ -302,10 +302,10 @@ using LinearAlgebra
         lhs = (c1 + c2)'
         rhs = c1' + c2'
 
-        lhs_dense = to_dense(lhs)
-        rhs_dense = to_dense(rhs)
+        lhs_mat = to_matrix(lhs)
+        rhs_mat = to_matrix(rhs)
 
-        @test lhs_dense ≈ rhs_dense atol=1e-14
+        @test lhs_mat ≈ rhs_mat atol=1e-14
 
         # (c1 * c2)' = c2' * c1' (note reversed order)
         c12 = c1 * c2
@@ -315,10 +315,10 @@ using LinearAlgebra
         c1_dag = c1'
         c2dag_c1dag = c2_dag * c1_dag
 
-        c12_dag_dense = to_dense(c12_dag)
-        c2dag_c1dag_dense = to_dense(c2dag_c1dag)
+        c12_dag_mat = to_matrix(c12_dag)
+        c2dag_c1dag_mat = to_matrix(c2dag_c1dag)
 
-        @test c12_dag_dense ≈ c2dag_c1dag_dense atol=1e-14
+        @test c12_dag_mat ≈ c2dag_c1dag_mat atol=1e-14
     end
 
     @testset "Total number operator" begin
@@ -331,14 +331,14 @@ using LinearAlgebra
 
         @test N.flux.delta_qn == QN_N(0)
 
-        # Convert to dense and check eigenvalues
-        N_dense = to_dense(N)
+        # Convert to matrix and check eigenvalues
+        N_mat = to_matrix(N)
 
         # Should be Hermitian
-        @test N_dense ≈ adjoint(N_dense) atol=1e-14
+        @test N_mat ≈ adjoint(N_mat) atol=1e-14
 
         # Eigenvalues should be 0, 1, 2, 3 (particle numbers)
-        eigs = sort(real(eigvals(N_dense)))
+        eigs = sort(real(eigvals(N_mat)))
         expected_eigs = [0, 1, 1, 1, 2, 2, 2, 3]  # Degeneracies for 3 orbitals
 
         @test eigs ≈ expected_eigs atol=1e-14
@@ -359,8 +359,8 @@ using LinearAlgebra
         @test hopping.flux.delta_qn == QN_N(0)
 
         # Should be Hermitian
-        hopping_dense = to_dense(hopping)
-        @test hopping_dense ≈ adjoint(hopping_dense) atol=1e-14
+        hopping_mat = to_matrix(hopping)
+        @test hopping_mat ≈ adjoint(hopping_mat) atol=1e-14
     end
 
 end

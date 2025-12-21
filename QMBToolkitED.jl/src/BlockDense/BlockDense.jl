@@ -73,7 +73,7 @@ n_up = c[1]' * c[1]
 - `solve_hamiltonian_blockdense` - Efficient block-diagonal diagonalization
 
 ## Conversion
-- `to_dense`, `from_dense` - Convert between block-dense and dense matrix formats
+- `to_matrix`, `from_matrix` - Convert between block-dense and dense matrix formats
 
 ## Eigenvalue decomposition utilities
 - `get_full_eigenvalues` - Extract all eigenvalues from BlockEigenResult
@@ -82,6 +82,7 @@ n_up = c[1]' * c[1]
 module BlockDense
 
 using LinearAlgebra
+import ..Dense: to_matrix
 
 # ============================================================================
 # Core Types and Data Structures
@@ -133,7 +134,7 @@ export get_annihilator_blockdense  # Single operator (low-level)
 export sum_occupied_sites, compute_fermion_sign
 
 # Conversion
-export to_dense, from_dense
+export to_matrix, from_matrix
 
 # High-Level API (compatible with QMBToolkitED)
 export get_annihilators_blockdense        # Vector of operators

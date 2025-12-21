@@ -38,9 +38,9 @@ c_dense = get_annihilators(3)
 basis = make_basis([QN_N(1), QN_N(1), QN_N(1)])
 c_block = get_annihilators_blockdense(basis)
 
-# Should match when converted to dense
+# Should match when converted to matrix
 for i in 1:3
-    @assert to_dense(c_block[i]) ≈ c_dense[i]
+    @assert to_matrix(c_block[i]) ≈ to_matrix(c_dense[i])
 end
 ```
 """

@@ -2,12 +2,12 @@
 Conversion between BlockDenseOperator and Matrix{ComplexF64}.
 
 Functions:
-- to_dense: Convert BlockDenseOperator → Matrix{ComplexF64}
-- from_dense: Convert Matrix{ComplexF64} → BlockDenseOperator (with known flux)
+- to_matrix: Convert BlockDenseOperator → Matrix{ComplexF64}
+- from_matrix: Convert Matrix{ComplexF64} → BlockDenseOperator (with known flux)
 """
 
 """
-    to_dense(op::BlockDenseOperator) -> Matrix{ComplexF64}
+    to_matrix(op::BlockDenseOperator) -> Matrix{ComplexF64}
 
 Convert a BlockDenseOperator to a dense matrix.
 
@@ -27,11 +27,11 @@ basis = make_basis([QN_N(1), QN_N(1)])
 c1 = get_annihilator_blockdense(basis, 1)
 
 # Convert to dense matrix
-c1_dense = to_dense(c1)
-@assert size(c1_dense) == (4, 4)  # 2^2 = 4
+c1_mat = to_matrix(c1)
+@assert size(c1_mat) == (4, 4)  # 2^2 = 4
 ```
 """
-function to_dense(op::BlockDenseOperator)
+function to_matrix(op::BlockDenseOperator)::Matrix{ComplexF64}
     basis = op.basis
     n = basis.total_dim
 
@@ -62,7 +62,7 @@ function to_dense(op::BlockDenseOperator)
 end
 
 """
-    from_dense(matrix::Matrix{ComplexF64}, basis::BlockDenseBasis, flux::OperatorFlux) -> BlockDenseOperator
+    from_matrix(matrix::Matrix{ComplexF64}, basis::BlockDenseBasis, flux::OperatorFlux) -> BlockDenseOperator
 
 Convert a dense matrix to a BlockDenseOperator.
 
@@ -85,15 +85,15 @@ Example:
 basis = make_basis([QN_N(1), QN_N(1)])
 c1 = get_annihilator_blockdense(basis, 1)
 
-# Convert to dense and back
-c1_dense = to_dense(c1)
-c1_reconstructed = from_dense(c1_dense, basis, c1.flux)
+# Convert to matrix and back
+c1_mat = to_matrix(c1)
+c1_reconstructed = from_matrix(c1_mat, basis, c1.flux)
 
 # Should match original
 @assert all(c1.blocks[key] ≈ c1_reconstructed.blocks[key] for key in keys(c1.blocks))
 ```
 """
-function from_dense(matrix::Matrix{ComplexF64}, basis::BlockDenseBasis, flux::OperatorFlux)
+function from_matrix(matrix::Matrix{ComplexF64}, basis::BlockDenseBasis, flux::OperatorFlux)
     @assert size(matrix) == (basis.total_dim, basis.total_dim) "Matrix size must match basis dimension"
 
     # Compute sector starting indices

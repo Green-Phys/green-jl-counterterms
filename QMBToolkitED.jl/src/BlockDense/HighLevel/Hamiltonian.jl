@@ -39,8 +39,8 @@ basis = make_basis(site_qns)
 H, c = build_hamiltonian_blockdense(basis, "hopping.txt", "coulomb.txt")
 
 # H should be Hermitian
-H_dense = to_dense(H)
-@assert H_dense ≈ H_dense' atol=1e-14
+H_mat = to_matrix(H)
+@assert H_mat ≈ H_mat' atol=1e-14
 
 # H should have zero flux (number conserving)
 @assert H.flux.delta_qn == QN_N(0)
@@ -56,7 +56,7 @@ basis = make_basis([QN_N(1) for _ in 1:nflavors])
 H_block, c_block = build_hamiltonian_blockdense(basis, "hopping.txt", "coulomb.txt")
 
 # Hamiltonians should match
-@assert to_dense(H_block) ≈ H_dense atol=1e-14
+@assert to_matrix(H_block) ≈ to_matrix(H_dense) atol=1e-14
 ```
 """
 function build_hamiltonian_blockdense(

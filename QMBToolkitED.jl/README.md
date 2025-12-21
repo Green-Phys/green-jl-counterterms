@@ -97,8 +97,9 @@ iwn, g_iwn = calculate_green_matsubara(evals, evecs, c, beta, 100, 1, 1)
 ### Conversion Between Methods
 
 ```julia
-# Convert BlockDense operators to dense matrices
-c_dense = to_dense(c_blockdense)  # BlockDenseOperator → Matrix{ComplexF64}
+# Convert operators to dense matrices for comparison
+c_mat = to_matrix(c_blockdense)  # BlockDenseOperator → Matrix{ComplexF64}
+c_mat = to_matrix(c_dense_op)    # DenseOperator → Matrix{ComplexF64}
 ```
 
 ## Input Format

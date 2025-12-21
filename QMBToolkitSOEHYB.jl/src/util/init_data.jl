@@ -7,101 +7,50 @@ using LinearAlgebra
 # Constants for file format validation
 const HYB_WEIGHTS_EXPECTED_COLS = 4  # Expected columns: ind_poles, orb_1, orb_2, weights
 
-"""
-    init_model_data(model_params::ModelParams)
+#=============================================================================
+# Main initialization functions
+=============================================================================#
 
-init a `ModelData` object from the parameters in a `ModelParams` struct.
-This involves reading data from files to construct the Hamiltonian, operators,
-and hybridization function.
+"""
+    init_model_data(model_params::ModelParams, dlr_params::DLRParams)
+
+Initialize a `ModelData{T, DenseFormat}` object from input parameters.
 """
 function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
-
-    ### Load local Hamiltonian data
-    hopping_path = joinpath(model_params.file_path, model_params.hopping_file)
-    interaction_path = joinpath(model_params.file_path, model_params.interaction_file)
-    isfile(hopping_path) || error("Hopping file not found: $hopping_path")
-    isfile(interaction_path) || error("Interaction file not found: $interaction_path")
-
+    # Load and solve Hamiltonian
+    hopping_path, interaction_path = _load_hamiltonian_paths(model_params)
     H, ann_opts_raw = QMBToolkitED.build_hamiltonian(hopping_path, interaction_path)
     evals, evecs = QMBToolkitED.solve_hamiltonian(H)
 
-    # Infer numeric type
+    # Infer numeric type and transform operators to eigenbasis
     T = eltype(evecs)
-
-    # Convert operators to the correct type
-    # ann_opts = vec([convert(Matrix{T}, c) for c in ann_opts_raw])
     ann_opts = vec([evecs' * convert(Matrix{T}, c) * evecs for c in ann_opts_raw])
     n_flavors = length(ann_opts)
     n_fock = 1 << n_flavors
     cre_opts = vec([Matrix{T}(adjoint(c)) for c in ann_opts])
-    
-    ### init DLR grid
+
+    # Initialize DLR grid
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
-    
-    ### init bare propagator
-    tau_grid = dlr_grid.tau
-    bare_propagator = zeros(T, length(tau_grid), n_fock, n_fock)
+
+    # Build bare propagator
     E_shift = minimum(evals)
     evals_shifted = evals .- E_shift
-    for (k, tau) in enumerate(tau_grid)
-        U_tau = exp.(-tau * evals_shifted)
-        # Compute propagator: evecs * exp(-tau*H) * evecs^†
-        # For Hermitian H, this should be Hermitian, but may have small imaginary parts
-        # bare_propagator[k, :, :] = evecs * Diagonal(U_tau) * adjoint(evecs)
-        bare_propagator[k, :, :] = Diagonal(U_tau)
-    end
-   
-    ### Load hybridization function data
-    hyb_poles_path = joinpath(model_params.file_path, model_params.hybridization_poles_file)
-    hyb_weights_path = joinpath(model_params.file_path, model_params.hybridization_weights_file)
-    isfile(hyb_poles_path) || error("Hybridization poles file not found: $hyb_poles_path")
-    isfile(hyb_weights_path) || error("Hybridization weights file not found: $hyb_weights_path")
+    bare_propagator = _build_bare_propagator_dense(T, dlr_grid.tau, evals_shifted, n_fock)
 
-    hyb_poles = readdlm(hyb_poles_path)
-    hyb_poles = vec(hyb_poles)
-    hyb_weights_orig = readdlm(hyb_weights_path)
-    size(hyb_weights_orig, 2) == HYB_WEIGHTS_EXPECTED_COLS || error("Hybridization weights file must have $(HYB_WEIGHTS_EXPECTED_COLS) columns (ind_poles, orb_1, orb_2, weights), got $(size(hyb_weights_orig, 2))")
-    n_poles = Int(maximum(hyb_weights_orig[:, 1])) + 1
-    n_flavors_physical = Int(maximum(hyb_weights_orig[:, 2:3])) + 1
-    expected_rows = n_poles * n_flavors_physical * n_flavors_physical
-    size(hyb_weights_orig, 1) == expected_rows || error("Hybridization weights file has incorrect number of rows: expected $expected_rows, got $(size(hyb_weights_orig, 1))")
-    hyb_weights_flat = hyb_weights_orig[:, 4]
-    hyb_weights_permuted = reshape(hyb_weights_flat, (n_flavors_physical, n_flavors_physical, n_poles))
-    hyb_weights_physical = permutedims(hyb_weights_permuted, (3, 2, 1))  # Now Delta[tau, orb_1, orb_2]
+    # Load hybridization data
+    hyb_soe, n_flavors_physical = _load_hybridization_data(model_params, n_flavors, dlr_grid)
 
-    # hyb_weights contains both hyb_weights physical and those for counterterms (zeros)
-    hyb_weights = zeros(Float64, n_poles, n_flavors, n_flavors)
-    hyb_weights[:, 1:n_flavors_physical, 1:n_flavors_physical] = hyb_weights_physical
+    # Compute DLR quantities
+    bare_propagator_dlr, bare_propagator_err, K0_inverse, kernel_cache, convolution_workspace =
+        _compute_dlr_quantities(T, dlr_grid, bare_propagator, hyb_soe.exponents, model_params.beta, n_fock)
 
-    # Convert hybridization function to DLR representation
-    KPlus_on_DLRtau = _gen_K_on_DLRtau(hyb_poles, dlr_grid)
-    KMinus_on_DLRtau = _gen_K_on_DLRtau(-hyb_poles, dlr_grid)
-    hyb_soe = SOEData(hyb_weights, hyb_poles, KPlus_on_DLRtau, KMinus_on_DLRtau)
-
-    ### Derived quantities
-    # Convert bare propagator e^{-tau H} to DLR representation
-    bare_propagator_dlr = tau2dlr(dlr_grid, bare_propagator, dlr_grid.tau)
-    bare_propagator_reconstructed = dlr2tau(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
-    bare_propagator_err = maximum(abs.(bare_propagator_reconstructed .- bare_propagator))
-
-
-    # precompute annihilation and creation operators multiplied with SOE coefficients of the hybridization function
+    # Precompute SOE operators
     ann_opts_SOE = _gen_opts_SOE(T, ann_opts, hyb_soe.coeffs, false)
     cre_opts_SOE = _gen_opts_SOE(T, cre_opts, hyb_soe.coeffs, true)
 
-    # precompute K0_inverse
-    K0_inverse = _gen_K0_inverse(hyb_poles, model_params.beta)
-
-    # calculate partition function for the counter-terms
+    # Calculate partition function for counter-terms
     Z_counterterms = calculate_Z_counterterms(model_params, n_flavors, n_flavors_physical)
 
-    # Pre-compute kernel cache and workspace for DLR convolutions (performance optimization)
-    kernel_cache = compute_kernel_cache(dlr_grid)
-    r = length(dlr_grid.omega)
-    n_tau = length(dlr_grid.tau)
-    convolution_workspace = ConvolutionWorkspace{T}(r, n_fock, n_fock, n_tau)
-
-    # Phase 5: DenseFormat initialization (BlockDense fields are nothing)
     return ModelData{T, DenseFormat}(
         model_params.beta,
         n_flavors,
@@ -115,14 +64,13 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
         n_flavors_physical,
         bare_propagator_err,
         hyb_soe,
-        DLRData(bare_propagator, bare_propagator_dlr), # bare propagator
+        DLRData(bare_propagator, bare_propagator_dlr),
         K0_inverse,
         ann_opts_SOE,
         cre_opts_SOE,
         Z_counterterms,
         kernel_cache,
         convolution_workspace,
-        # BlockDense fields (not used for DenseFormat)
         nothing,  # bare_propagator_blockdense
         nothing,  # cre_opts_blockdense
         nothing,  # ann_opts_blockdense
@@ -134,58 +82,33 @@ end
 """
     init_model_data_blockdense(model_params::ModelParams, dlr_params::DLRParams)
 
-Initialize a `ModelData{T, BlockDenseFormat}` object.
-
-This function builds the Hamiltonian using BlockDense representation,
-constructs BlockDense operators, and builds the bare propagator in block form.
-
-SOE operators are kept in dense form for simplicity (they're small matrices).
+Initialize a `ModelData{T, BlockDenseFormat}` object from input parameters.
 """
 function init_model_data_blockdense(model_params::ModelParams, dlr_params::DLRParams)
-    
-    ### Load local Hamiltonian data
-    hopping_path = joinpath(model_params.file_path, model_params.hopping_file)
-    interaction_path = joinpath(model_params.file_path, model_params.interaction_file)
-    isfile(hopping_path) || error("Hopping file not found: $hopping_path")
-    isfile(interaction_path) || error("Interaction file not found: $interaction_path")
-
-    # Build Hamiltonian using BlockDense method
-    # First, infer the quantum number type and create basis
+    # Load Hamiltonian paths and infer basis
+    hopping_path, interaction_path = _load_hamiltonian_paths(model_params)
     hopping_data = readdlm(hopping_path)
     n_orbitals = Int(maximum(hopping_data[:, 1:2])) + 1
 
-    # For now, assume QN_N conservation (particle number)
-    # In a full implementation, this could be inferred from input
+    # Build basis assuming particle number conservation
     site_qns = [QN_N(1) for _ in 1:n_orbitals]
     basis = make_basis(site_qns)
 
-    # Build BlockDense Hamiltonian and operators
+    # Build and solve BlockDense Hamiltonian
     H_block, c_block = build_hamiltonian(hopping_path, interaction_path; method=:blockdense, basis=basis)
-
-    # Solve Hamiltonian
     result = solve_hamiltonian_blockdense(H_block)
 
-    # Infer numeric type 
+    # Infer numeric type and extract operators
     T = eltype(result.sector_eigenvectors[1])
-
-    # Extract operators
     ann_opts_blockdense = c_block
     cre_opts_blockdense = [adjoint(c) for c in c_block]
     n_flavors = length(ann_opts_blockdense)
-
-    # For compatibility, also create dense versions by converting from BlockDense
     n_fock = sum(sector.dim for sector in basis.sectors)
-    ann_opts = Vector{Matrix{T}}(undef, n_flavors)
-    cre_opts = Vector{Matrix{T}}(undef, n_flavors)
-    for i in 1:n_flavors
-        ann_opts[i] = to_dense(ann_opts_blockdense[i])
-        cre_opts[i] = to_dense(cre_opts_blockdense[i])
-    end
 
     # Extract eigenvalues (concatenate from all sectors)
     evals = vcat([result.sector_eigenvalues[i] for i in 1:length(basis.sectors)]...)
 
-    # For evecs, create a block-diagonal matrix
+    # Build block-diagonal eigenvector matrix
     evecs = zeros(T, n_fock, n_fock)
     offset = 0
     for i in 1:length(basis.sectors)
@@ -194,75 +117,35 @@ function init_model_data_blockdense(model_params::ModelParams, dlr_params::DLRPa
         offset += dim
     end
 
-    ### init DLR grid
+    # Initialize DLR grid
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
 
-    ### init bare propagator (both dense and BlockDense)
-    tau_grid = dlr_grid.tau
+    # Build bare propagators (dense for DLR, BlockDense for computation)
     E_shift = minimum(evals)
-
-    # Dense bare propagator (diagonal in eigenbasis)
-    bare_propagator_dense = zeros(T, length(tau_grid), n_fock, n_fock)
     evals_shifted = evals .- E_shift
-    for (k, tau) in enumerate(tau_grid)
-        U_tau = exp.(-tau * evals_shifted)
-        bare_propagator_dense[k, :, :] = Diagonal(U_tau)
-    end
+    bare_propagator_dense = _build_bare_propagator_dense(T, dlr_grid.tau, evals_shifted, n_fock)
+    bare_propagator_blockdense = build_bare_propagator_blockdense(result, dlr_grid.tau, E_shift)
 
-    # BlockDense bare propagator
-    bare_propagator_blockdense = build_bare_propagator_blockdense(result, tau_grid, E_shift)
+    # Load hybridization data
+    hyb_soe, n_flavors_physical = _load_hybridization_data(model_params, n_flavors, dlr_grid)
 
-    ### Load hybridization function data
-    hyb_poles_path = joinpath(model_params.file_path, model_params.hybridization_poles_file)
-    hyb_weights_path = joinpath(model_params.file_path, model_params.hybridization_weights_file)
-    isfile(hyb_poles_path) || error("Hybridization poles file not found: $hyb_poles_path")
-    isfile(hyb_weights_path) || error("Hybridization weights file not found: $hyb_weights_path")
+    # Compute DLR quantities
+    bare_propagator_dlr, bare_propagator_err, K0_inverse, kernel_cache, convolution_workspace =
+        _compute_dlr_quantities(T, dlr_grid, bare_propagator_dense, hyb_soe.exponents, model_params.beta, n_fock)
 
-    hyb_poles = vec(readdlm(hyb_poles_path))
-    hyb_weights_orig = readdlm(hyb_weights_path)
-    size(hyb_weights_orig, 2) == HYB_WEIGHTS_EXPECTED_COLS || error("Hybridization weights file must have $(HYB_WEIGHTS_EXPECTED_COLS) columns")
-    n_poles = Int(maximum(hyb_weights_orig[:, 1])) + 1
-    n_flavors_physical = Int(maximum(hyb_weights_orig[:, 2:3])) + 1
-    hyb_weights_flat = hyb_weights_orig[:, 4]
-    hyb_weights_permuted = reshape(hyb_weights_flat, (n_flavors_physical, n_flavors_physical, n_poles))
-    hyb_weights_physical = permutedims(hyb_weights_permuted, (3, 2, 1))
-
-    hyb_weights = zeros(Float64, n_poles, n_flavors, n_flavors)
-    hyb_weights[:, 1:n_flavors_physical, 1:n_flavors_physical] = hyb_weights_physical
-
-    # Convert hybridization function to DLR representation
-    KPlus_on_DLRtau = _gen_K_on_DLRtau(hyb_poles, dlr_grid)
-    KMinus_on_DLRtau = _gen_K_on_DLRtau(-hyb_poles, dlr_grid)
-    hyb_soe = SOEData(hyb_weights, hyb_poles, KPlus_on_DLRtau, KMinus_on_DLRtau)
-
-    ### Derived quantities
-    bare_propagator_dlr = tau2dlr(dlr_grid, bare_propagator_dense, dlr_grid.tau)
-    bare_propagator_reconstructed = dlr2tau(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
-    bare_propagator_err = maximum(abs.(bare_propagator_reconstructed .- bare_propagator_dense))
-
-    # SOE operators: keep dense for simplicity (used only for Green's function calculation)
-    ann_opts_SOE = _gen_opts_SOE(T, ann_opts, hyb_soe.coeffs, false)
-    cre_opts_SOE = _gen_opts_SOE(T, cre_opts, hyb_soe.coeffs, true)
-
-    # For BlockDense format, create BlockDense SOE operators
+    # Create BlockDense SOE operators
     ann_opts_SOE_blockdense = _gen_opts_SOE_blockdense(T, ann_opts_blockdense, hyb_soe.coeffs, false)
     cre_opts_SOE_blockdense = _gen_opts_SOE_blockdense(T, cre_opts_blockdense, hyb_soe.coeffs, true)
 
-    K0_inverse = _gen_K0_inverse(hyb_poles, model_params.beta)
+    # Calculate partition function for counter-terms
     Z_counterterms = calculate_Z_counterterms(model_params, n_flavors, n_flavors_physical)
-
-    # Pre-compute kernel cache and workspace (dense)
-    kernel_cache = compute_kernel_cache(dlr_grid)
-    r = length(dlr_grid.omega)
-    n_tau = length(dlr_grid.tau)
-    convolution_workspace = ConvolutionWorkspace{T}(r, n_fock, n_fock, n_tau)
 
     return ModelData{T, BlockDenseFormat}(
         model_params.beta,
         n_flavors,
         n_fock,
-        ann_opts,
-        cre_opts,
+        nothing,  # ann_opts (not used in BlockDense)
+        nothing,  # cre_opts (not used in BlockDense)
         evals,
         evecs,
         dlr_grid,
@@ -272,12 +155,11 @@ function init_model_data_blockdense(model_params::ModelParams, dlr_params::DLRPa
         hyb_soe,
         DLRData(bare_propagator_dense, bare_propagator_dlr),
         K0_inverse,
-        ann_opts_SOE,
-        cre_opts_SOE,
+        nothing,  # ann_opts_SOE (not used in BlockDense)
+        nothing,  # cre_opts_SOE (not used in BlockDense)
         Z_counterterms,
         kernel_cache,
         convolution_workspace,
-        # BlockDense fields
         bare_propagator_blockdense,
         cre_opts_blockdense,
         ann_opts_blockdense,
@@ -290,7 +172,7 @@ end
 """
     init_solver_data(model_data::ModelData)
 
-init a `SolverData` object from the `ModelData`.
+Initialize a `SolverData` object from the `ModelData`.
 """
 function init_solver_data(model_data::ModelData{T, DenseFormat}) where {T<:Number}
     calculation_data = CalculationData{T, DenseFormat}(
@@ -338,6 +220,93 @@ function init_solver_data(model_data::ModelData{T, BlockDenseFormat}) where {T<:
     return SolverData{T, BlockDenseFormat}(model_data, calculation_data)
 end
 
+#=============================================================================
+# Helper functions
+=============================================================================#
+
+"""
+    _load_hamiltonian_paths(model_params::ModelParams)
+
+Validate and return paths to Hamiltonian input files.
+"""
+function _load_hamiltonian_paths(model_params::ModelParams)
+    hopping_path = joinpath(model_params.file_path, model_params.hopping_file)
+    interaction_path = joinpath(model_params.file_path, model_params.interaction_file)
+    isfile(hopping_path) || error("Hopping file not found: $hopping_path")
+    isfile(interaction_path) || error("Interaction file not found: $interaction_path")
+    return hopping_path, interaction_path
+end
+
+"""
+    _load_hybridization_data(model_params::ModelParams, n_flavors::Int, dlr_grid::DLRGrid)
+
+Load hybridization function data from files and construct SOEData.
+Returns (hyb_soe, n_flavors_physical).
+"""
+function _load_hybridization_data(model_params::ModelParams, n_flavors::Int, dlr_grid::DLRGrid)
+    hyb_poles_path = joinpath(model_params.file_path, model_params.hybridization_poles_file)
+    hyb_weights_path = joinpath(model_params.file_path, model_params.hybridization_weights_file)
+    isfile(hyb_poles_path) || error("Hybridization poles file not found: $hyb_poles_path")
+    isfile(hyb_weights_path) || error("Hybridization weights file not found: $hyb_weights_path")
+
+    hyb_poles = vec(readdlm(hyb_poles_path))
+    hyb_weights_orig = readdlm(hyb_weights_path)
+    size(hyb_weights_orig, 2) == HYB_WEIGHTS_EXPECTED_COLS || error("Hybridization weights file must have $(HYB_WEIGHTS_EXPECTED_COLS) columns (ind_poles, orb_1, orb_2, weights), got $(size(hyb_weights_orig, 2))")
+
+    n_poles = Int(maximum(hyb_weights_orig[:, 1])) + 1
+    n_flavors_physical = Int(maximum(hyb_weights_orig[:, 2:3])) + 1
+    expected_rows = n_poles * n_flavors_physical * n_flavors_physical
+    size(hyb_weights_orig, 1) == expected_rows || error("Hybridization weights file has incorrect number of rows: expected $expected_rows, got $(size(hyb_weights_orig, 1))")
+
+    hyb_weights_flat = hyb_weights_orig[:, 4]
+    hyb_weights_permuted = reshape(hyb_weights_flat, (n_flavors_physical, n_flavors_physical, n_poles))
+    hyb_weights_physical = permutedims(hyb_weights_permuted, (3, 2, 1))
+
+    # hyb_weights contains both physical weights and counterterms (zeros)
+    hyb_weights = zeros(Float64, n_poles, n_flavors, n_flavors)
+    hyb_weights[:, 1:n_flavors_physical, 1:n_flavors_physical] = hyb_weights_physical
+
+    # Convert hybridization function to SOE representation
+    KPlus_on_DLRtau = _gen_K_on_DLRtau(hyb_poles, dlr_grid)
+    KMinus_on_DLRtau = _gen_K_on_DLRtau(-hyb_poles, dlr_grid)
+    hyb_soe = SOEData(hyb_weights, hyb_poles, KPlus_on_DLRtau, KMinus_on_DLRtau)
+
+    return hyb_soe, n_flavors_physical
+end
+
+"""
+    _build_bare_propagator_dense(T, tau_grid, evals_shifted, n_fock)
+
+Build dense bare propagator on tau grid (diagonal in eigenbasis).
+"""
+function _build_bare_propagator_dense(::Type{T}, tau_grid, evals_shifted, n_fock) where T
+    bare_propagator = zeros(T, length(tau_grid), n_fock, n_fock)
+    for (k, tau) in enumerate(tau_grid)
+        U_tau = exp.(-tau * evals_shifted)
+        bare_propagator[k, :, :] = Diagonal(U_tau)
+    end
+    return bare_propagator
+end
+
+"""
+    _compute_dlr_quantities(T, dlr_grid, bare_propagator, hyb_poles, beta, n_fock)
+
+Compute DLR-related quantities: bare_propagator_dlr, error, K0_inverse, caches.
+"""
+function _compute_dlr_quantities(::Type{T}, dlr_grid, bare_propagator, hyb_poles, beta, n_fock) where T
+    bare_propagator_dlr = tau2dlr(dlr_grid, bare_propagator, dlr_grid.tau)
+    bare_propagator_reconstructed = dlr2tau(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
+    bare_propagator_err = maximum(abs.(bare_propagator_reconstructed .- bare_propagator))
+
+    K0_inverse = _gen_K0_inverse(hyb_poles, beta)
+    kernel_cache = compute_kernel_cache(dlr_grid)
+    r = length(dlr_grid.omega)
+    n_tau = length(dlr_grid.tau)
+    convolution_workspace = ConvolutionWorkspace{T}(r, n_fock, n_fock, n_tau)
+
+    return bare_propagator_dlr, bare_propagator_err, K0_inverse, kernel_cache, convolution_workspace
+end
+
 function _gen_K0_inverse(exponents::Vector{Float64}, beta::Float64)
     K0_inverse = zeros(Float64, length(exponents))
     for (i, omega) in enumerate(exponents)
@@ -362,7 +331,6 @@ function _gen_K_on_DLRtau(exponents::Vector{Float64}, dlr_grid::DLRGrid)
     end
     return K_on_DLRtau
 end
-
 
 function _gen_opts_SOE(::Type{T}, opts::Vector{Matrix{T}}, coeffs::Array{Float64,3}, is_creation::Bool) where {T<:Number}
     # coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation

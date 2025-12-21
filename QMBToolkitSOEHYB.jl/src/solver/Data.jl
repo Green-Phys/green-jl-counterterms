@@ -48,9 +48,9 @@ struct ModelData{T<:Number, Format<:HilbertSpaceFormat}
     beta::Float64
     n_flavors::Int
     n_fock::Int # 2^n_flavors
-    # Dense format fields (always populated for DenseFormat, empty for BlockDenseFormat)
-    ann_opts::Vector{Matrix{T}}  # Dense annihilation operators
-    cre_opts::Vector{Matrix{T}}  # Dense creation operators
+    # Dense format fields (populated for DenseFormat, nothing for BlockDenseFormat)
+    ann_opts::Union{Vector{Matrix{T}}, Nothing}  # Dense annihilation operators
+    cre_opts::Union{Vector{Matrix{T}}, Nothing}  # Dense creation operators
     evals::Vector{Float64}
     evecs::Matrix{T}
     dlr_grid::DLRGrid
@@ -60,8 +60,8 @@ struct ModelData{T<:Number, Format<:HilbertSpaceFormat}
     hyb::SOEData
     bare_propagator::DLRData{T}  # Dense bare propagator DLR representation
     K0_inverse::Vector{Float64}
-    ann_opts_SOE::Matrix{Matrix{T}}  # Always dense (SOE coefficients are small)
-    cre_opts_SOE::Matrix{Matrix{T}}  # Always dense (SOE coefficients are small)
+    ann_opts_SOE::Union{Matrix{Matrix{T}}, Nothing}  # Dense SOE operators (nothing for BlockDenseFormat)
+    cre_opts_SOE::Union{Matrix{Matrix{T}}, Nothing}  # Dense SOE operators (nothing for BlockDenseFormat)
     Z_counterterms::Float64
     # Performance optimization caches
     kernel_cache::KernelCache  # Pre-computed kernel values for DLR convolution

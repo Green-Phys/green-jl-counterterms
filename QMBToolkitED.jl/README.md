@@ -55,15 +55,16 @@ coulomb_str = """
 
 # Build and solve Hamiltonian
 H, c = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str))
-evals, evecs = solve_hamiltonian(H)
+result = solve_hamiltonian(H)
+evals, evecs = result  # Can destructure if needed
 
 # Calculate partition function
 beta = 10.0
 Z = get_Z(evals, beta, shift_energy=true)
 
 # Calculate Green's functions
-iwn, g_iwn = calculate_green_matsubara(evals, evecs, c, beta, 100, 1, 1)
-tau, g_tau = calculate_green_tau(evals, evecs, c, beta, 100, 1, 1)
+iwn, g_iwn = calculate_green_matsubara(result, c, beta, 100, 1, 1)
+tau, g_tau = calculate_green_tau(result, c, beta, 100, 1, 1)
 ```
 
 ### BlockDense Method (Symmetry Exploitation)
@@ -88,10 +89,11 @@ H, c = build_hamiltonian(
 )
 
 # Solve (automatically uses efficient block-diagonal solver)
-evals, evecs = solve_hamiltonian(H)
+result = solve_hamiltonian(H)
+evals, evecs = result  # Can destructure if needed
 
 # Same Green's function interface works with both methods
-iwn, g_iwn = calculate_green_matsubara(evals, evecs, c, beta, 100, 1, 1)
+iwn, g_iwn = calculate_green_matsubara(result, c, beta, 100, 1, 1)
 ```
 
 ### Conversion Between Methods
@@ -146,7 +148,7 @@ src/
 |---------|-------|------------|
 | **Hilbert Space** | Full 2^n states | Symmetry sectors only |
 | **Memory** | O(4^n) | O(4^n / #sectors) |
-| **Operators** | Matrix{ComplexF64} | BlockDenseOperator |
+| **Operators** | DenseOperator | BlockDenseOperator |
 | **Use Case** | Small systems (n ≤ 12) | Larger systems with symmetries |
 | **Speedup** | Baseline | 10-100x for large systems |
 

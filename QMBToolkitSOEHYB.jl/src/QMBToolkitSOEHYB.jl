@@ -4,7 +4,11 @@ using MPI
 
 include("util/Params.jl")
 include("solver/HilbertSpaceFormat.jl")
-include("solver/Propagator.jl")
+
+# Propagator types - must be loaded before Data.jl and other files that use them
+include("dense/DensePropagator.jl")
+include("blockdense/BlockDensePropagator.jl")
+
 include("solver/Data.jl")
 include("util/io.jl")
 include("util/init_data.jl")
@@ -14,14 +18,14 @@ include("diagram/DiagramStructure.jl")
 include("diagram/print_diagram.jl")
 include("diagram/gen_common.jl")
 
-# Dense operations 
+# Dense operations
 include("dense/operator_ops.jl")
 include("dense/hybridization.jl")
 include("dense/convolution_eval.jl")
 include("dense/propagator.jl")
 
 # BlockDense operations
-include("blockdense/algebra.jl")
+include("blockdense/dlr.jl")
 include("blockdense/operator_ops.jl")
 include("blockdense/hybridization.jl")
 include("blockdense/propagator.jl")

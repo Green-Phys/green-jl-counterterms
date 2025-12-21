@@ -65,16 +65,16 @@ function read_input(file_path::String)
         dict["solver"]["dlr"]["rtol"]
     )
 
-    # Read format (default to "dense" for backward compatibility)
-    format = get(dict["solver"], "format", "dense")
-    @assert format in ["dense", "blockdense"] "format must be 'dense' or 'blockdense', got: $format"
+    # Read Hilbert_space_format (default to "dense" for backward compatibility)
+    Hilbert_space_format = get(dict["solver"], "Hilbert_space_format", "dense")
+    @assert Hilbert_space_format in ["dense", "blockdense"] "Hilbert_space_format must be 'dense' or 'blockdense', got: $Hilbert_space_format"
 
     solver_params = SolverParams(
         propagator_params,
         green_params,
         dlr_params,
         output_path,
-        format
+        Hilbert_space_format
     )
 
     return Params(model_params, solver_params)
@@ -90,15 +90,21 @@ function print_parameters(params::Params)
     println("--- Input Parameters ---")
     println(" [model]")
     println("   beta: ", params.model.beta)
+    println("   file_path: ", params.model.file_path)
     println("   hopping_file: ", params.model.hopping_file)
     println("   interaction_file: ", params.model.interaction_file)
     println("   hybridization_poles_file: ", params.model.hybridization_poles_file)
     println("   hybridization_weights_file: ", params.model.hybridization_weights_file)
     println(" [solver]")
+    println("   output_path: ", params.solver.output_path)
+    println("   Hilbert_space_format: ", params.solver.Hilbert_space_format)
     println("  [expansion]")
+    println("    is_bold: ", params.solver.propagator.is_bold)
     println("    expansion_order: ", params.solver.propagator.expansion_order)
     println("  [green]")
+    println("    is_bold: ", params.solver.green.is_bold)
     println("    expansion_order: ", params.solver.green.expansion_order)
+    println("    save_linear_size: ", params.solver.green.save_linear_size)
     println("  [dlr]")
     println("    Euv: ", params.solver.dlr.Euv)
     println("    rtol: ", params.solver.dlr.rtol)

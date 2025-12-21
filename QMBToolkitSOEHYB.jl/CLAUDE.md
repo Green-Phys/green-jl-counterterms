@@ -72,7 +72,7 @@ Note: The solver is MPI-enabled and uses `mpiexecjl` internally.
 
 **SolverData** (`src/solver/Data.jl`):
 - Combines `ModelData` and `CalculationData`
-- Parametrized by `{T<:Number, Format<:RepresentationFormat}`
+- Parametrized by `{T<:Number, Format<:HilbertSpaceFormat}`
 
 ### Diagram Structure
 

@@ -6,6 +6,10 @@ interaction_file = "Uijkl.txt"
 hybridization_poles_file = "hyb_poles.txt"
 hybridization_weights_file = "hyb_weights.txt"
 
+[solver]
+output_path = "."
+Hilbert_space_format = "blockdense"
+
 [solver.propagator]
 is_bold = false
 expansion_order = 2
@@ -16,9 +20,6 @@ expansion_order = 3
 save_linear_size = 1001
 
 [solver.dlr]
-rtol = 1e-14
 Euv = 500.0
+rtol = 1e-14
 
-[solver]
-output_path = "."
-format = "blockdense"

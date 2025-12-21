@@ -44,7 +44,7 @@ mutable struct SOEData # the value is recovered by sum_{i} coeffs[i] * K(tau, ex
     KMinus_on_DLRtau::Array{Float64,2} # K(tau_k, -exponent_i) on the DLR tau grid
 end
 
-struct ModelData{T<:Number, Format<:RepresentationFormat}
+struct ModelData{T<:Number, Format<:HilbertSpaceFormat}
     beta::Float64
     n_flavors::Int
     n_fock::Int # 2^n_flavors
@@ -88,7 +88,7 @@ in small orbital space), but propagator and self-energy can be format-dependent.
 - For BlockDenseFormat: uses propagator_blockdense and selfenergy_blockdense (BlockDenseArray{T})
 - Green's function is always dense (physical observable in small orbital space)
 """
-mutable struct CalculationData{T<:Number, Format<:RepresentationFormat}
+mutable struct CalculationData{T<:Number, Format<:HilbertSpaceFormat}
     # Dense format fields
     propagator_dense::Union{DLRData{T}, Nothing}  # Only for DenseFormat
     selfenergy_dense::Union{DLRData{T}, Nothing}  # Only for DenseFormat
@@ -111,7 +111,7 @@ Holds all the data required for the solver calculation.
 
 Combines model data and calculation data, both parametrized by the same Format.
 """
-struct SolverData{T<:Number, Format<:RepresentationFormat}
+struct SolverData{T<:Number, Format<:HilbertSpaceFormat}
     model::ModelData{T, Format}
     calc::CalculationData{T, Format}
 end

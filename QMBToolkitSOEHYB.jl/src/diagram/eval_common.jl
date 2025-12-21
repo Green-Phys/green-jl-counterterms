@@ -6,7 +6,7 @@ using QMBToolkitDLR
 # ===== Format-dependent accessors =====
 
 """
-    get_propagator(calc_data::CalculationData{T, DenseFormat}) -> DLRData{T}
+    get_propagator(calc_data::CalculationData{T, DenseFormat}) -> DenseDLRPropagator{T}
 
 Get the propagator from CalculationData, dispatched by format.
 """
@@ -94,14 +94,14 @@ function eval_diagrams!(solver_data::SolverData{T, DenseFormat}, solver_params::
             eval_propagator_given_order!(solver_data, diagrams[order+1], comm)
 
             # Calculate and store partition function after this order
-            propagator_coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.propagator_dense.vals, solver_data.model.dlr_grid.tau)
-            propagator_at_beta = dlr2tau(solver_data.model.dlr_grid, propagator_coeffs, [solver_data.model.beta])[1, :, :]
-            Z_current = tr(propagator_at_beta)
+            propagator_dlr = tau2dlr_dense(solver_data.model.dlr_grid, solver_data.calc.propagator_dense.vals, solver_data.model.dlr_grid.tau)
+            propagator_at_beta = dlr2tau_dense(solver_data.model.dlr_grid, propagator_dlr, [solver_data.model.beta])
+            Z_current = tr(propagator_at_beta.data[1, :, :])
             push!(solver_data.calc.partition_function_by_order, Z_current)
         end
 
         # Update final dlr coefficients
-        solver_data.calc.propagator_dense.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.propagator_dense.vals, solver_data.model.dlr_grid.tau)
+        solver_data.calc.propagator_dense.coeffs = tau2dlr_dense(solver_data.model.dlr_grid, solver_data.calc.propagator_dense.vals, solver_data.model.dlr_grid.tau)
     elseif diagram_type == :green_diagram
         for order in 1:solver_params.green.expansion_order
             if rank == 0
@@ -110,22 +110,22 @@ function eval_diagrams!(solver_data::SolverData{T, DenseFormat}, solver_params::
             eval_green_given_order!(solver_data, diagrams[order], solver_params.green.is_bold, comm)
 
             # Store Green's function numerator after this order
-            push!(solver_data.calc.green_numerator_by_order, copy(solver_data.calc.green.vals))
+            push!(solver_data.calc.green_numerator_by_order, DensePropagator{T}(copy(solver_data.calc.green.vals.data)))
         end
 
         # Compute Green's function by order (numerator / Z)
         # Green's function order i uses partition function from propagator order i-1
         for order in 1:solver_params.green.expansion_order
             propagator_order = order  # Green order 1 uses Z[1] (propagator order 0), etc.
-            green_at_order = solver_data.calc.green_numerator_by_order[order] ./ solver_data.calc.partition_function_by_order[propagator_order]
-            push!(solver_data.calc.green_by_order, green_at_order)
+            green_at_order_data = solver_data.calc.green_numerator_by_order[order].data ./ solver_data.calc.partition_function_by_order[propagator_order]
+            push!(solver_data.calc.green_by_order, DensePropagator{T}(green_at_order_data))
         end
 
         # Update final Green's function (using last order)
-        solver_data.calc.green.vals .= solver_data.calc.green_by_order[end]
+        copyto!(solver_data.calc.green.vals, solver_data.calc.green_by_order[end])
 
         # update dlr coefficients
-        solver_data.calc.green.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)
+        solver_data.calc.green.coeffs = tau2dlr_dense(solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)
     else
         error("Unknown diagram type: $diagram_type. Supported types are: :propagator_diagram, :green_diagram, :selfenergy_diagram")
     end
@@ -147,11 +147,14 @@ function eval_diagrams!(solver_data::SolverData{T, BlockDenseFormat}, solver_par
 
             # Calculate and store partition function after this order
             # For BlockDense, convert to dense at β for trace calculation
-            propagator_blockdense = solver_data.calc.propagator_blockdense
+            propagator_blockdense = solver_data.calc.propagator_blockdense.vals
             propagator_at_beta_dense = extract_at_tau_blockdense(propagator_blockdense, solver_data.model.beta, solver_data.model.dlr_grid)
             Z_current = tr(propagator_at_beta_dense)
             push!(solver_data.calc.partition_function_by_order, Z_current)
         end
+
+        # Update final dlr coefficients
+        solver_data.calc.propagator_blockdense.coeffs = tau2dlr_blockdense(solver_data.model.dlr_grid, solver_data.calc.propagator_blockdense.vals, solver_data.model.dlr_grid.tau)
     elseif diagram_type == :green_diagram
         for order in 1:solver_params.green.expansion_order
             if rank == 0
@@ -160,19 +163,19 @@ function eval_diagrams!(solver_data::SolverData{T, BlockDenseFormat}, solver_par
             eval_green_given_order!(solver_data, diagrams[order], solver_params.green.is_bold, comm)
 
             # Store Green's function numerator after this order
-            push!(solver_data.calc.green_numerator_by_order, copy(solver_data.calc.green.vals))
+            push!(solver_data.calc.green_numerator_by_order, DensePropagator{T}(copy(solver_data.calc.green.vals.data)))
         end
 
         # Compute Green's function by order (numerator / Z)
         for order in 1:solver_params.green.expansion_order
             propagator_order = order
-            green_at_order = solver_data.calc.green_numerator_by_order[order] ./ solver_data.calc.partition_function_by_order[propagator_order]
-            push!(solver_data.calc.green_by_order, green_at_order)
+            green_at_order_data = solver_data.calc.green_numerator_by_order[order].data ./ solver_data.calc.partition_function_by_order[propagator_order]
+            push!(solver_data.calc.green_by_order, DensePropagator{T}(green_at_order_data))
         end
 
         # Update final Green's function
-        solver_data.calc.green.vals .= solver_data.calc.green_by_order[end]
-        solver_data.calc.green.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)
+        copyto!(solver_data.calc.green.vals, solver_data.calc.green_by_order[end])
+        solver_data.calc.green.coeffs = tau2dlr_dense(solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)
     else
         error("Unknown diagram type: $diagram_type. Supported types are: :propagator_diagram, :green_diagram, :selfenergy_diagram")
     end

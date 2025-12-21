@@ -13,14 +13,14 @@ Reused across diagrams to avoid allocations during convolution operations.
 - `convolution_operand_buffer`: Prepares the operand for convolution operations
 """
 struct ConvolutionBufferSet{T<:Number}
-    backbone_accumulator::Array{T,3}
-    convolution_operand_buffer::Array{T,3}
+    backbone_accumulator::DensePropagator{T}
+    convolution_operand_buffer::DensePropagator{T}
 end
 
 function ConvolutionBufferSet{T}(n_tau::Int, n_fock::Int) where T<:Number
     return ConvolutionBufferSet{T}(
-        zeros(T, n_tau, n_fock, n_fock),
-        zeros(T, n_tau, n_fock, n_fock)
+        zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
+        zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
     )
 end
 
@@ -61,17 +61,17 @@ Reused across diagrams to avoid allocations during matrix products.
 - `trace_result_buffer`: Holds trace computation results
 """
 struct OperatorProductBuffers{T<:Number}
-    operator_product_buffer::Array{T,3}
-    annihilation_product_buffer::Array{T,3}
-    final_product_buffer::Array{T,3}
+    operator_product_buffer::DensePropagator{T}
+    annihilation_product_buffer::DensePropagator{T}
+    final_product_buffer::DensePropagator{T}
     trace_result_buffer::Vector{Float64}  # Trace is always real
 end
 
 function OperatorProductBuffers{T}(n_tau::Int, n_fock::Int) where T<:Number
     return OperatorProductBuffers{T}(
-        zeros(T, n_tau, n_fock, n_fock),
-        zeros(T, n_tau, n_fock, n_fock),
-        zeros(T, n_tau, n_fock, n_fock),
+        zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
+        zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
+        zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
         zeros(Float64, n_tau)
     )
 end
@@ -168,13 +168,13 @@ function eval_green_given_order_dense!(solver_data::SolverData{T, DenseFormat}, 
     n_hyb_exponents = size(diagrams, 4)
 
     if is_bold
-        propagator = solver_data.calc.propagator
+        propagator = solver_data.calc.propagator_dense.vals
     else
-        propagator = solver_data.model.bare_propagator
+        propagator = solver_data.model.bare_propagator.vals
     end
 
     # Create local accumulator for this rank's work (only for this order)
-    local_result = zeros(T, size(solver_data.calc.green.vals))
+    local_result = zeros(T, size(solver_data.calc.green.vals.data))
 
     # ============================================================================
     # Buffer Allocation Strategy
@@ -214,20 +214,20 @@ function eval_green_given_order_dense!(solver_data::SolverData{T, DenseFormat}, 
         for j in 1:n_directions
             external_opts_loc = diagrams[i, j, 1, 1].external_opts_loc
             @assert length(external_opts_loc) == 2 && external_opts_loc[1] == 1 "External operator locations are invalid."
-            backbone_0_to_beta_with_ann = [zeros(T, size(propagator.vals)) for i in 1:solver_data.model.n_flavors_physical]
+            backbone_0_to_beta_with_ann = [zeros(DensePropagator{T}, n_tau, n_fock, n_fock) for _ in 1:solver_data.model.n_flavors_physical]
             for k in 1:n_line_flavors
                 for l in 1:n_hyb_exponents
                     diagram = diagrams[i, j, k, l]
                     @assert diagram.external_opts_loc == external_opts_loc "External operator locations do not match among diagrams of the same topology and direction."
                     contrib_0_to_tau = multiplication_convolution(diagram.nodes[1:external_opts_loc[2]], diagram.edges[1:external_opts_loc[2]-1], solver_data.model.dlr_grid, solver_data.model, propagator, op_buffers.operator_product_buffer, conv_buffers.fwd.backbone_accumulator, conv_buffers.fwd.convolution_operand_buffer)
                     contrib_tau_to_beta = multiplication_convolution_reverse(diagram.nodes[external_opts_loc[2]:end], diagram.edges[external_opts_loc[2]:end], solver_data.model.dlr_grid, solver_data.model, propagator, op_buffers.operator_product_buffer, conv_buffers.rev.backbone_accumulator, conv_buffers.rev.convolution_operand_buffer)
-                    contrib_tau_to_beta = do_reflection_tau2tau(solver_data.model.dlr_grid, contrib_tau_to_beta)
+                    contrib_tau_to_beta = do_reflection_tau2tau_dense(solver_data.model.dlr_grid, contrib_tau_to_beta)
                     prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
                     for ann_index in 1:solver_data.model.n_flavors_physical
                         # Use in-place versions: annihilation_product_buffer = ann_opt * contrib_0_to_tau, then final_product_buffer = contrib_tau_to_beta * annihilation_product_buffer
                         _multiplication_23!(op_buffers.annihilation_product_buffer, solver_data.model.ann_opts[ann_index], contrib_0_to_tau)
                         _multiplication_33!(op_buffers.final_product_buffer, contrib_tau_to_beta, op_buffers.annihilation_product_buffer)
-                        backbone_0_to_beta_with_ann[ann_index] .+= prefactor .* op_buffers.final_product_buffer
+                        backbone_0_to_beta_with_ann[ann_index].data .+= prefactor .* op_buffers.final_product_buffer.data
                     end
                 end
             end
@@ -244,7 +244,7 @@ function eval_green_given_order_dense!(solver_data::SolverData{T, DenseFormat}, 
 
     # Sum results from all ranks for this order, then ADD to existing green values
     order_result = MPI.Allreduce(local_result, MPI.SUM, comm)
-    solver_data.calc.green.vals .+= order_result
+    solver_data.calc.green.vals.data .+= order_result
 end
 
 
@@ -263,13 +263,13 @@ function eval_green_given_order_blockdense!(solver_data::SolverData{T, BlockDens
     n_hyb_exponents = size(diagrams, 4)
 
     if is_bold
-        propagator = solver_data.calc.propagator_blockdense
+        propagator = solver_data.calc.propagator_blockdense.vals
     else
-        propagator = solver_data.model.bare_propagator_blockdense
+        propagator = solver_data.model.bare_propagator_blockdense.vals
     end
 
     # Create local accumulator for this rank's work (only for this order)
-    local_result = zeros(T, size(solver_data.calc.green.vals))
+    local_result = zeros(T, size(solver_data.calc.green.vals.data))
 
     # Get basis info for BlockDense arrays
     n_tau = length(solver_data.model.dlr_grid.tau)
@@ -414,7 +414,7 @@ function eval_green_given_order_blockdense!(solver_data::SolverData{T, BlockDens
 
     # Sum results from all ranks for this order, then ADD to existing green values
     order_result = MPI.Allreduce(local_result, MPI.SUM, comm)
-    solver_data.calc.green.vals .+= order_result
+    solver_data.calc.green.vals.data .+= order_result
 end
 
 

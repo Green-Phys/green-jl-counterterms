@@ -42,8 +42,8 @@ Creates separate buffers for each block in the propagator.
 function allocate_propagator_buffers(solver_data::SolverData{T, BlockDenseFormat}) where {T<:Number}
     n_tau = length(solver_data.model.dlr_grid.tau)
 
-    # Get basis from bare propagator (it's a BlockDensePropagator)
-    bare_prop = solver_data.model.bare_propagator_blockdense
+    # Get basis from bare propagator vals (it's a BlockDenseDLRPropagator, .vals is BlockDensePropagator)
+    bare_prop = solver_data.model.bare_propagator_blockdense.vals
     basis = bare_prop.basis
 
     block_buffers = Dict{Tuple{Int,Int}, Tuple{Array{T,3}, Array{T,3}, Array{T,3}}}()
@@ -87,7 +87,7 @@ function eval_propagator_backbone(diagram::BackBone, solver_data::SolverData{T, 
     return multiplication_convolution_blockdense(
         diagram.nodes, diagram.edges,
         solver_data.model.dlr_grid, solver_data.model,
-        solver_data.model.bare_propagator_blockdense,
+        solver_data.model.bare_propagator_blockdense.vals,
         buffers
     )
 end

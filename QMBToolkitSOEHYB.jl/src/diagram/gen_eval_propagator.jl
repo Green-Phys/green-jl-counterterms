@@ -141,7 +141,7 @@ function eval_propagator_given_order!(solver_data::SolverData{T, DenseFormat}, d
     n_diagrams = length(diagrams_flat)
 
     # Create local accumulator for this rank's work (only for this order)
-    local_result = zeros(T, size(solver_data.calc.propagator_dense.vals))
+    local_result = zeros(T, size(solver_data.calc.propagator_dense.vals.data))
 
     # Allocate format-specific buffers (dense vs blockdense)
     buffers = allocate_propagator_buffers(solver_data)
@@ -155,12 +155,12 @@ function eval_propagator_given_order!(solver_data::SolverData{T, DenseFormat}, d
         # Format-specific backbone evaluation
         contribution = eval_propagator_backbone(diagram, solver_data, buffers)
         prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
-        local_result .+= prefactor .* contribution
+        local_result .+= prefactor .* contribution.data
     end
 
     # Sum results from all ranks for this order, then ADD to existing propagator values
     order_result = MPI.Allreduce(local_result, MPI.SUM, comm)
-    solver_data.calc.propagator_dense.vals .+= order_result
+    solver_data.calc.propagator_dense.vals.data .+= order_result
 end
 
 function eval_propagator_given_order!(solver_data::SolverData{T, BlockDenseFormat}, diagrams::Array{BackBone,4}, comm::MPI.Comm) where {T<:Number}
@@ -171,8 +171,8 @@ function eval_propagator_given_order!(solver_data::SolverData{T, BlockDenseForma
     n_diagrams = length(diagrams_flat)
 
     # Create local accumulator (BlockDensePropagator) for this rank's work
-    basis = solver_data.calc.propagator_blockdense.basis
-    flux = solver_data.calc.propagator_blockdense.flux
+    basis = solver_data.calc.propagator_blockdense.vals.basis
+    flux = solver_data.calc.propagator_blockdense.vals.flux
     n_tau = length(solver_data.model.dlr_grid.tau)
     local_result = zeros(BlockDensePropagator{T}, basis, flux, n_tau)
 
@@ -198,10 +198,10 @@ function eval_propagator_given_order!(solver_data::SolverData{T, BlockDenseForma
         global_block = MPI.Allreduce(local_block, MPI.SUM, comm)
 
         # Add to propagator (create block if it doesn't exist)
-        if haskey(solver_data.calc.propagator_blockdense.blocks, key)
-            solver_data.calc.propagator_blockdense.blocks[key] .+= global_block
+        if haskey(solver_data.calc.propagator_blockdense.vals.blocks, key)
+            solver_data.calc.propagator_blockdense.vals.blocks[key] .+= global_block
         else
-            solver_data.calc.propagator_blockdense.blocks[key] = copy(global_block)
+            solver_data.calc.propagator_blockdense.vals.blocks[key] = copy(global_block)
         end
     end
 end

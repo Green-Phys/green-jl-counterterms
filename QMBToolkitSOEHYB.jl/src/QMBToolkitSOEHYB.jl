@@ -19,6 +19,7 @@ include("diagram/print_diagram.jl")
 include("diagram/gen_common.jl")
 
 # Dense operations
+include("dense/dlr.jl")
 include("dense/operator_ops.jl")
 include("dense/hybridization.jl")
 include("dense/convolution_eval.jl")

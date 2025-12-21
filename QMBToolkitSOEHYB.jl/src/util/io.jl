@@ -158,21 +158,21 @@ function save_data(
     h5open(file_path, "w") do file
         # Save Green's function - linear grid
         green_linear_group = create_group(file, "green/linear_grid")
-        green_linear_group["green_tau"] = calc_data.green_linear_grid
+        green_linear_group["green_tau"] = calc_data.green_linear_grid.data
         green_linear_group["tau"] = calc_data.tau_linear_grid
 
         # Save Green's function - DLR grid
         green_dlr_group = create_group(file, "green/dlr_grid")
-        green_dlr_group["green_tau"] = calc_data.green.vals
+        green_dlr_group["green_tau"] = calc_data.green.vals.data
         green_dlr_group["tau"] = model_data.dlr_grid.tau
-        green_dlr_group["coeffs"] = calc_data.green.coeffs
+        green_dlr_group["coeffs"] = calc_data.green.coeffs.data
 
         # Save Green's function by order (on linear grid)
         # Note: green_by_order is stored on DLR grid, need to interpolate to linear grid
         green_by_order_group = create_group(file, "green/by_order")
         for (i, green_at_order_dlr) in enumerate(calc_data.green_by_order)
             # Convert from DLR grid to DLR coefficients
-            green_coeffs = tau2dlr(model_data.dlr_grid, green_at_order_dlr, model_data.dlr_grid.tau)
+            green_coeffs = tau2dlr(model_data.dlr_grid, green_at_order_dlr.data, model_data.dlr_grid.tau)
             # Interpolate to linear grid
             green_at_order_linear = dlr2tau(model_data.dlr_grid, green_coeffs, calc_data.tau_linear_grid)
             green_by_order_group["green_order_$i"] = green_at_order_linear
@@ -212,15 +212,16 @@ function save_results(solver_data::SolverData, solver_params::SolverParams, tota
     # Compute linear grid and store in CalculationData
     # IMPORTANT: This must be done BEFORE calling save_data since save_data uses the linear grid
     solver_data.calc.tau_linear_grid = collect(LinRange(0.0, solver_data.model.beta, solver_params.green.save_linear_size))
-    solver_data.calc.green_linear_grid = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.green.coeffs, solver_data.calc.tau_linear_grid)
+    green_linear_data = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.green.coeffs.data, solver_data.calc.tau_linear_grid)
+    solver_data.calc.green_linear_grid = DensePropagator{eltype(green_linear_data)}(green_linear_data)
 
     # Print summary
     println("First 4 linear grid tau points:")
     println(solver_data.calc.tau_linear_grid[1:4])
     println("Green's function G[1:4, 1,1] on linear grid:")
-    println(solver_data.calc.green_linear_grid[1:4, 1, 1])
+    println(solver_data.calc.green_linear_grid.data[1:4, 1, 1])
     println("Head + Tail (linear grid):")
-    println(solver_data.calc.green_linear_grid[1, 1, 1] + solver_data.calc.green_linear_grid[end, 1, 1])
+    println(solver_data.calc.green_linear_grid.data[1, 1, 1] + solver_data.calc.green_linear_grid.data[end, 1, 1])
 
     # Save all data
     output_file = joinpath(solver_params.output_path, "sim.h5")

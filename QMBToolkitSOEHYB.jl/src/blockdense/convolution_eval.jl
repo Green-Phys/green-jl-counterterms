@@ -8,9 +8,9 @@ using QMBToolkitED.BlockDense
 using QMBToolkitDLR
 
 """
-    get_operator_matrix_blockdense(node::BackBoneNode, model_data::ModelData{T, BlockDenseFormat}) where T
+    get_operator_blockdense(node::BackBoneNode, model_data::ModelData{T, BlockDenseFormat}) where T
 
-Get the BlockDense operator matrix for a given node from model data.
+Get the BlockDenseOperator for a given node from model data.
 
 # Arguments
 - `node::BackBoneNode`: Node containing operator type and indices
@@ -23,7 +23,7 @@ Appropriate BlockDenseOperator based on node type:
 - `:cdag` with bar_index≠-1: SOE-transformed creation operator
 - `:c` with bar_index≠-1: SOE-transformed annihilation operator
 """
-function get_operator_matrix_blockdense(node::BackBoneNode, model_data::ModelData{T, BlockDenseFormat}) where T
+function get_operator_blockdense(node::BackBoneNode, model_data::ModelData{T, BlockDenseFormat}) where T
     if node.opt_type == :cdag && node.bar_index == -1
         return model_data.cre_opts_blockdense[node.flavor]
     elseif node.opt_type == :c && node.bar_index == -1
@@ -98,7 +98,7 @@ function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edge
         # Multiply with the next node operator
         node = nodes[i+1]
         if node.opt_type !== :empty
-            op_matrix = get_operator_matrix_blockdense(node, model_data)
+            op_matrix = get_operator_blockdense(node, model_data)
 
             # Need to create temp buffer with correct flux for operator multiplication
             op_flux = OperatorFlux(combine_qn(op_matrix.flux.delta_qn, result.flux.delta_qn))
@@ -226,7 +226,7 @@ function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNod
 
         node = nodes[i]
         if node.opt_type !== :empty
-            op_matrix = get_operator_matrix_blockdense(node, model_data)
+            op_matrix = get_operator_blockdense(node, model_data)
 
             # Need to create temp buffer with correct flux for operator multiplication
             op_flux = OperatorFlux(combine_qn(result.flux.delta_qn, op_matrix.flux.delta_qn))

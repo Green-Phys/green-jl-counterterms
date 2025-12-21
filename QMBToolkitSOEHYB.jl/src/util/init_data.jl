@@ -1,4 +1,5 @@
 using QMBToolkitED
+using QMBToolkitED.Dense: DenseOperator, DenseBasis
 using QMBToolkitED.BlockDense
 using DelimitedFiles
 using QMBToolkitDLR
@@ -24,11 +25,15 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
 
     # Infer numeric type and transform operators to eigenbasis
     T = eltype(evecs)
-    # Extract matrix data from DenseOperator and transform to eigenbasis
-    ann_opts = vec([evecs' * convert(Matrix{T}, to_matrix(c)) * evecs for c in ann_opts_raw])
-    n_flavors = length(ann_opts)
+    n_flavors = length(ann_opts_raw)
     n_fock = 1 << n_flavors
-    cre_opts = vec([Matrix{T}(adjoint(c)) for c in ann_opts])
+
+    # Create eigenbasis for the transformed operators
+    eigenbasis = DenseBasis(n_flavors)
+
+    # Extract matrix data from DenseOperator and transform to eigenbasis, wrap in DenseOperator
+    ann_opts = vec([DenseOperator(eigenbasis, evecs' * convert(Matrix{ComplexF64}, to_matrix(c)) * evecs) for c in ann_opts_raw])
+    cre_opts = vec([DenseOperator(eigenbasis, Matrix{ComplexF64}(adjoint(c.data))) for c in ann_opts])
 
     # Initialize DLR grid
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
@@ -46,11 +51,17 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
         _compute_dlr_quantities(T, dlr_grid, bare_propagator, hyb_soe.exponents, model_params.beta, n_fock)
 
     # Precompute SOE operators
-    ann_opts_SOE = _gen_opts_SOE(T, ann_opts, hyb_soe.coeffs, false)
-    cre_opts_SOE = _gen_opts_SOE(T, cre_opts, hyb_soe.coeffs, true)
+    ann_opts_SOE = _gen_opts_SOE(eigenbasis, ann_opts, hyb_soe.coeffs, false)
+    cre_opts_SOE = _gen_opts_SOE(eigenbasis, cre_opts, hyb_soe.coeffs, true)
 
     # Calculate partition function for counter-terms
     Z_counterterms = calculate_Z_counterterms(model_params, n_flavors, n_flavors_physical)
+
+    # Wrap bare propagator in DenseDLRPropagator
+    bare_propagator_wrapped = DenseDLRPropagator(
+        DensePropagator(bare_propagator),
+        DensePropagator(bare_propagator_dlr)
+    )
 
     return ModelData{T, DenseFormat}(
         model_params.beta,
@@ -65,7 +76,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
         n_flavors_physical,
         bare_propagator_err,
         hyb_soe,
-        DLRData(bare_propagator, bare_propagator_dlr),
+        bare_propagator_wrapped,
         K0_inverse,
         ann_opts_SOE,
         cre_opts_SOE,
@@ -125,7 +136,7 @@ function init_model_data_blockdense(model_params::ModelParams, dlr_params::DLRPa
     E_shift = minimum(evals)
     evals_shifted = evals .- E_shift
     bare_propagator_dense = _build_bare_propagator_dense(T, dlr_grid.tau, evals_shifted, n_fock)
-    bare_propagator_blockdense = build_bare_propagator_blockdense(result, dlr_grid.tau, E_shift)
+    bare_propagator_blockdense_tau = build_bare_propagator_blockdense(result, dlr_grid.tau, E_shift)
 
     # Load hybridization data
     hyb_soe, n_flavors_physical = _load_hybridization_data(model_params, n_flavors, dlr_grid)
@@ -141,6 +152,19 @@ function init_model_data_blockdense(model_params::ModelParams, dlr_params::DLRPa
     # Calculate partition function for counter-terms
     Z_counterterms = calculate_Z_counterterms(model_params, n_flavors, n_flavors_physical)
 
+    # Wrap bare propagators in DLR types
+    bare_propagator_wrapped = DenseDLRPropagator(
+        DensePropagator(bare_propagator_dense),
+        DensePropagator(bare_propagator_dlr)
+    )
+
+    # Compute DLR coefficients for BlockDense propagator
+    bare_propagator_blockdense_dlr = tau2dlr_blockdense(dlr_grid, bare_propagator_blockdense_tau, dlr_grid.tau)
+    bare_propagator_blockdense_wrapped = BlockDenseDLRPropagator(
+        bare_propagator_blockdense_tau,
+        bare_propagator_blockdense_dlr
+    )
+
     return ModelData{T, BlockDenseFormat}(
         model_params.beta,
         n_flavors,
@@ -154,14 +178,14 @@ function init_model_data_blockdense(model_params::ModelParams, dlr_params::DLRPa
         n_flavors_physical,
         bare_propagator_err,
         hyb_soe,
-        DLRData(bare_propagator_dense, bare_propagator_dlr),
+        bare_propagator_wrapped,
         K0_inverse,
         nothing,  # ann_opts_SOE (not used in BlockDense)
         nothing,  # cre_opts_SOE (not used in BlockDense)
         Z_counterterms,
         kernel_cache,
         convolution_workspace,
-        bare_propagator_blockdense,
+        bare_propagator_blockdense_wrapped,
         cre_opts_blockdense,
         ann_opts_blockdense,
         cre_opts_SOE_blockdense,
@@ -176,32 +200,37 @@ end
 Initialize a `SolverData` object from the `ModelData`.
 """
 function init_solver_data(model_data::ModelData{T, DenseFormat}) where {T<:Number}
+    r = model_data.dlr_grid.size
+    n_fock = model_data.n_fock
+    n_phys = model_data.n_flavors_physical
+
     calculation_data = CalculationData{T, DenseFormat}(
         # Dense format fields
-        DLRData{T}(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # propagator_dense
-        DLRData{T}(model_data.dlr_grid.size, model_data.n_fock, model_data.n_fock), # selfenergy_dense
+        DenseDLRPropagator{T}(r, n_fock, n_fock),  # propagator_dense
+        DenseDLRPropagator{T}(r, n_fock, n_fock),  # selfenergy_dense
         # BlockDense format fields (not used)
         nothing,  # propagator_blockdense
         nothing,  # selfenergy_blockdense
         # Common fields (always dense)
-        DLRData{T}(model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical), # green
-        Float64[], # partition function by order
-        Vector{Array{T,3}}(), # green numerator by order
-        Vector{Array{T,3}}(), # green by order
-        zeros(T, 0, 0, 0), # green_linear_grid
-        Float64[] # tau_linear_grid
+        DenseDLRPropagator{T}(r, n_phys, n_phys),  # green
+        Float64[],  # partition function by order
+        Vector{DensePropagator{T}}(),  # green numerator by order
+        Vector{DensePropagator{T}}(),  # green by order
+        zeros(DensePropagator{T}, 0, n_phys, n_phys),  # green_linear_grid
+        Float64[]  # tau_linear_grid
     )
     return SolverData{T, DenseFormat}(model_data, calculation_data)
 end
 
 function init_solver_data(model_data::ModelData{T, BlockDenseFormat}) where {T<:Number}
-    # Create zero BlockDensePropagator for propagator and self-energy
-    basis = model_data.bare_propagator_blockdense.basis
-    flux = model_data.bare_propagator_blockdense.flux
-    n_tau = length(model_data.dlr_grid.tau)
+    # Create zero BlockDenseDLRPropagator for propagator and self-energy
+    basis = model_data.bare_propagator_blockdense.vals.basis
+    flux = model_data.bare_propagator_blockdense.vals.flux
+    r = model_data.dlr_grid.size
+    n_phys = model_data.n_flavors_physical
 
-    propagator_blockdense = zeros(BlockDensePropagator{T}, basis, flux, n_tau)
-    selfenergy_blockdense = zeros(BlockDensePropagator{T}, basis, flux, n_tau)
+    propagator_blockdense = BlockDenseDLRPropagator{T}(basis, flux, r)
+    selfenergy_blockdense = BlockDenseDLRPropagator{T}(basis, flux, r)
 
     calculation_data = CalculationData{T, BlockDenseFormat}(
         # Dense format fields (not used)
@@ -211,12 +240,12 @@ function init_solver_data(model_data::ModelData{T, BlockDenseFormat}) where {T<:
         propagator_blockdense,
         selfenergy_blockdense,
         # Common fields (always dense)
-        DLRData{T}(model_data.dlr_grid.size, model_data.n_flavors_physical, model_data.n_flavors_physical), # green
-        Float64[], # partition function by order
-        Vector{Array{T,3}}(), # green numerator by order
-        Vector{Array{T,3}}(), # green by order
-        zeros(T, 0, 0, 0), # green_linear_grid
-        Float64[] # tau_linear_grid
+        DenseDLRPropagator{T}(r, n_phys, n_phys),  # green
+        Float64[],  # partition function by order
+        Vector{DensePropagator{T}}(),  # green numerator by order
+        Vector{DensePropagator{T}}(),  # green by order
+        zeros(DensePropagator{T}, 0, n_phys, n_phys),  # green_linear_grid
+        Float64[]  # tau_linear_grid
     )
     return SolverData{T, BlockDenseFormat}(model_data, calculation_data)
 end
@@ -333,7 +362,7 @@ function _gen_K_on_DLRtau(exponents::Vector{Float64}, dlr_grid::DLRGrid)
     return K_on_DLRtau
 end
 
-function _gen_opts_SOE(::Type{T}, opts::Vector{Matrix{T}}, coeffs::Array{Float64,3}, is_creation::Bool) where {T<:Number}
+function _gen_opts_SOE(eigenbasis::DenseBasis, opts::Vector{DenseOperator}, coeffs::Array{Float64,3}, is_creation::Bool)
     # coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation
     # \bar{F}^{\dagger}_{o, l} = \sum_{o'} Delta_{l, o', o} F^{\dagger}_{o'}
     # \bar{F}_{o, l} = \sum_{o'} Delta_{l, o, o'} F_{o'}
@@ -342,20 +371,20 @@ function _gen_opts_SOE(::Type{T}, opts::Vector{Matrix{T}}, coeffs::Array{Float64
     p = size(coeffs, 1)
     size(coeffs, 2) == n_flavors || error("Size mismatch between coeffs dimension 2 and number of flavors: expected $n_flavors, got $(size(coeffs, 2))")
     size(coeffs, 3) == n_flavors || error("Size mismatch between coeffs dimension 3 and number of flavors: expected $n_flavors, got $(size(coeffs, 3))")
-    opts_SOE = Matrix{Matrix{T}}(undef, n_flavors, p)
+    opts_SOE = Matrix{DenseOperator}(undef, n_flavors, p)
     for o in 1:n_flavors
         for l in 1:p
-            mat = zeros(T, size(opts[1])...)
+            mat = zeros(ComplexF64, size(opts[1].data)...)
             if is_creation
                 for o_prime in 1:n_flavors
-                    mat .+= coeffs[l, o_prime, o] * opts[o_prime]
+                    mat .+= coeffs[l, o_prime, o] * opts[o_prime].data
                 end
             else
                 for o_prime in 1:n_flavors
-                    mat .+= coeffs[l, o, o_prime] * opts[o_prime]
+                    mat .+= coeffs[l, o, o_prime] * opts[o_prime].data
                 end
             end
-            opts_SOE[o, l] = mat
+            opts_SOE[o, l] = DenseOperator(eigenbasis, mat)
         end
     end
     return opts_SOE

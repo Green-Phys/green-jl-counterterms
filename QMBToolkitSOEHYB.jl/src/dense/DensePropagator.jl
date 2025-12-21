@@ -58,3 +58,48 @@ function Base.fill!(A::DensePropagator{T}, value) where T
     fill!(A.data, value)
     return A
 end
+
+#=============================================================================
+# DenseDLRPropagator - DLR representation wrapper
+=============================================================================#
+
+"""
+    DenseDLRPropagator{T<:Number}
+
+DLR representation of a dense propagator.
+
+Contains both the values on the DLR tau grid and the DLR coefficients,
+both wrapped as DensePropagator{T}.
+
+Fields:
+- `vals::DensePropagator{T}`: Values on the DLR tau grid
+- `coeffs::DensePropagator{T}`: DLR expansion coefficients
+"""
+mutable struct DenseDLRPropagator{T<:Number}
+    vals::DensePropagator{T}
+    coeffs::DensePropagator{T}
+end
+
+# Constructors
+function DenseDLRPropagator(vals::DensePropagator{T}, coeffs::DensePropagator{T}) where T
+    return DenseDLRPropagator{T}(vals, coeffs)
+end
+
+function DenseDLRPropagator{T}(r::Int, dim1::Int, dim2::Int) where T
+    vals = zeros(DensePropagator{T}, r, dim1, dim2)
+    coeffs = zeros(DensePropagator{T}, r, dim1, dim2)
+    return DenseDLRPropagator{T}(vals, coeffs)
+end
+
+function DenseDLRPropagator(vals::DensePropagator{T}, ::Nothing) where T
+    coeffs = zeros(DensePropagator{T}, size(vals)...)
+    return DenseDLRPropagator{T}(vals, coeffs)
+end
+
+function DenseDLRPropagator(::Nothing, coeffs::DensePropagator{T}) where T
+    vals = zeros(DensePropagator{T}, size(coeffs)...)
+    return DenseDLRPropagator{T}(vals, coeffs)
+end
+
+# Convenience constructor that infers type parameter
+DenseDLRPropagator(r::Int, dim1::Int, dim2::Int) = DenseDLRPropagator{Float64}(r, dim1, dim2)

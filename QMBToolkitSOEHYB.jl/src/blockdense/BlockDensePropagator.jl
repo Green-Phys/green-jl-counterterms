@@ -172,3 +172,51 @@ function add_scaled!(dest::BlockDensePropagator{T}, alpha::Number, src::BlockDen
 
     return dest
 end
+
+#=============================================================================
+# BlockDenseDLRPropagator - DLR representation wrapper
+=============================================================================#
+
+"""
+    BlockDenseDLRPropagator{T<:Number}
+
+DLR representation of a block-dense propagator.
+
+Contains both the values on the DLR tau grid and the DLR coefficients,
+both wrapped as BlockDensePropagator{T}.
+
+Fields:
+- `vals::BlockDensePropagator{T}`: Values on the DLR tau grid
+- `coeffs::BlockDensePropagator{T}`: DLR expansion coefficients
+"""
+mutable struct BlockDenseDLRPropagator{T<:Number}
+    vals::BlockDensePropagator{T}
+    coeffs::BlockDensePropagator{T}
+end
+
+# Constructors
+function BlockDenseDLRPropagator(vals::BlockDensePropagator{T}, coeffs::BlockDensePropagator{T}) where T
+    return BlockDenseDLRPropagator{T}(vals, coeffs)
+end
+
+function BlockDenseDLRPropagator{T}(basis::BlockDenseBasis, flux::OperatorFlux, r::Int) where T
+    vals = zeros(BlockDensePropagator{T}, basis, flux, r)
+    coeffs = zeros(BlockDensePropagator{T}, basis, flux, r)
+    return BlockDenseDLRPropagator{T}(vals, coeffs)
+end
+
+function BlockDenseDLRPropagator(vals::BlockDensePropagator{T}, ::Nothing) where T
+    # Get the first block to determine r dimension
+    first_block = first(values(vals.blocks))
+    r = size(first_block, 1)
+    coeffs = zeros(BlockDensePropagator{T}, vals.basis, vals.flux, r)
+    return BlockDenseDLRPropagator{T}(vals, coeffs)
+end
+
+function BlockDenseDLRPropagator(::Nothing, coeffs::BlockDensePropagator{T}) where T
+    # Get the first block to determine r dimension
+    first_block = first(values(coeffs.blocks))
+    r = size(first_block, 1)
+    vals = zeros(BlockDensePropagator{T}, coeffs.basis, coeffs.flux, r)
+    return BlockDenseDLRPropagator{T}(vals, coeffs)
+end

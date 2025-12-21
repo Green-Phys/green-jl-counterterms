@@ -289,7 +289,7 @@ function eval_green_given_order_blockdense!(solver_data::SolverData{T, BlockDens
             @assert length(external_opts_loc) == 2 && external_opts_loc[1] == 1 "External operator locations are invalid."
 
             # Initialize backbone accumulators as nothing - will be created on first contribution
-            backbone_0_to_beta_with_ann = Vector{Union{Nothing, BlockDenseArray{T}}}([nothing for _ in 1:solver_data.model.n_flavors_physical])
+            backbone_0_to_beta_with_ann = Vector{Union{Nothing, BlockDensePropagator{T}}}([nothing for _ in 1:solver_data.model.n_flavors_physical])
 
             # Create buffers for multiplication and convolution (will be lazily allocated)
             buffers = PropagatorConvolutionBuffersBlockDense{T}(basis, Dict{Tuple{Int,Int}, Tuple{Array{T,3}, Array{T,3}, Array{T,3}}}())
@@ -342,7 +342,7 @@ function eval_green_given_order_blockdense!(solver_data::SolverData{T, BlockDens
                                 end
                             end
                         end
-                        annihilation_product = BlockDenseArray{T}(basis, op_flux, ann_result_blocks)
+                        annihilation_product = BlockDensePropagator{T}(basis, op_flux, ann_result_blocks)
                         _multiplication_23_blockdense!(annihilation_product, ann_opt, contrib_0_to_tau)
 
                         # Multiply: contrib_tau_to_beta * annihilation_product
@@ -360,7 +360,7 @@ function eval_green_given_order_blockdense!(solver_data::SolverData{T, BlockDens
                                 end
                             end
                         end
-                        final_product = BlockDenseArray{T}(basis, final_flux, final_result_blocks)
+                        final_product = BlockDensePropagator{T}(basis, final_flux, final_result_blocks)
                         _multiplication_33_blockdense!(final_product, contrib_tau_to_beta, annihilation_product)
 
                         # Accumulate: backbone_0_to_beta_with_ann[ann_index] += prefactor * final_product
@@ -401,7 +401,7 @@ function eval_green_given_order_blockdense!(solver_data::SolverData{T, BlockDens
                             end
                         end
                     end
-                    cre_product = BlockDenseArray{T}(basis, cre_flux, cre_result_blocks)
+                    cre_product = BlockDensePropagator{T}(basis, cre_flux, cre_result_blocks)
                     _multiplication_32_blockdense!(cre_product, backbone_0_to_beta_with_ann[ann_index], cre_opt)
 
                     # Take trace

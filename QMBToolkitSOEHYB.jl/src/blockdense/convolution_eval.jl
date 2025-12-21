@@ -59,13 +59,13 @@ Starting from the rightmost edge, accumulates:
 - `edges::Vector{BackBoneEdge}`: Diagram edges (length M-1)
 - `dlr_grid::DLRGrid`: DLR grid
 - `model_data::ModelData{T, BlockDenseFormat}`: Model data
-- `propagator::BlockDenseArray{T}`: Propagator (bare or bold)
+- `propagator::BlockDensePropagator{T}`: Propagator (bare or bold)
 - `buffers::PropagatorConvolutionBuffersBlockDense{T}`: Pre-allocated buffers
 
 # Returns
-- `BlockDenseArray{T}`: Backbone contribution on tau grid
+- `BlockDensePropagator{T}`: Backbone contribution on tau grid
 """
-function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDenseArray{T}, buffers::PropagatorConvolutionBuffersBlockDense{T}) where {T<:Number}
+function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}, buffers::PropagatorConvolutionBuffersBlockDense{T}) where {T<:Number}
     length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
     # Get basis and flux
@@ -77,14 +77,14 @@ function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edge
     for (key, block) in propagator.blocks
         result_blocks[key] = copy(block)
     end
-    result = BlockDenseArray{T}(basis, flux, result_blocks)
+    result = BlockDensePropagator{T}(basis, flux, result_blocks)
 
     # Temporary buffer with same structure as result
     temp_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
     for (key, block) in result.blocks
         temp_blocks[key] = similar(block)
     end
-    temp_buffer = BlockDenseArray{T}(basis, result.flux, temp_blocks)
+    temp_buffer = BlockDensePropagator{T}(basis, result.flux, temp_blocks)
 
     # Process edges from right to left
     for i in 1:length(edges)-1
@@ -120,19 +120,19 @@ function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edge
                     end
                 end
             end
-            op_temp_buffer = BlockDenseArray{T}(basis, op_flux, op_result_blocks)
+            op_temp_buffer = BlockDensePropagator{T}(basis, op_flux, op_result_blocks)
 
             _multiplication_23_blockdense!(op_temp_buffer, op_matrix, result)
 
             # Update result structure to match op_temp_buffer
-            result = BlockDenseArray{T}(basis, op_flux, Dict(k => copy(v) for (k,v) in op_temp_buffer.blocks))
+            result = BlockDensePropagator{T}(basis, op_flux, Dict(k => copy(v) for (k,v) in op_temp_buffer.blocks))
 
             # Update temp_buffer to match new flux
             temp_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
             for (key, block) in result.blocks
                 temp_blocks[key] = similar(block)
             end
-            temp_buffer = BlockDenseArray{T}(basis, result.flux, temp_blocks)
+            temp_buffer = BlockDensePropagator{T}(basis, result.flux, temp_blocks)
         end
 
         # Apply hybridization attached to the node
@@ -146,14 +146,14 @@ function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edge
         for (key, block) in propagator.blocks
             convolution_blocks[key] = copy(block)
         end
-        to_be_convoluted = BlockDenseArray{T}(basis, flux, convolution_blocks)
+        to_be_convoluted = BlockDensePropagator{T}(basis, flux, convolution_blocks)
 
         # Create temp buffer for convolution hybridizations
         conv_temp_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
         for (key, block) in to_be_convoluted.blocks
             conv_temp_blocks[key] = similar(block)
         end
-        conv_temp_buffer = BlockDenseArray{T}(basis, flux, conv_temp_blocks)
+        conv_temp_buffer = BlockDensePropagator{T}(basis, flux, conv_temp_blocks)
 
         for hyb in edge_plus1.attached_hybs
             apply_hybridization_inplace_blockdense!(conv_temp_buffer, to_be_convoluted, hyb, model_data, is_reverse=false)
@@ -175,7 +175,7 @@ function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edge
         for (key, block) in result.blocks
             temp_blocks[key] = similar(block)
         end
-        temp_buffer = BlockDenseArray{T}(basis, result.flux, temp_blocks)
+        temp_buffer = BlockDensePropagator{T}(basis, result.flux, temp_blocks)
     end
 
     return result
@@ -194,7 +194,7 @@ BlockDense version with swapped K± hybridizations.
 - Uses `_multiplication_32_blockdense!` instead of `_multiplication_23_blockdense!`
 - Convolution operand order is reversed: result first, then to_be_convoluted
 """
-function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDenseArray{T}, buffers::PropagatorConvolutionBuffersBlockDense{T}) where {T<:Number}
+function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}, buffers::PropagatorConvolutionBuffersBlockDense{T}) where {T<:Number}
     length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
     # Get basis and flux
@@ -206,14 +206,14 @@ function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNod
     for (key, block) in propagator.blocks
         result_blocks[key] = copy(block)
     end
-    result = BlockDenseArray{T}(basis, flux, result_blocks)
+    result = BlockDensePropagator{T}(basis, flux, result_blocks)
 
     # Temporary buffer with same structure as result
     temp_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
     for (key, block) in result.blocks
         temp_blocks[key] = similar(block)
     end
-    temp_buffer = BlockDenseArray{T}(basis, result.flux, temp_blocks)
+    temp_buffer = BlockDensePropagator{T}(basis, result.flux, temp_blocks)
 
     # Process edges from left to right
     for i in length(edges):-1:2
@@ -248,19 +248,19 @@ function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNod
                     end
                 end
             end
-            op_temp_buffer = BlockDenseArray{T}(basis, op_flux, op_result_blocks)
+            op_temp_buffer = BlockDensePropagator{T}(basis, op_flux, op_result_blocks)
 
             _multiplication_32_blockdense!(op_temp_buffer, result, op_matrix)
 
             # Update result structure
-            result = BlockDenseArray{T}(basis, op_flux, Dict(k => copy(v) for (k,v) in op_temp_buffer.blocks))
+            result = BlockDensePropagator{T}(basis, op_flux, Dict(k => copy(v) for (k,v) in op_temp_buffer.blocks))
 
             # Update temp_buffer to match new flux
             temp_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
             for (key, block) in result.blocks
                 temp_blocks[key] = similar(block)
             end
-            temp_buffer = BlockDenseArray{T}(basis, result.flux, temp_blocks)
+            temp_buffer = BlockDensePropagator{T}(basis, result.flux, temp_blocks)
         end
 
         # Apply hybridization with is_reverse=true (swaps K+ ↔ K-)
@@ -274,14 +274,14 @@ function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNod
         for (key, block) in propagator.blocks
             convolution_blocks[key] = copy(block)
         end
-        to_be_convoluted = BlockDenseArray{T}(basis, flux, convolution_blocks)
+        to_be_convoluted = BlockDensePropagator{T}(basis, flux, convolution_blocks)
 
         # Create temp buffer for convolution hybridizations
         conv_temp_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
         for (key, block) in to_be_convoluted.blocks
             conv_temp_blocks[key] = similar(block)
         end
-        conv_temp_buffer = BlockDenseArray{T}(basis, flux, conv_temp_blocks)
+        conv_temp_buffer = BlockDensePropagator{T}(basis, flux, conv_temp_blocks)
 
         for hyb in edge_minus1.attached_hybs
             apply_hybridization_inplace_blockdense!(conv_temp_buffer, to_be_convoluted, hyb, model_data, is_reverse=false)
@@ -303,7 +303,7 @@ function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNod
         for (key, block) in result.blocks
             temp_blocks[key] = similar(block)
         end
-        temp_buffer = BlockDenseArray{T}(basis, result.flux, temp_blocks)
+        temp_buffer = BlockDensePropagator{T}(basis, result.flux, temp_blocks)
     end
 
     return result

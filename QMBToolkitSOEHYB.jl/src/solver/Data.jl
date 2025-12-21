@@ -1,4 +1,3 @@
-
 using QMBToolkitDLR
 
 """
@@ -67,7 +66,7 @@ struct ModelData{T<:Number, Format<:HilbertSpaceFormat}
     kernel_cache::KernelCache  # Pre-computed kernel values for DLR convolution
     convolution_workspace::ConvolutionWorkspace  # Reusable buffers for convolution (dense)
     # BlockDense format fields (only populated for BlockDenseFormat)
-    bare_propagator_blockdense::Any  # BlockDenseArray{T} for BlockDenseFormat, nothing for DenseFormat
+    bare_propagator_blockdense::Any  # BlockDensePropagator{T} for BlockDenseFormat, nothing for DenseFormat
     cre_opts_blockdense::Any  # Vector{BlockDenseOperator} for BlockDenseFormat
     ann_opts_blockdense::Any  # Vector{BlockDenseOperator} for BlockDenseFormat
     cre_opts_SOE_blockdense::Any  # Matrix{BlockDenseOperator} for BlockDenseFormat
@@ -85,7 +84,7 @@ in small orbital space), but propagator and self-energy can be format-dependent.
 
 # Format-dependent storage
 - For DenseFormat: uses propagator_dense and selfenergy_dense (DLRData{T})
-- For BlockDenseFormat: uses propagator_blockdense and selfenergy_blockdense (BlockDenseArray{T})
+- For BlockDenseFormat: uses propagator_blockdense and selfenergy_blockdense (BlockDensePropagator{T})
 - Green's function is always dense (physical observable in small orbital space)
 """
 mutable struct CalculationData{T<:Number, Format<:HilbertSpaceFormat}
@@ -93,8 +92,8 @@ mutable struct CalculationData{T<:Number, Format<:HilbertSpaceFormat}
     propagator_dense::Union{DLRData{T}, Nothing}  # Only for DenseFormat
     selfenergy_dense::Union{DLRData{T}, Nothing}  # Only for DenseFormat
     # BlockDense format fields
-    propagator_blockdense::Any  # BlockDenseArray{T} for BlockDenseFormat, nothing for DenseFormat
-    selfenergy_blockdense::Any  # BlockDenseArray{T} for BlockDenseFormat, nothing for DenseFormat
+    propagator_blockdense::Any  # BlockDensePropagator{T} for BlockDenseFormat, nothing for DenseFormat
+    selfenergy_blockdense::Any  # BlockDensePropagator{T} for BlockDenseFormat, nothing for DenseFormat
     # Always dense (physical observables)
     green::DLRData{T}  # Always dense (physical observable, small orbital space)
     partition_function_by_order::Vector{Float64}  # Z after including each order

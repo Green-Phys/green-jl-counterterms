@@ -22,27 +22,27 @@ get_selfenergy(calc_data::CalculationData{T, DenseFormat}) where T = calc_data.s
 get_selfenergy(calc_data::CalculationData{T, BlockDenseFormat}) where T = calc_data.selfenergy_blockdense
 
 """
-    extract_at_tau_blockdense(propagator::BlockDenseArray{T}, tau::Float64, dlr_grid::DLRGrid)
+    extract_at_tau_blockdense(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid)
 
 Extract propagator value at specific tau by DLR interpolation, return as dense matrix.
 """
-function extract_at_tau_blockdense(propagator::QMBToolkitDLR.BlockDenseArray{T}, tau::Float64, dlr_grid::DLRGrid) where T
+function extract_at_tau_blockdense(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where T
     # Convert to DLR coefficients
-    prop_dlr = QMBToolkitDLR.tau2dlr_blockdense(dlr_grid, propagator, dlr_grid.tau)
+    prop_dlr = tau2dlr_blockdense(dlr_grid, propagator, dlr_grid.tau)
 
     # Evaluate at the requested tau
-    prop_at_tau = QMBToolkitDLR.dlr2tau_blockdense(dlr_grid, prop_dlr, [tau])
+    prop_at_tau = dlr2tau_blockdense(dlr_grid, prop_dlr, [tau])
 
-    # Convert single-time-slice BlockDenseArray to dense matrix
+    # Convert single-time-slice BlockDensePropagator to dense matrix
     return blockdense_to_dense_single_tau(prop_at_tau)
 end
 
 """
-    blockdense_to_dense_single_tau(bda::BlockDenseArray{T})
+    blockdense_to_dense_single_tau(bda::BlockDensePropagator{T})
 
-Convert a BlockDenseArray with single time slice (n_tau=1) to a dense matrix.
+Convert a BlockDensePropagator with single time slice (n_tau=1) to a dense matrix.
 """
-function blockdense_to_dense_single_tau(bda::QMBToolkitDLR.BlockDenseArray{T}) where T
+function blockdense_to_dense_single_tau(bda::BlockDensePropagator{T}) where T
     # Determine total dimension from basis
     n_total = sum(sector.dim for sector in bda.basis.sectors)
     result = zeros(T, n_total, n_total)

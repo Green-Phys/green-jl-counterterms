@@ -12,8 +12,10 @@ All operations respect quantum number conservation and only compute non-zero blo
 using QMBToolkitED.BlockDense
 using LinearAlgebra
 
+# BlockDensePropagator is defined in solver/Propagator.jl
+
 """
-    _multiplication_23_blockdense!(temp_buffer::BlockDenseArray{T}, A::BlockDenseOperator, B::BlockDenseArray{T}) where T<:Number
+    _multiplication_23_blockdense!(temp_buffer::BlockDensePropagator{T}, A::BlockDenseOperator, B::BlockDensePropagator{T}) where T<:Number
 
 In-place operator-tensor multiplication: temp_buffer[τ,:,:] = A * B[τ,:,:] for all τ.
 
@@ -21,9 +23,9 @@ For each time slice τ, performs block-aware multiplication where only blocks al
 quantum number conservation are computed.
 
 # Arguments
-- `temp_buffer::BlockDenseArray{T}`: Output buffer (will be overwritten)
+- `temp_buffer::BlockDensePropagator{T}`: Output buffer (will be overwritten)
 - `A::BlockDenseOperator`: Static operator (time-independent)
-- `B::BlockDenseArray{T}`: Time-dependent tensor
+- `B::BlockDensePropagator{T}`: Time-dependent tensor
 
 # Returns
 - `temp_buffer`: The input buffer with results written
@@ -33,7 +35,7 @@ For each block (target, source) in the result:
 - Sum over intermediate sectors: result[tgt, src](τ) = Σ_mid A[tgt, mid] * B[mid, src](τ)
 - Uses native BlockDenseOperator multiplication at each time point
 """
-function _multiplication_23_blockdense!(temp_buffer::BlockDenseArray{T}, A::BlockDenseOperator, B::BlockDenseArray{T}) where T<:Number
+function _multiplication_23_blockdense!(temp_buffer::BlockDensePropagator{T}, A::BlockDenseOperator, B::BlockDensePropagator{T}) where T<:Number
     @assert A.basis === B.basis "Operator and array must use same basis"
     @assert temp_buffer.basis === B.basis "Buffer must use same basis as input"
 
@@ -95,7 +97,7 @@ function _multiplication_23_blockdense!(temp_buffer::BlockDenseArray{T}, A::Bloc
 end
 
 """
-    _multiplication_32_blockdense!(temp_buffer::BlockDenseArray{T}, A::BlockDenseArray{T}, B::BlockDenseOperator) where T<:Number
+    _multiplication_32_blockdense!(temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T}, B::BlockDenseOperator) where T<:Number
 
 In-place tensor-operator multiplication: temp_buffer[τ,:,:] = A[τ,:,:] * B for all τ.
 
@@ -103,8 +105,8 @@ For each time slice τ, performs block-aware multiplication where only blocks al
 quantum number conservation are computed.
 
 # Arguments
-- `temp_buffer::BlockDenseArray{T}`: Output buffer (will be overwritten)
-- `A::BlockDenseArray{T}`: Time-dependent tensor
+- `temp_buffer::BlockDensePropagator{T}`: Output buffer (will be overwritten)
+- `A::BlockDensePropagator{T}`: Time-dependent tensor
 - `B::BlockDenseOperator`: Static operator (time-independent)
 
 # Returns
@@ -114,7 +116,7 @@ quantum number conservation are computed.
 For each block (target, source) in the result:
 - Sum over intermediate sectors: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src]
 """
-function _multiplication_32_blockdense!(temp_buffer::BlockDenseArray{T}, A::BlockDenseArray{T}, B::BlockDenseOperator) where T<:Number
+function _multiplication_32_blockdense!(temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T}, B::BlockDenseOperator) where T<:Number
     @assert A.basis === B.basis "Array and operator must use same basis"
     @assert temp_buffer.basis === A.basis "Buffer must use same basis as input"
 
@@ -174,7 +176,7 @@ function _multiplication_32_blockdense!(temp_buffer::BlockDenseArray{T}, A::Bloc
 end
 
 """
-    _trace_3_blockdense(A::BlockDenseArray{T}) where T<:Number
+    _trace_3_blockdense(A::BlockDensePropagator{T}) where T<:Number
 
 Compute trace of each τ-slice: result[τ] = tr(A[τ,:,:]).
 
@@ -182,7 +184,7 @@ For BlockDense arrays, the trace is the sum of traces of diagonal blocks:
     tr(A[τ]) = Σ_sector tr(A[sector, sector](τ))
 
 # Arguments
-- `A::BlockDenseArray{T}`: Time-dependent block-dense array
+- `A::BlockDensePropagator{T}`: Time-dependent block-dense array
 
 # Returns
 - `Vector{TReal}`: Trace at each time point (always real even for complex matrices)
@@ -190,7 +192,7 @@ For BlockDense arrays, the trace is the sum of traces of diagonal blocks:
 # Note
 Only diagonal blocks contribute to the trace (quantum number conservation).
 """
-function _trace_3_blockdense(A::BlockDenseArray{T}) where T<:Number
+function _trace_3_blockdense(A::BlockDensePropagator{T}) where T<:Number
     # Get time dimension from any block
     n_tau = size(first(values(A.blocks)), 1)
 
@@ -213,18 +215,18 @@ function _trace_3_blockdense(A::BlockDenseArray{T}) where T<:Number
 end
 
 """
-    _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDenseArray{<:Number})
+    _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDensePropagator{<:Number})
 
 In-place version: writes trace results to trace_buffer.
 
 # Arguments
 - `trace_buffer::Vector{<:Real}`: Pre-allocated buffer for trace values
-- `A::BlockDenseArray{<:Number}`: Time-dependent block-dense array
+- `A::BlockDensePropagator{<:Number}`: Time-dependent block-dense array
 
 # Returns
 - `trace_buffer`: The input buffer with trace values written
 """
-function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDenseArray{<:Number})
+function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDensePropagator{<:Number})
     # Handle empty case
     if isempty(A.blocks)
         fill!(trace_buffer, 0.0)
@@ -254,7 +256,7 @@ function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDenseArray{<
 end
 
 """
-    _multiplication_33_blockdense!(temp_buffer::BlockDenseArray{T}, A::BlockDenseArray{T}, B::BlockDenseArray{T}) where T<:Number
+    _multiplication_33_blockdense!(temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T}, B::BlockDensePropagator{T}) where T<:Number
 
 In-place tensor-tensor multiplication for BlockDense: temp_buffer[τ,:,:] = A[τ,:,:] * B[τ,:,:].
 
@@ -262,9 +264,9 @@ For each time slice τ, performs block-aware multiplication where only blocks al
 quantum number conservation are computed.
 
 # Arguments
-- `temp_buffer::BlockDenseArray{T}`: Output buffer (will be overwritten)
-- `A::BlockDenseArray{T}`: First time-dependent tensor
-- `B::BlockDenseArray{T}`: Second time-dependent tensor
+- `temp_buffer::BlockDensePropagator{T}`: Output buffer (will be overwritten)
+- `A::BlockDensePropagator{T}`: First time-dependent tensor
+- `B::BlockDensePropagator{T}`: Second time-dependent tensor
 
 # Returns
 - `temp_buffer`: The input buffer with results written
@@ -273,7 +275,7 @@ quantum number conservation are computed.
 For each block (target, source) in the result:
 - Sum over intermediate sectors: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src](τ)
 """
-function _multiplication_33_blockdense!(temp_buffer::BlockDenseArray{T}, A::BlockDenseArray{T}, B::BlockDenseArray{T}) where T<:Number
+function _multiplication_33_blockdense!(temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T}, B::BlockDensePropagator{T}) where T<:Number
     @assert A.basis === B.basis "Both arrays must use same basis"
     @assert temp_buffer.basis === A.basis "Buffer must use same basis as inputs"
 

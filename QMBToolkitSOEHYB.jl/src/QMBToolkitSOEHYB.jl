@@ -4,6 +4,7 @@ using MPI
 
 include("util/Params.jl")
 include("solver/HilbertSpaceFormat.jl")
+include("solver/Propagator.jl")
 include("solver/Data.jl")
 include("util/io.jl")
 include("util/init_data.jl")

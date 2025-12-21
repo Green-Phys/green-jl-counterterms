@@ -15,8 +15,8 @@ Apply hybridization function to BlockDense target array in-place, updating targe
 Uses pre-allocated temp_buffer to avoid allocations.
 
 # Arguments
-- `temp_buffer::BlockDenseArray{T}`: Pre-allocated buffer for intermediate results
-- `target::BlockDenseArray{T}`: Array to be modified (time-dependent block array)
+- `temp_buffer::BlockDensePropagator{T}`: Pre-allocated buffer for intermediate results
+- `target::BlockDensePropagator{T}`: Array to be modified (time-dependent block array)
 - `hyb::HybridizationState`: Hybridization state (NoHyb, KPlus(l), or KMinus(l))
 - `model_data::ModelData{T, BlockDenseFormat}`: Model data containing K± values on DLR τ-grid
 - `is_reverse::Bool=false`: When true, swaps KPlus ↔ KMinus (used in reverse convolution)
@@ -32,7 +32,7 @@ Hybridization is applied as element-wise scalar multiplication, so it applies to
 in the target (both diagonal and off-diagonal). The target may have any flux structure
 depending on prior operator multiplications in the diagram evaluation.
 """
-@inline function apply_hybridization_inplace_blockdense!(temp_buffer::BlockDenseArray{T}, target::BlockDenseArray{T}, hyb::HybridizationState, model_data::ModelData{T, BlockDenseFormat}; is_reverse::Bool=false) where {T<:Number}
+@inline function apply_hybridization_inplace_blockdense!(temp_buffer::BlockDensePropagator{T}, target::BlockDensePropagator{T}, hyb::HybridizationState, model_data::ModelData{T, BlockDenseFormat}; is_reverse::Bool=false) where {T<:Number}
     @assert temp_buffer.basis === target.basis "Buffer and target must use same basis"
     @assert temp_buffer.flux.delta_qn == target.flux.delta_qn "Buffer and target must have same flux"
 
@@ -66,18 +66,18 @@ end
 """
     apply_hybridization_blockdense(hyb, result, model_data; is_reverse=false)
 
-Allocating version: creates a new BlockDenseArray for the result.
+Allocating version: creates a new BlockDensePropagator for the result.
 
 # Arguments
 - `hyb::HybridizationState`: Hybridization state
-- `result::BlockDenseArray{T}`: Input array
+- `result::BlockDensePropagator{T}`: Input array
 - `model_data::ModelData{T, BlockDenseFormat}`: Model data containing K± values
 - `is_reverse::Bool=false`: When true, swaps KPlus ↔ KMinus
 
 # Returns
-- New BlockDenseArray with hybridization applied, or original array if NoHyb
+- New BlockDensePropagator with hybridization applied, or original array if NoHyb
 """
-@inline function apply_hybridization_blockdense(hyb::HybridizationState, result::BlockDenseArray{T}, model_data::ModelData{T, BlockDenseFormat}; is_reverse::Bool=false) where {T<:Number}
+@inline function apply_hybridization_blockdense(hyb::HybridizationState, result::BlockDensePropagator{T}, model_data::ModelData{T, BlockDenseFormat}; is_reverse::Bool=false) where {T<:Number}
     index = hyb.index
     if index != 0  # Not NoHyb
         # XOR determines if we should use KPlus: (positive and not reverse) OR (negative and reverse)
@@ -104,7 +104,7 @@ Allocating version: creates a new BlockDenseArray for the result.
             new_blocks[block_key] = new_block
         end
 
-        return BlockDenseArray{T}(result.basis, result.flux, new_blocks)
+        return BlockDensePropagator{T}(result.basis, result.flux, new_blocks)
     else
         return result
     end

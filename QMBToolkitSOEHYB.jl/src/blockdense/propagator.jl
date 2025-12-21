@@ -42,7 +42,7 @@ Creates separate buffers for each block in the propagator.
 function allocate_propagator_buffers(solver_data::SolverData{T, BlockDenseFormat}) where {T<:Number}
     n_tau = length(solver_data.model.dlr_grid.tau)
 
-    # Get basis from bare propagator (it's a BlockDenseArray)
+    # Get basis from bare propagator (it's a BlockDensePropagator)
     bare_prop = solver_data.model.bare_propagator_blockdense
     basis = bare_prop.basis
 
@@ -77,7 +77,7 @@ This is the BlockDense-specific implementation called by the format-independent
 - `buffers::PropagatorConvolutionBuffersBlockDense{T}`: Pre-allocated work buffers
 
 # Returns
-- `BlockDenseArray{T}`: Diagram contribution in imaginary time
+- `BlockDensePropagator{T}`: Diagram contribution in imaginary time
 
 # Algorithm
 Uses `multiplication_convolution_blockdense` to evaluate the backbone diagram via
@@ -93,7 +93,7 @@ function eval_propagator_backbone(diagram::BackBone, solver_data::SolverData{T, 
 end
 
 """
-    build_bare_propagator_blockdense(result::BlockEigenResult, tau_grid::Vector{Float64}, E_shift::Float64) -> BlockDenseArray{ComplexF64}
+    build_bare_propagator_blockdense(result::BlockEigenResult, tau_grid::Vector{Float64}, E_shift::Float64) -> BlockDensePropagator{ComplexF64}
 
 Construct bare propagator e^{-τH} in BlockDense representation from eigendecomposition.
 
@@ -108,7 +108,7 @@ where U are the eigenvectors from each sector.
 - `E_shift::Float64`: Energy shift applied to Hamiltonian
 
 # Returns
-- `BlockDenseArray{ComplexF64}`: Bare propagator on tau grid with block structure
+- `BlockDensePropagator{ComplexF64}`: Bare propagator on tau grid with block structure
 """
 function build_bare_propagator_blockdense(result::BlockEigenResult, tau_grid::Vector{Float64}, E_shift::Float64)
     basis = result.basis
@@ -140,5 +140,5 @@ function build_bare_propagator_blockdense(result::BlockEigenResult, tau_grid::Ve
         blocks[(sector_idx, sector_idx)] = block
     end
 
-    return BlockDenseArray{ComplexF64}(basis, flux, blocks)
+    return BlockDensePropagator{ComplexF64}(basis, flux, blocks)
 end

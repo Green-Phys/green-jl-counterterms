@@ -24,7 +24,8 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
 
     # Infer numeric type and transform operators to eigenbasis
     T = eltype(evecs)
-    ann_opts = vec([evecs' * convert(Matrix{T}, c) * evecs for c in ann_opts_raw])
+    # Extract matrix data from DenseOperator and transform to eigenbasis
+    ann_opts = vec([evecs' * convert(Matrix{T}, to_matrix(c)) * evecs for c in ann_opts_raw])
     n_flavors = length(ann_opts)
     n_fock = 1 << n_flavors
     cre_opts = vec([Matrix{T}(adjoint(c)) for c in ann_opts])
@@ -194,13 +195,13 @@ function init_solver_data(model_data::ModelData{T, DenseFormat}) where {T<:Numbe
 end
 
 function init_solver_data(model_data::ModelData{T, BlockDenseFormat}) where {T<:Number}
-    # Create zero BlockDenseArray for propagator and self-energy
+    # Create zero BlockDensePropagator for propagator and self-energy
     basis = model_data.bare_propagator_blockdense.basis
     flux = model_data.bare_propagator_blockdense.flux
     n_tau = length(model_data.dlr_grid.tau)
 
-    propagator_blockdense = zeros(BlockDenseArray{T}, basis, flux, n_tau)
-    selfenergy_blockdense = zeros(BlockDenseArray{T}, basis, flux, n_tau)
+    propagator_blockdense = zeros(BlockDensePropagator{T}, basis, flux, n_tau)
+    selfenergy_blockdense = zeros(BlockDensePropagator{T}, basis, flux, n_tau)
 
     calculation_data = CalculationData{T, BlockDenseFormat}(
         # Dense format fields (not used)

@@ -170,11 +170,11 @@ function eval_propagator_given_order!(solver_data::SolverData{T, BlockDenseForma
     diagrams_flat = vcat(diagrams...)
     n_diagrams = length(diagrams_flat)
 
-    # Create local accumulator (BlockDenseArray) for this rank's work
+    # Create local accumulator (BlockDensePropagator) for this rank's work
     basis = solver_data.calc.propagator_blockdense.basis
     flux = solver_data.calc.propagator_blockdense.flux
     n_tau = length(solver_data.model.dlr_grid.tau)
-    local_result = zeros(QMBToolkitDLR.BlockDenseArray{T}, basis, flux, n_tau)
+    local_result = zeros(BlockDensePropagator{T}, basis, flux, n_tau)
 
     # Allocate format-specific buffers
     buffers = allocate_propagator_buffers(solver_data)

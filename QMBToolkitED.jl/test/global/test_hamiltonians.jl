@@ -48,7 +48,8 @@ using .GlobalTestUtils
     # Single-particle energies: approximately [-2√2, 0, 2√2] ≈ [-2.828, 0, 2.828]
 
     verify_fn = (H, annh, label) -> begin
-        evals, evecs = solve_hamiltonian(H)
+        result = solve_hamiltonian(H)
+        evals = get_evals(result)
         @test length(evals) == 64  # 2^6 = 64 many-body states
 
         if label == "Dense"
@@ -59,8 +60,9 @@ using .GlobalTestUtils
         # Verify ground state energy
         # Ground state is when the two lowest single-particle states are filled
         # (one for each spin with energy E_spin[1] ≈ -2.828)
+        evals_sorted = sort(evals)
         E_ground_expected = 2 * E_spin[1]  # Two fermions in lowest state
-        @test evals[1] ≈ E_ground_expected atol=1e-9
+        @test evals_sorted[1] ≈ E_ground_expected atol=1e-9
 
         # Verify vacuum state (no particles) has energy 0
         # For 6 orbitals, vacuum is state with no particles
@@ -125,7 +127,8 @@ end
              @test H.flux.delta_qn == (label == "BlockDense N" ? QN_N(0) : QN_NSz(0, 0))
         end
 
-        evals, evecs = solve_hamiltonian(H)
+        result = solve_hamiltonian(H)
+        evals = get_evals(result)
         @test length(evals) == 64
 
         beta = 10.0
@@ -158,9 +161,10 @@ end
     site_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1)]
 
     verify_fn = (H, annh, label) -> begin
-        evals, evecs = solve_hamiltonian(H)
+        result = solve_hamiltonian(H)
+        evals = get_evals(result)
         @test length(evals) == 4
-        
+
         if label == "Dense"
             @test ishermitian(H)
         end
@@ -205,13 +209,14 @@ end
     site_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
 
     verify_fn = (H, annh, label) -> begin
-        evals, evecs = solve_hamiltonian(H)
+        result = solve_hamiltonian(H)
+        evals = get_evals(result)
         @test length(evals) == 16
-        
+
         if label == "Dense"
              @test ishermitian(H)
         end
-        
+
         analytical_evals = [
             0.0, 0.0, 0.0,
             -U, -U, -U,
@@ -220,7 +225,7 @@ end
             0.5 * (-U - sqrt(16*t^2 + U^2)),
             0.5 * (-U + sqrt(16*t^2 + U^2))
         ]
-        
+
         beta = 10.0
         Z_analytical = get_Z(analytical_evals, beta, shift_energy=true)
         Z_calculated = get_Z(evals, beta, shift_energy=true)

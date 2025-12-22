@@ -29,7 +29,7 @@ export Dense, BlockDense
 export DenseEigenResult, BlockEigenResult
 
 # Export Core Types for convenience
-export DenseBasis, DenseOperator
-export BlockDenseBasis, BlockDenseOperator
+export DenseBasis, DenseOperator, DenseDiagonalOperator
+export BlockDenseBasis, BlockDenseOperator, BlockDenseDiagonalOperator
 
 end # module QMBToolkitED

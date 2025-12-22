@@ -10,31 +10,31 @@ Solves the eigenvalue problem for dense Hamiltonians.
 Result of dense eigenvalue decomposition.
 
 Fields:
-- `evals::Vector{Float64}`: Eigenvalues
-- `evecs::Matrix{ComplexF64}`: Eigenvectors
-- `basis::DenseBasis`: The basis used
+- `eigenvalues::DenseDiagonalOperator`: Eigenvalues as a diagonal operator
+- `eigenvectors::DenseOperator`: Eigenvectors as a unitary operator
 
-This object is iterable, allowing destructuring: `evals, evecs = result`
+The eigenvectors matrix U transforms from the computational basis to the
+eigenbasis: if |ψ_i⟩ is the i-th eigenvector, then U[:, i] = |ψ_i⟩.
+
+Example:
+```julia
+H, c = build_hamiltonian_dense("hopping.txt", "coulomb.txt")
+result = solve_hamiltonian_dense(H)
+
+# Access eigenvalues
+evals = result.eigenvalues.diag  # Vector{Float64}
+
+# Access eigenvectors
+evecs = result.eigenvectors.data  # Matrix{ComplexF64}
+
+# Transform operator to eigenbasis
+A_eigenbasis = evecs' * A.data * evecs
+```
 """
 struct DenseEigenResult
-    evals::Vector{Float64}
-    evecs::Matrix{ComplexF64}
-    basis::DenseBasis
+    eigenvalues::DenseDiagonalOperator
+    eigenvectors::DenseOperator
 end
-
-"""
-    get_eigenvalues(result::DenseEigenResult) -> Vector{Float64}
-
-Get eigenvalues from DenseEigenResult.
-"""
-get_eigenvalues(result::DenseEigenResult) = result.evals
-
-"""
-    get_eigenvectors(result::DenseEigenResult) -> Matrix{ComplexF64}
-
-Get eigenvectors from DenseEigenResult.
-"""
-get_eigenvectors(result::DenseEigenResult) = result.evecs
 
 """
     solve_hamiltonian_dense(H::DenseOperator) -> DenseEigenResult
@@ -45,14 +45,19 @@ Arguments:
 - `H::DenseOperator`: Hamiltonian operator
 
 Returns:
-- `DenseEigenResult`: Result object containing eigenvalues, eigenvectors, and basis.
-  This object is iterable for backward compatibility: `evals, evecs = result`
+- `DenseEigenResult`: Result object containing eigenvalues and eigenvectors
+  as operator types.
 
 Example:
 ```julia
 H, c = build_hamiltonian_dense("hopping.txt", "coulomb.txt")
 result = solve_hamiltonian_dense(H)
-evals, evecs = result  # Tuple unpacking works
+
+# Access eigenvalues
+E = result.eigenvalues.diag
+
+# Access eigenvectors
+U = result.eigenvectors.data
 ```
 
 Implementation:
@@ -62,6 +67,9 @@ function solve_hamiltonian_dense(H::DenseOperator)
     # Diagonalize using Hermitian solver for efficiency
     sol = eigen(Hermitian(H.data))
 
-    return DenseEigenResult(sol.values, sol.vectors, H.basis)
-end
+    # Wrap results in operator types
+    eigenvalues = DenseDiagonalOperator(H.basis, sol.values)
+    eigenvectors = DenseOperator(H.basis, sol.vectors)
 
+    return DenseEigenResult(eigenvalues, eigenvectors)
+end

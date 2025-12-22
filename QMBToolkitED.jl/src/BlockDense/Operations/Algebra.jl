@@ -353,3 +353,171 @@ Unary negation of operator.
 Equivalent to (-1) * A.
 """
 Base.:-(A::BlockDenseOperator) = (-1) * A
+
+# ============================================================================
+# BlockDenseDiagonalOperator Operations
+# ============================================================================
+
+"""
+    Base.:*(D::BlockDenseDiagonalOperator, A::BlockDenseOperator) -> BlockDenseOperator
+
+Multiply diagonal operator by block-dense operator.
+
+For each block (tgt, src), scales columns by D's diagonal values for sector src.
+"""
+function Base.:*(D::BlockDenseDiagonalOperator, A::BlockDenseOperator)
+    @assert D.basis === A.basis "Operators must act on same basis"
+
+    # Result has same flux as A (D has zero flux)
+    result_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
+
+    for ((tgt, src), block) in A.blocks
+        if haskey(D.sector_diags, src)
+            # D * A: left-multiply by diagonal scales rows
+            # But D is block-diagonal, so it scales based on target sector for left multiply
+            # Wait, D has zero flux, so D only has diagonal blocks (tgt, tgt)
+            # D * A means we apply D to the left of A
+            # (D * A)[tgt, src] = D[tgt, tgt] * A[tgt, src]
+            # So we scale rows of A's block by D's diagonal for the target sector
+            if haskey(D.sector_diags, tgt)
+                diag_tgt = D.sector_diags[tgt]
+                result_blocks[(tgt, src)] = Diagonal(diag_tgt) * block
+            else
+                # If D doesn't have this sector, result is zero (don't store)
+            end
+        end
+    end
+
+    # Remove zero blocks
+    filter!(((key, block),) -> !iszero(block), result_blocks)
+
+    return BlockDenseOperator(A.basis, A.flux, result_blocks)
+end
+
+"""
+    Base.:*(A::BlockDenseOperator, D::BlockDenseDiagonalOperator) -> BlockDenseOperator
+
+Multiply block-dense operator by diagonal operator.
+
+For each block (tgt, src), scales columns by D's diagonal values for sector src.
+"""
+function Base.:*(A::BlockDenseOperator, D::BlockDenseDiagonalOperator)
+    @assert A.basis === D.basis "Operators must act on same basis"
+
+    # Result has same flux as A (D has zero flux)
+    result_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
+
+    for ((tgt, src), block) in A.blocks
+        if haskey(D.sector_diags, src)
+            # A * D: right-multiply by diagonal scales columns
+            # (A * D)[tgt, src] = A[tgt, src] * D[src, src]
+            diag_src = D.sector_diags[src]
+            result_blocks[(tgt, src)] = block * Diagonal(diag_src)
+        end
+    end
+
+    # Remove zero blocks
+    filter!(((key, block),) -> !iszero(block), result_blocks)
+
+    return BlockDenseOperator(A.basis, A.flux, result_blocks)
+end
+
+"""
+    Base.:*(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator) -> BlockDenseDiagonalOperator
+
+Multiply two diagonal operators (element-wise per sector).
+"""
+function Base.:*(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator)
+    @assert D1.basis === D2.basis "Operators must act on same basis"
+
+    result_diags = Dict{Int, Vector{Float64}}()
+
+    # Only sectors present in both
+    for sector_idx in keys(D1.sector_diags)
+        if haskey(D2.sector_diags, sector_idx)
+            result_diags[sector_idx] = D1.sector_diags[sector_idx] .* D2.sector_diags[sector_idx]
+        end
+    end
+
+    return BlockDenseDiagonalOperator(D1.basis, result_diags)
+end
+
+"""
+    Base.:+(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator) -> BlockDenseDiagonalOperator
+
+Add two diagonal operators.
+"""
+function Base.:+(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator)
+    @assert D1.basis === D2.basis "Operators must act on same basis"
+
+    result_diags = Dict{Int, Vector{Float64}}()
+
+    # Union of sectors
+    all_sectors = union(keys(D1.sector_diags), keys(D2.sector_diags))
+
+    for sector_idx in all_sectors
+        if haskey(D1.sector_diags, sector_idx) && haskey(D2.sector_diags, sector_idx)
+            result_diags[sector_idx] = D1.sector_diags[sector_idx] .+ D2.sector_diags[sector_idx]
+        elseif haskey(D1.sector_diags, sector_idx)
+            result_diags[sector_idx] = copy(D1.sector_diags[sector_idx])
+        else
+            result_diags[sector_idx] = copy(D2.sector_diags[sector_idx])
+        end
+    end
+
+    return BlockDenseDiagonalOperator(D1.basis, result_diags)
+end
+
+"""
+    Base.:-(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator) -> BlockDenseDiagonalOperator
+
+Subtract two diagonal operators.
+"""
+function Base.:-(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator)
+    return D1 + (-1) * D2
+end
+
+"""
+    Base.:*(α::Number, D::BlockDenseDiagonalOperator) -> BlockDenseDiagonalOperator
+
+Multiply diagonal operator by scalar.
+"""
+function Base.:*(α::Number, D::BlockDenseDiagonalOperator)
+    result_diags = Dict{Int, Vector{Float64}}(
+        sector_idx => α .* diag for (sector_idx, diag) in D.sector_diags
+    )
+    return BlockDenseDiagonalOperator(D.basis, result_diags)
+end
+
+"""
+    Base.:*(D::BlockDenseDiagonalOperator, α::Number) -> BlockDenseDiagonalOperator
+
+Multiply diagonal operator by scalar (commutative version).
+"""
+Base.:*(D::BlockDenseDiagonalOperator, α::Number) = α * D
+
+"""
+    Base.:/(D::BlockDenseDiagonalOperator, α::Number) -> BlockDenseDiagonalOperator
+
+Divide diagonal operator by scalar.
+"""
+Base.:/(D::BlockDenseDiagonalOperator, α::Number) = (1/α) * D
+
+"""
+    Base.adjoint(D::BlockDenseDiagonalOperator) -> BlockDenseDiagonalOperator
+
+Compute the adjoint of a block-diagonal operator.
+
+For real diagonal operators, the adjoint is the same as the original.
+The flux remains zero.
+"""
+function Base.adjoint(D::BlockDenseDiagonalOperator)
+    return D  # Real diagonal is self-adjoint
+end
+
+"""
+    Base.:-(D::BlockDenseDiagonalOperator) -> BlockDenseDiagonalOperator
+
+Unary negation of diagonal operator.
+"""
+Base.:-(D::BlockDenseDiagonalOperator) = (-1) * D

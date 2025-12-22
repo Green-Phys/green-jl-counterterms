@@ -136,3 +136,83 @@ function from_matrix(matrix::Matrix{ComplexF64}, basis::BlockDenseBasis, flux::O
 
     return BlockDenseOperator(basis, flux, blocks)
 end
+
+"""
+    to_matrix(D::BlockDenseDiagonalOperator) -> Matrix{ComplexF64}
+
+Convert a block-diagonal operator to a full matrix.
+
+Arguments:
+- `D::BlockDenseDiagonalOperator`: Diagonal operator
+
+Returns:
+- `Matrix{ComplexF64}`: Full diagonal matrix
+
+Example:
+```julia
+basis = make_basis([QN_N(1), QN_N(1)])
+sector_diags = Dict(1 => [1.0], 2 => [2.0, 3.0], 3 => [4.0])
+D = BlockDenseDiagonalOperator(basis, sector_diags)
+mat = to_matrix(D)
+```
+"""
+function to_matrix(D::BlockDenseDiagonalOperator)::Matrix{ComplexF64}
+    basis = D.basis
+    n = basis.total_dim
+
+    # Initialize zero matrix
+    result = zeros(ComplexF64, n, n)
+
+    # Compute starting index for each sector
+    sector_starts = zeros(Int, length(basis.sectors))
+    cumsum_dim = 0
+    for (i, sector) in enumerate(basis.sectors)
+        sector_starts[i] = cumsum_dim
+        cumsum_dim += sector.dim
+    end
+
+    # Place diagonal elements at correct positions
+    for (sector_idx, diag) in D.sector_diags
+        sector_start = sector_starts[sector_idx]
+        for (i, val) in enumerate(diag)
+            result[sector_start + i, sector_start + i] = val
+        end
+    end
+
+    return result
+end
+
+"""
+    to_vector(D::BlockDenseDiagonalOperator) -> Vector{Float64}
+
+Extract all diagonal values as a single vector, concatenated in sector order.
+
+Arguments:
+- `D::BlockDenseDiagonalOperator`: Diagonal operator
+
+Returns:
+- `Vector{Float64}`: Concatenated diagonal elements
+
+Example:
+```julia
+basis = make_basis([QN_N(1), QN_N(1)])
+sector_diags = Dict(1 => [1.0], 2 => [2.0, 3.0], 3 => [4.0])
+D = BlockDenseDiagonalOperator(basis, sector_diags)
+vec = to_vector(D)  # [1.0, 2.0, 3.0, 4.0]
+```
+"""
+function to_vector(D::BlockDenseDiagonalOperator)
+    basis = D.basis
+    result = Float64[]
+
+    for sector_idx in 1:length(basis.sectors)
+        if haskey(D.sector_diags, sector_idx)
+            append!(result, D.sector_diags[sector_idx])
+        else
+            # If sector not in dict, append zeros
+            append!(result, zeros(Float64, basis.sectors[sector_idx].dim))
+        end
+    end
+
+    return result
+end

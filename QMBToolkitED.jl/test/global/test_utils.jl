@@ -4,9 +4,24 @@ using Test
 using QMBToolkitED
 using QMBToolkitED.Dense
 using QMBToolkitED.BlockDense
+using QMBToolkitED.BlockDense: to_vector
 using LinearAlgebra
 
-export run_hamiltonian_test, run_greens_test, verify_anticommutation
+export run_hamiltonian_test, run_greens_test, verify_anticommutation, get_evals
+
+"""
+    get_evals(result) -> Vector{Float64}
+
+Extract eigenvalues as a flat vector from either DenseEigenResult or BlockEigenResult.
+"""
+function get_evals(result::DenseEigenResult)
+    return result.eigenvalues.diag
+end
+
+function get_evals(result::BlockEigenResult)
+    # Use to_vector to get concatenated eigenvalues
+    return to_vector(result.eigenvalues)
+end
 
 """
     run_hamiltonian_test(test_name; hopping_str, coulomb_str, site_qns_n, site_qns_sz, verify_fn)

@@ -1,11 +1,10 @@
 """
-Unified Interface Tests: Verify method parameter functionality and backwards compatibility.
+Unified Interface Tests: Verify method parameter functionality.
 
 Tests that the unified interface:
 1. Works with method=:dense (same results as original)
 2. Works with method=:blockdense (same results as BlockDense module)
-3. Maintains backwards compatibility (default method works)
-4. Auto-detection works correctly
+3. Auto-detection works correctly
 """
 
 using Test
@@ -13,6 +12,7 @@ using QMBToolkitED
 using QMBToolkitED.Dense
 using QMBToolkitED.BlockDense
 using LinearAlgebra
+using .GlobalTestUtils
 
 @testset "Unified Interface Tests" begin
 
@@ -116,13 +116,18 @@ using LinearAlgebra
         @test_throws ErrorException build_hamiltonian(hopping_input, coulomb_input; method=:blockdense)
     end
 
-    @testset "solve_hamiltonian - auto-detection for Matrix" begin
+    @testset "solve_hamiltonian - auto-detection for DenseOperator" begin
         nflavors = 2
         c = get_annihilators(nflavors)
         H = sum(c[i]' * c[i] for i in 1:nflavors)
 
-        evals_auto, evecs_auto = solve_hamiltonian(H)
-        evals_dense, evecs_dense = solve_hamiltonian(H; method=:dense)
+        result_auto = solve_hamiltonian(H)
+        result_dense = solve_hamiltonian(H; method=:dense)
+
+        evals_auto = get_evals(result_auto)
+        evals_dense = get_evals(result_dense)
+        evecs_auto = to_matrix(result_auto.eigenvectors)
+        evecs_dense = to_matrix(result_dense.eigenvectors)
 
         @test evals_auto ≈ evals_dense atol=1e-14
         @test abs.(evecs_auto' * evecs_dense) ≈ Matrix{Float64}(I, size(evecs_auto, 2), size(evecs_dense, 2)) atol=1e-14
@@ -134,8 +139,13 @@ using LinearAlgebra
         c = get_annihilators(basis; method=:blockdense)
         H = sum(c[i]' * c[i] for i in 1:nflavors)
 
-        evals_auto, evecs_auto = solve_hamiltonian(H)
-        evals_block, evecs_block = solve_hamiltonian(H; method=:blockdense)
+        result_auto = solve_hamiltonian(H)
+        result_block = solve_hamiltonian(H; method=:blockdense)
+
+        evals_auto = get_evals(result_auto)
+        evals_block = get_evals(result_block)
+        evecs_auto = to_matrix(result_auto.eigenvectors)
+        evecs_block = to_matrix(result_block.eigenvectors)
 
         @test evals_auto ≈ evals_block atol=1e-14
         @test abs.(evecs_auto' * evecs_block) ≈ Matrix{Float64}(I, size(evecs_auto, 2), size(evecs_block, 2)) atol=1e-14
@@ -156,8 +166,8 @@ using LinearAlgebra
         @test_throws ErrorException solve_hamiltonian(H_block; method=:dense)
     end
 
-    @testset "Result Accessors" begin
-        # Test that accessor functions work correctly and match tuple unpacking
+    @testset "Result Types and Field Access" begin
+        # Test that result types have correct fields and eigenvalue/eigenvector access works
         U = 2.0
         hopping_str = """
         0 0 $(-U/2) 0.0
@@ -173,20 +183,19 @@ using LinearAlgebra
         H_dense, _ = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str))
         result_dense = solve_hamiltonian(H_dense)
 
-        # Test accessor functions
-        evals_accessor = QMBToolkitED.Dense.get_eigenvalues(result_dense)
-        evecs_accessor = QMBToolkitED.Dense.get_eigenvectors(result_dense)
+        # Test result types
+        @test isa(result_dense, DenseEigenResult)
+        @test isa(result_dense.eigenvalues, DenseDiagonalOperator)
+        @test isa(result_dense.eigenvectors, DenseOperator)
 
-        # Test tuple unpacking
-        evals_unpack, evecs_unpack = result_dense
+        # Test eigenvalue access
+        evals_dense = get_evals(result_dense)
+        @test isa(evals_dense, Vector{Float64})
+        @test length(evals_dense) == 4  # 2^2 = 4 states
 
-        # Should be identical (not just approximately equal)
-        @test evals_accessor === evals_unpack
-        @test evecs_accessor === evecs_unpack
-
-        # Test direct field access matches accessors
-        @test evals_accessor === result_dense.evals
-        @test evecs_accessor === result_dense.evecs
+        # Test eigenvector access
+        evecs_dense = to_matrix(result_dense.eigenvectors)
+        @test size(evecs_dense) == (4, 4)
 
         # BlockDense method
         site_qns = [QN_N(1), QN_N(1)]
@@ -194,39 +203,42 @@ using LinearAlgebra
         H_block, _ = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str); method=:blockdense, basis=basis)
         result_block = solve_hamiltonian(H_block)
 
-        # Test BlockDense accessor functions
-        evals_block_accessor = BlockDense.get_full_eigenvalues(result_block)
-        evecs_block_accessor = BlockDense.get_full_eigenvectors(result_block)
+        # Test result types
+        @test isa(result_block, BlockEigenResult)
+        @test isa(result_block.eigenvalues, BlockDenseDiagonalOperator)
+        @test isa(result_block.eigenvectors, BlockDenseOperator)
 
-        # Test tuple unpacking
-        evals_block_unpack, evecs_block_unpack = result_block
-
-        # Unpacking should match accessors (with sorting)
-        @test evals_block_unpack == evals_block_accessor[sortperm(evals_block_accessor)]
-        @test evecs_block_unpack == evecs_block_accessor[:, sortperm(evals_block_accessor)]
+        # Test eigenvalue access
+        evals_block = get_evals(result_block)
+        @test isa(evals_block, Vector{Float64})
+        @test length(evals_block) == 4  # Same total Hilbert space dim
 
         # Verify eigenvectors are correctly reconstructed from sectors
         total_dim = basis.total_dim
-        @test size(evecs_block_accessor) == (total_dim, total_dim)
+        evecs_block = to_matrix(result_block.eigenvectors)
+        @test size(evecs_block) == (total_dim, total_dim)
 
         # Verify eigenvectors are orthonormal
-        @test evecs_block_accessor' * evecs_block_accessor ≈ Matrix{ComplexF64}(I, total_dim, total_dim) atol=1e-12
+        @test evecs_block' * evecs_block ≈ Matrix{ComplexF64}(I, total_dim, total_dim) atol=1e-12
 
         # Verify eigenvalues and eigenvectors satisfy H * v = λ * v
-        H_block_mat = to_matrix(H_block)
-        for i in 1:total_dim
-            Hv = H_block_mat * evecs_block_accessor[:, i]
-            λv = evals_block_accessor[i] * evecs_block_accessor[:, i]
-            @test Hv ≈ λv atol=1e-10
+        for (sector_idx, diag) in result_block.eigenvalues.sector_diags
+            U_sector = result_block.eigenvectors.blocks[(sector_idx, sector_idx)]
+            # H_sector may be missing if it's zero (e.g., vacuum sector)
+            H_sector = get(H_block.blocks, (sector_idx, sector_idx),
+                           zeros(ComplexF64, size(U_sector, 1), size(U_sector, 1)))
+            for i in 1:length(diag)
+                Hv = H_sector * U_sector[:, i]
+                λv = diag[i] * U_sector[:, i]
+                @test Hv ≈ λv atol=1e-10
+            end
         end
 
         # Cross-validate: Dense and BlockDense eigenvalues should match
-        @test sort(evals_accessor) ≈ sort(evals_block_accessor) atol=1e-12
+        @test sort(evals_dense) ≈ sort(evals_block) atol=1e-12
 
-        # Test that tuple unpacking gives matching results between Dense and BlockDense
-        @test sort(evals_unpack) ≈ sort(evals_block_unpack) atol=1e-12
         # Eigenvectors should also match (up to phase/ordering)
-        overlap = abs.(evecs_unpack' * evecs_block_unpack)
+        overlap = abs.(evecs_dense' * evecs_block)
         # Each row/column should have exactly one entry ≈ 1
         @test all(maximum(overlap, dims=2) .≈ 1.0)
         @test all(maximum(overlap, dims=1) .≈ 1.0)
@@ -243,9 +255,10 @@ using LinearAlgebra
         H_dense, _ = build_hamiltonian(hopping_input, coulomb_input; method=:dense)
         @test isa(H_dense, DenseOperator)
 
-        evals_dense, evecs_dense = solve_hamiltonian(H_dense)
-        @test isa(evals_dense, Vector{Float64})
-        @test isa(evecs_dense, Matrix{ComplexF64})
+        result_dense = solve_hamiltonian(H_dense)
+        @test isa(result_dense, DenseEigenResult)
+        @test isa(result_dense.eigenvalues, DenseDiagonalOperator)
+        @test isa(result_dense.eigenvectors, DenseOperator)
 
         # Verify that method=:blockdense returns block-dense types
         basis = make_basis([QN_N(1) for _ in 1:nflavors])
@@ -257,9 +270,10 @@ using LinearAlgebra
         H_block, _ = build_hamiltonian(hopping_input2, coulomb_input2; method=:blockdense, basis=basis)
         @test isa(H_block, BlockDenseOperator)
 
-        evals_block, evecs_block = solve_hamiltonian(H_block)
-        @test isa(evals_block, Vector{Float64})
-        @test isa(evecs_block, Matrix{ComplexF64})
+        result_block = solve_hamiltonian(H_block)
+        @test isa(result_block, BlockEigenResult)
+        @test isa(result_block.eigenvalues, BlockDenseDiagonalOperator)
+        @test isa(result_block.eigenvectors, BlockDenseOperator)
     end
 
 end

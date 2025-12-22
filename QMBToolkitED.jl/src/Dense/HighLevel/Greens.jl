@@ -26,8 +26,8 @@ function calculate_green_tau_dense(
     beta::Real,
     n_tau::Int
 )
-    evals = result.evals
-    evecs = result.evecs
+    evals = result.eigenvalues.diag
+    evecs = result.eigenvectors.data
 
     # Get operator matrices
     c_i_mat = c_i.data
@@ -85,8 +85,8 @@ function calculate_green_matsubara_dense(
     beta::Real,
     n_matsubara::Int
 )
-    evals = result.evals
-    evecs = result.evecs
+    evals = result.eigenvalues.diag
+    evecs = result.eigenvectors.data
     nfock = size(evecs, 1)
 
     # Get operator matrices
@@ -127,4 +127,3 @@ function calculate_green_matsubara_dense(
 
     return iomega_n, g_iwn
 end
-

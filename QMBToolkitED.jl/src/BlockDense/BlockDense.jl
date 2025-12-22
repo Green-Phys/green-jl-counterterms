@@ -74,10 +74,7 @@ n_up = c[1]' * c[1]
 
 ## Conversion
 - `to_matrix`, `from_matrix` - Convert between block-dense and dense matrix formats
-
-## Eigenvalue decomposition utilities
-- `get_full_eigenvalues` - Extract all eigenvalues from BlockEigenResult
-- `get_full_eigenvectors` - Extract all eigenvectors in global basis
+- `to_vector` - Extract eigenvalues as a concatenated vector
 """
 module BlockDense
 
@@ -92,6 +89,7 @@ include("Core/QuantumNumbers.jl")
 include("Core/Sectors.jl")
 include("Core/Basis.jl")
 include("Core/Operators.jl")
+include("Core/DiagonalOperators.jl")
 
 # ============================================================================
 # Utilities
@@ -128,6 +126,7 @@ export Sector, BlockDenseBasis, make_basis
 
 # Operators
 export OperatorFlux, BlockDenseOperator
+export BlockDenseDiagonalOperator
 export get_annihilator_blockdense  # Single operator (low-level)
 
 # Utilities
@@ -145,6 +144,8 @@ export calculate_green_matsubara_blockdense # Green's function (Matsubara)
 
 # Eigenvalue decomposition results
 export BlockEigenResult
-export get_full_eigenvalues, get_full_eigenvectors
+
+# Conversion
+export to_vector
 
 end # module BlockDense

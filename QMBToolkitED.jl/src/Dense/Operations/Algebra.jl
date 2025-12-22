@@ -185,3 +185,104 @@ Unary negation of operator.
 Equivalent to (-1) * A.
 """
 Base.:-(A::DenseOperator) = (-1) * A
+
+# ============================================================================
+# DenseDiagonalOperator Operations
+# ============================================================================
+
+"""
+    Base.:*(D::DenseDiagonalOperator, A::DenseOperator) -> DenseOperator
+
+Multiply diagonal operator by dense operator (column scaling).
+
+D * A scales each column j of A by D[j].
+"""
+function Base.:*(D::DenseDiagonalOperator, A::DenseOperator)
+    @assert D.basis === A.basis "Operators must act on same basis"
+    # D * A: scales columns of A
+    return DenseOperator(A.basis, Diagonal(D.diag) * A.data)
+end
+
+"""
+    Base.:*(A::DenseOperator, D::DenseDiagonalOperator) -> DenseOperator
+
+Multiply dense operator by diagonal operator (row scaling).
+
+A * D scales each row i of A by D[i].
+"""
+function Base.:*(A::DenseOperator, D::DenseDiagonalOperator)
+    @assert A.basis === D.basis "Operators must act on same basis"
+    # A * D: scales rows of A
+    return DenseOperator(A.basis, A.data * Diagonal(D.diag))
+end
+
+"""
+    Base.:*(D1::DenseDiagonalOperator, D2::DenseDiagonalOperator) -> DenseDiagonalOperator
+
+Multiply two diagonal operators (element-wise multiplication).
+"""
+function Base.:*(D1::DenseDiagonalOperator, D2::DenseDiagonalOperator)
+    @assert D1.basis === D2.basis "Operators must act on same basis"
+    return DenseDiagonalOperator(D1.basis, D1.diag .* D2.diag)
+end
+
+"""
+    Base.:+(D1::DenseDiagonalOperator, D2::DenseDiagonalOperator) -> DenseDiagonalOperator
+
+Add two diagonal operators.
+"""
+function Base.:+(D1::DenseDiagonalOperator, D2::DenseDiagonalOperator)
+    @assert D1.basis === D2.basis "Operators must act on same basis"
+    return DenseDiagonalOperator(D1.basis, D1.diag .+ D2.diag)
+end
+
+"""
+    Base.:-(D1::DenseDiagonalOperator, D2::DenseDiagonalOperator) -> DenseDiagonalOperator
+
+Subtract two diagonal operators.
+"""
+function Base.:-(D1::DenseDiagonalOperator, D2::DenseDiagonalOperator)
+    @assert D1.basis === D2.basis "Operators must act on same basis"
+    return DenseDiagonalOperator(D1.basis, D1.diag .- D2.diag)
+end
+
+"""
+    Base.:*(α::Number, D::DenseDiagonalOperator) -> DenseDiagonalOperator
+
+Multiply diagonal operator by scalar.
+"""
+function Base.:*(α::Number, D::DenseDiagonalOperator)
+    return DenseDiagonalOperator(D.basis, α .* D.diag)
+end
+
+"""
+    Base.:*(D::DenseDiagonalOperator, α::Number) -> DenseDiagonalOperator
+
+Multiply diagonal operator by scalar (commutative version).
+"""
+Base.:*(D::DenseDiagonalOperator, α::Number) = α * D
+
+"""
+    Base.:/(D::DenseDiagonalOperator, α::Number) -> DenseDiagonalOperator
+
+Divide diagonal operator by scalar.
+"""
+Base.:/(D::DenseDiagonalOperator, α::Number) = (1/α) * D
+
+"""
+    Base.adjoint(D::DenseDiagonalOperator) -> DenseDiagonalOperator
+
+Compute the adjoint of a diagonal operator.
+
+For real diagonal operators, the adjoint is the same as the original.
+"""
+function Base.adjoint(D::DenseDiagonalOperator)
+    return D  # Real diagonal is self-adjoint
+end
+
+"""
+    Base.:-(D::DenseDiagonalOperator) -> DenseDiagonalOperator
+
+Unary negation of diagonal operator.
+"""
+Base.:-(D::DenseDiagonalOperator) = (-1) * D

@@ -29,7 +29,8 @@ H, c = build_hamiltonian_dense("hopping.txt", "coulomb.txt")
 
 # Diagonalize
 result = solve_hamiltonian_dense(H)
-evals, evecs = result  # Destructuring works
+evals = result.eigenvalues.diag
+evecs = result.eigenvectors.data
 ```
 
 # Module Structure
@@ -73,6 +74,7 @@ using LinearAlgebra
 
 include("Core/Basis.jl")
 include("Core/Operators.jl")
+include("Core/DiagonalOperators.jl")
 
 # ============================================================================
 # Operations on Operators
@@ -97,6 +99,7 @@ include("HighLevel/Greens.jl")
 # Core types
 export DenseBasis, make_basis_dense
 export DenseOperator, to_matrix
+export DenseDiagonalOperator, to_vector
 
 # High-level API
 export get_annihilators_dense
@@ -107,6 +110,5 @@ export calculate_green_matsubara_dense
 
 # Eigenvalue decomposition results
 export DenseEigenResult
-export get_eigenvalues, get_eigenvectors
 
 end # module Dense

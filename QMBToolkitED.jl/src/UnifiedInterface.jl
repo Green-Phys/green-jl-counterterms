@@ -5,30 +5,6 @@ Provides a consistent API that works with both implementations, allowing users
 to choose the backend via the `method` keyword argument.
 """
 
-# Helper to get standard (evals, evecs) from any result
-function get_result_tuple(res::Dense.DenseEigenResult)
-    return Dense.get_eigenvalues(res), Dense.get_eigenvectors(res)
-end
-
-function get_result_tuple(res::BlockDense.BlockEigenResult)
-    evals = BlockDense.get_full_eigenvalues(res)
-    evecs = BlockDense.get_full_eigenvectors(res)
-    perm = sortperm(evals)
-    return evals[perm], evecs[:, perm]
-end
-
-# Make results iterable to support destructuring: evals, evecs = result
-Base.iterate(res::Dense.DenseEigenResult) = Base.iterate(get_result_tuple(res))
-Base.iterate(res::Dense.DenseEigenResult, state) = Base.iterate(get_result_tuple(res), state)
-Base.length(::Dense.DenseEigenResult) = 2
-Base.eltype(::Type{Dense.DenseEigenResult}) = Any
-
-# Explicitly add iteration for BlockEigenResult (duck typing)
-Base.iterate(res::BlockDense.BlockEigenResult) = Base.iterate(get_result_tuple(res))
-Base.iterate(res::BlockDense.BlockEigenResult, state) = Base.iterate(get_result_tuple(res), state)
-Base.length(::BlockDense.BlockEigenResult) = 2
-Base.eltype(::Type{BlockDense.BlockEigenResult}) = Any
-
 """
     get_annihilators(nflavors::Int; method::Symbol=:dense)
     get_annihilators(basis::Dense.DenseBasis; method::Symbol=:dense)
@@ -111,7 +87,7 @@ Returns:
 
 Examples:
 ```julia
-# Dense (default, backwards compatible)
+# Dense (default)
 H, c = build_hamiltonian("hopping.txt", "coulomb.txt")
 
 # Block-dense
@@ -151,23 +127,29 @@ Arguments:
 - `method::Symbol`: `:auto` (detect from type), `:dense`, or `:blockdense`
 
 Returns:
-- Result object (`DenseEigenResult` or `BlockEigenResult`).
-  This object is iterable, allowing destructuring into `(evals, evecs)`.
-
-  - `evals::Vector{Float64}`: Eigenvalues
-  - `evecs::Matrix{ComplexF64}`: Eigenvectors
+- `DenseEigenResult` or `BlockEigenResult` containing:
+  - `eigenvalues`: Diagonal operator with eigenvalues
+  - `eigenvectors`: Operator with eigenvector matrix
 
 Examples:
 ```julia
 # Dense with DenseOperator
 H, c = build_hamiltonian("hopping.txt", "coulomb.txt")
-evals, evecs = solve_hamiltonian(H)  # Auto-detects dense
+result = solve_hamiltonian(H)
+
+# Access eigenvalues and eigenvectors
+evals = result.eigenvalues.diag
+evecs = result.eigenvectors.data
 
 # Block-dense
 basis = BlockDense.make_basis([BlockDense.QN_N(1) for _ in 1:4])
 H, c = build_hamiltonian("hopping.txt", "coulomb.txt"; method=:blockdense, basis=basis)
-result = solve_hamiltonian(H)  # Returns BlockEigenResult
-evals, evecs = result          # Destructuring works (less efficient for Green's functions)
+result = solve_hamiltonian(H)
+
+# Access eigenvalues per sector
+for (idx, evals) in result.eigenvalues.sector_diags
+    println("Sector ", idx, ": ", evals)
+end
 ```
 """
 function solve_hamiltonian(H::Dense.DenseOperator; method::Symbol=:auto)
@@ -181,7 +163,6 @@ end
 
 function solve_hamiltonian(H::BlockDense.BlockDenseOperator; method::Symbol=:auto)
     if method == :auto || method == :blockdense
-        # This returns a BlockEigenResult
         return BlockDense.solve_hamiltonian_blockdense(H)
     else
         error("Hamiltonian is BlockDenseOperator, use method=:blockdense or method=:auto")
@@ -258,4 +239,3 @@ function get_Z(evals::Vector{<:Real}, beta::Real; shift_energy::Bool=false)
     end
     return sum(exp.(-beta .* local_evals))
 end
-

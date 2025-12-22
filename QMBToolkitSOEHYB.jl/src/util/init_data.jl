@@ -33,21 +33,23 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
     H, ann_opts_raw = QMBToolkitED.build_hamiltonian(hopping_path, interaction_path; method=:dense)
     result = QMBToolkitED.solve_hamiltonian(H)
 
+    # Access eigenvalues and eigenvectors from new interface
+    # result.eigenvalues is a DenseDiagonalOperator with .diag::Vector{Float64}
+    # result.eigenvectors is a DenseOperator with .data::Matrix{ComplexF64}
+    evecs = result.eigenvectors.data
+    evals = result.eigenvalues.diag
+
     # Infer numeric type from eigenvectors
-    T = eltype(QMBToolkitED.Dense.get_eigenvectors(result))
+    T = eltype(evecs)
     n_flavors = length(ann_opts_raw)
     n_fock = 1 << n_flavors
 
     # Create eigenbasis for transformed operators
     basis = DenseBasis(n_flavors)
-    evecs = QMBToolkitED.Dense.get_eigenvectors(result)
 
     # Transform operators to eigenbasis
-    ann_opts = vec([DenseOperator(basis, evecs' * convert(Matrix{ComplexF64}, QMBToolkitED.Dense.to_matrix(c)) * evecs) for c in ann_opts_raw])
+    ann_opts = vec([DenseOperator(basis, evecs' * convert(Matrix{ComplexF64}, c.data) * evecs) for c in ann_opts_raw])
     cre_opts = vec([DenseOperator(basis, Matrix{ComplexF64}(adjoint(c.data))) for c in ann_opts])
-
-    # Extract eigenvalues
-    evals = QMBToolkitED.Dense.get_eigenvalues(result)
 
     # Initialize DLR grid
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
@@ -115,33 +117,39 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
     basis = QMBToolkitED.BlockDense.make_basis(site_qns)
 
     # Build and solve BlockDense Hamiltonian
-    H, ann_opts = QMBToolkitED.build_hamiltonian(hopping_path, interaction_path; method=:blockdense, basis=basis)
+    H, ann_opts_raw = QMBToolkitED.build_hamiltonian(hopping_path, interaction_path; method=:blockdense, basis=basis)
     result = QMBToolkitED.solve_hamiltonian(H)
 
+    # Access eigenvalues and eigenvectors from new interface
+    # result.eigenvalues is a BlockDenseDiagonalOperator with sector_diags::Dict{Int, Vector{Float64}}
+    # result.eigenvectors is a BlockDenseOperator with blocks::Dict{Tuple{Int,Int}, Matrix{ComplexF64}}
+
     # Infer numeric type from first sector's eigenvectors
-    T = eltype(result.sector_eigenvectors[1])
-    n_flavors = length(ann_opts)
+    first_sector_evecs = result.eigenvectors.blocks[(1, 1)]
+    T = eltype(first_sector_evecs)
+    n_flavors = length(ann_opts_raw)
     n_fock = sum(sector.dim for sector in basis.sectors)
 
-    # Create operators (already in eigenbasis for each sector)
+    # Transform operators to eigenbasis: U' * op * U for each sector
+    ann_opts = _transform_to_eigenbasis(ann_opts_raw, result.eigenvectors)
     cre_opts = [adjoint(c) for c in ann_opts]
 
-    # Extract eigenvalues (concatenate from all sectors)
-    evals = vcat([result.sector_eigenvalues[i] for i in 1:length(basis.sectors)]...)
+    # Extract eigenvalues (concatenate from all sectors in order)
+    evals = vcat([result.eigenvalues.sector_diags[i] for i in 1:length(basis.sectors)]...)
 
     # Build block-diagonal eigenvector matrix for reference
     evecs = zeros(T, n_fock, n_fock)
     offset = 0
     for i in 1:length(basis.sectors)
         dim = basis.sectors[i].dim
-        evecs[offset+1:offset+dim, offset+1:offset+dim] = result.sector_eigenvectors[i]
+        evecs[offset+1:offset+dim, offset+1:offset+dim] = result.eigenvectors.blocks[(i, i)]
         offset += dim
     end
 
     # Initialize DLR grid
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
 
-    # Build bare propagator
+    # Build bare propagator (diagonal in eigenbasis, no eigenvector transformation needed)
     E_shift = minimum(evals)
     evals_shifted = evals .- E_shift
     bare_propagator_dense = _build_bare_propagator_dense_from_evals(T, dlr_grid.tau, evals_shifted, n_fock)
@@ -154,7 +162,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
     bare_propagator_dlr, bare_propagator_err, K0_inverse, kernel_cache, convolution_workspace =
         _compute_dlr_quantities(T, dlr_grid, bare_propagator_dense, hyb_soe.exponents, model_params.beta, n_fock)
 
-    # Create BlockDense SOE operators
+    # Create BlockDense SOE operators (operators are already in eigenbasis)
     ann_opts_SOE = _gen_opts_SOE(ann_opts, hyb_soe.coeffs, false)
     cre_opts_SOE = _gen_opts_SOE(cre_opts, hyb_soe.coeffs, true)
 
@@ -315,7 +323,8 @@ Build dense bare propagator on tau grid from DenseEigenResult.
 The propagator is diagonal in the eigenbasis.
 """
 function _build_bare_propagator_dense(::Type{T}, result::DenseEigenResult, tau_grid::Vector{Float64}, E_shift::Float64) where T
-    evals = QMBToolkitED.Dense.get_eigenvalues(result)
+    # Access eigenvalues from new interface
+    evals = result.eigenvalues.diag
     evals_shifted = evals .- E_shift
     n_fock = length(evals)
 
@@ -347,13 +356,14 @@ end
 
 Build BlockDense bare propagator on tau grid from BlockEigenResult.
 
-For each sector, constructs the propagator:
-    G[sector](τ) = U_sector * diag(exp(-τ * (E - E_shift))) * U_sector†
+The propagator is diagonal in the eigenbasis:
+    G[sector](τ) = diag(exp(-τ * (E - E_shift)))
 
-where U_sector are the eigenvectors for that sector.
+No eigenvector transformation is needed since we work in the eigenbasis.
 """
 function _build_bare_propagator_blockdense(::Type{T}, result::BlockEigenResult, tau_grid::Vector{Float64}, E_shift::Float64) where T
-    basis = result.basis
+    # Access basis from eigenvalues (new interface)
+    basis = result.eigenvalues.basis
     n_tau = length(tau_grid)
 
     # The propagator has flux = 0 (diagonal in sector space)
@@ -364,19 +374,19 @@ function _build_bare_propagator_blockdense(::Type{T}, result::BlockEigenResult, 
     # Build diagonal blocks only (propagator conserves quantum numbers)
     for (sector_idx, sector) in enumerate(basis.sectors)
         sector_dim = sector.dim
-        sector_evals = result.sector_eigenvalues[sector_idx]
-        sector_evecs = result.sector_eigenvectors[sector_idx]
+        # Access eigenvalues from new interface
+        sector_evals = result.eigenvalues.sector_diags[sector_idx]
 
         # Shift eigenvalues
         evals_shifted = sector_evals .- E_shift
 
-        # Construct propagator for this sector
+        # Construct propagator for this sector (diagonal in eigenbasis)
         block = zeros(T, n_tau, sector_dim, sector_dim)
 
         for (k, tau) in enumerate(tau_grid)
-            # G(τ) = U * exp(-τ * (E - E_shift)) * U†
+            # G(τ) = diag(exp(-τ * (E - E_shift))) in eigenbasis
             U_tau = exp.(-tau .* evals_shifted)
-            block[k, :, :] = sector_evecs * Diagonal(U_tau) * adjoint(sector_evecs)
+            block[k, :, :] = Diagonal(U_tau)
         end
 
         blocks[(sector_idx, sector_idx)] = block
@@ -506,4 +516,45 @@ function _gen_opts_SOE(opts::Vector{BlockDenseOperator}, coeffs::Array{Float64,3
         end
     end
     return opts_SOE
+end
+
+#=============================================================================
+# Eigenbasis transformation for BlockDense operators
+=============================================================================#
+
+"""
+    _transform_to_eigenbasis(ops::Vector{BlockDenseOperator}, evecs::BlockDenseOperator)
+
+Transform a vector of BlockDense operators to the eigenbasis.
+
+For each operator, performs U' * op * U block-by-block, where U contains the eigenvectors.
+This is analogous to the dense transformation: evecs' * op * evecs.
+
+# Arguments
+- `ops::Vector{BlockDenseOperator}`: Operators in the original basis
+- `evecs::BlockDenseOperator`: Eigenvector operator (block-diagonal, each block is unitary)
+
+# Returns
+- `Vector{BlockDenseOperator}`: Operators transformed to eigenbasis
+"""
+function _transform_to_eigenbasis(ops::Vector{BlockDenseOperator}, evecs::BlockDenseOperator)
+    transformed_ops = Vector{BlockDenseOperator}(undef, length(ops))
+
+    for (i, op) in enumerate(ops)
+        # Transform each block: for block (tgt, src), we need U_tgt' * block * U_src
+        new_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
+
+        for ((tgt, src), block) in op.blocks
+            # Get eigenvector matrices for source and target sectors
+            U_tgt = evecs.blocks[(tgt, tgt)]
+            U_src = evecs.blocks[(src, src)]
+
+            # Transform: U_tgt' * block * U_src
+            new_blocks[(tgt, src)] = adjoint(U_tgt) * block * U_src
+        end
+
+        transformed_ops[i] = BlockDenseOperator(op.basis, op.flux, new_blocks)
+    end
+
+    return transformed_ops
 end

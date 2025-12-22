@@ -1,6 +1,6 @@
 using QMBToolkitED
-using QMBToolkitED.Dense: DenseOperator, DenseBasis, DenseEigenResult
-using QMBToolkitED.BlockDense: BlockDenseOperator, BlockDenseBasis, BlockEigenResult, OperatorFlux
+using QMBToolkitED.Dense: DenseOperator, DenseBasis, DenseDiagonalOperator, make_basis_dense
+using QMBToolkitED.BlockDense: BlockDenseOperator, BlockDenseBasis, BlockDenseDiagonalOperator, OperatorFlux, make_basis
 using DelimitedFiles
 using QMBToolkitDLR
 using LinearAlgebra
@@ -28,35 +28,32 @@ Initialize a `ModelData` object from input parameters.
 function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Type{DenseFormat})
     # Load Hamiltonian paths
     hopping_path, interaction_path = _load_hamiltonian_paths(model_params)
+    basis = _build_basis(hopping_path, DenseFormat)
 
     # Build and solve Hamiltonian (Dense)
-    H, ann_opts_raw = QMBToolkitED.build_hamiltonian(hopping_path, interaction_path; method=:dense)
+    H, ann_opts_raw = QMBToolkitED.build_hamiltonian(hopping_path, interaction_path; method=:dense, basis=basis)
     result = QMBToolkitED.solve_hamiltonian(H)
 
-    # Access eigenvalues and eigenvectors from new interface
-    # result.eigenvalues is a DenseDiagonalOperator with .diag::Vector{Float64}
-    # result.eigenvectors is a DenseOperator with .data::Matrix{ComplexF64}
-    evecs = result.eigenvectors.data
-    evals = result.eigenvalues.diag
+    # result.eigenvalues is a DenseDiagonalOperator
+    # result.eigenvectors is a DenseOperator
+    eigenvalues = result.eigenvalues
+    eigenvectors = result.eigenvectors
 
     # Infer numeric type from eigenvectors
-    T = eltype(evecs)
+    T = eltype(eigenvectors.data)
     n_flavors = length(ann_opts_raw)
     n_fock = 1 << n_flavors
 
-    # Create eigenbasis for transformed operators
-    basis = DenseBasis(n_flavors)
-
     # Transform operators to eigenbasis
-    ann_opts = vec([DenseOperator(basis, evecs' * convert(Matrix{ComplexF64}, c.data) * evecs) for c in ann_opts_raw])
-    cre_opts = vec([DenseOperator(basis, Matrix{ComplexF64}(adjoint(c.data))) for c in ann_opts])
+    ann_opts = _transform_to_eigenbasis(ann_opts_raw, eigenvectors)
+    cre_opts = [adjoint(c) for c in ann_opts]
 
     # Initialize DLR grid
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
 
     # Build bare propagator (diagonal in eigenbasis)
-    E_shift = minimum(evals)
-    bare_propagator_tau = _build_bare_propagator_dense(T, result, dlr_grid.tau, E_shift)
+    E_shift = _get_E_shift(eigenvalues)
+    bare_propagator_tau = _build_bare_propagator_dense(T, eigenvalues, dlr_grid.tau, E_shift)
 
     # Load hybridization data
     hyb_soe, n_flavors_physical = _load_hybridization_data(model_params, n_flavors, dlr_grid)
@@ -78,8 +75,10 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
         DensePropagator(bare_propagator_dlr)
     )
 
-    # Create format-specific storage
+    # Create format-specific storage (includes eigenvalues and eigenvectors)
     format_data = DenseModelDataStorage{T}(
+        eigenvalues,
+        eigenvectors,
         ann_opts,
         cre_opts,
         ann_opts_SOE,
@@ -91,8 +90,6 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
         model_params.beta,
         n_flavors,
         n_fock,
-        evals,
-        evecs,
         dlr_grid,
         E_shift,
         n_flavors_physical,
@@ -107,60 +104,42 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
 end
 
 function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Type{BlockDenseFormat})
-    # Load Hamiltonian paths and infer basis
+    # Load Hamiltonian paths and build basis
     hopping_path, interaction_path = _load_hamiltonian_paths(model_params)
-    hopping_data = readdlm(hopping_path)
-    n_orbitals = Int(maximum(hopping_data[:, 1:2])) + 1
-
-    # Build basis assuming particle number conservation
-    site_qns = [QMBToolkitED.BlockDense.QN_N(1) for _ in 1:n_orbitals]
-    basis = QMBToolkitED.BlockDense.make_basis(site_qns)
+    basis = _build_basis(hopping_path, BlockDenseFormat)
 
     # Build and solve BlockDense Hamiltonian
     H, ann_opts_raw = QMBToolkitED.build_hamiltonian(hopping_path, interaction_path; method=:blockdense, basis=basis)
     result = QMBToolkitED.solve_hamiltonian(H)
 
-    # Access eigenvalues and eigenvectors from new interface
-    # result.eigenvalues is a BlockDenseDiagonalOperator with sector_diags::Dict{Int, Vector{Float64}}
-    # result.eigenvectors is a BlockDenseOperator with blocks::Dict{Tuple{Int,Int}, Matrix{ComplexF64}}
+    # result.eigenvalues is a BlockDenseDiagonalOperator
+    # result.eigenvectors is a BlockDenseOperator
+    eigenvalues = result.eigenvalues
+    eigenvectors = result.eigenvectors
 
     # Infer numeric type from first sector's eigenvectors
-    first_sector_evecs = result.eigenvectors.blocks[(1, 1)]
+    first_sector_evecs = eigenvectors.blocks[(1, 1)]
     T = eltype(first_sector_evecs)
     n_flavors = length(ann_opts_raw)
     n_fock = sum(sector.dim for sector in basis.sectors)
 
     # Transform operators to eigenbasis: U' * op * U for each sector
-    ann_opts = _transform_to_eigenbasis(ann_opts_raw, result.eigenvectors)
+    ann_opts = _transform_to_eigenbasis(ann_opts_raw, eigenvectors)
     cre_opts = [adjoint(c) for c in ann_opts]
-
-    # Extract eigenvalues (concatenate from all sectors in order)
-    evals = vcat([result.eigenvalues.sector_diags[i] for i in 1:length(basis.sectors)]...)
-
-    # Build block-diagonal eigenvector matrix for reference
-    evecs = zeros(T, n_fock, n_fock)
-    offset = 0
-    for i in 1:length(basis.sectors)
-        dim = basis.sectors[i].dim
-        evecs[offset+1:offset+dim, offset+1:offset+dim] = result.eigenvectors.blocks[(i, i)]
-        offset += dim
-    end
 
     # Initialize DLR grid
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
 
-    # Build bare propagator (diagonal in eigenbasis, no eigenvector transformation needed)
-    E_shift = minimum(evals)
-    evals_shifted = evals .- E_shift
-    bare_propagator_dense = _build_bare_propagator_dense_from_evals(T, dlr_grid.tau, evals_shifted, n_fock)
-    bare_propagator_blockdense_tau = _build_bare_propagator_blockdense(T, result, dlr_grid.tau, E_shift)
+    # Build bare propagator (diagonal in eigenbasis)
+    E_shift = _get_E_shift(eigenvalues)
+    bare_propagator_tau = _build_bare_propagator_blockdense(T, eigenvalues, dlr_grid.tau, E_shift)
 
     # Load hybridization data
     hyb_soe, n_flavors_physical = _load_hybridization_data(model_params, n_flavors, dlr_grid)
 
-    # Compute DLR quantities (using dense for error calculation)
+    # Compute DLR quantities
     bare_propagator_dlr, bare_propagator_err, K0_inverse, kernel_cache, convolution_workspace =
-        _compute_dlr_quantities(T, dlr_grid, bare_propagator_dense, hyb_soe.exponents, model_params.beta, n_fock)
+        _compute_dlr_quantities(T, dlr_grid, bare_propagator_tau, hyb_soe.exponents, model_params.beta, n_fock)
 
     # Create BlockDense SOE operators (operators are already in eigenbasis)
     ann_opts_SOE = _gen_opts_SOE(ann_opts, hyb_soe.coeffs, false)
@@ -169,15 +148,16 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
     # Calculate partition function for counter-terms
     Z_counterterms = calculate_Z_counterterms(model_params, n_flavors, n_flavors_physical)
 
-    # Compute DLR coefficients for BlockDense propagator
-    bare_propagator_blockdense_dlr = tau2dlr_blockdense(dlr_grid, bare_propagator_blockdense_tau, dlr_grid.tau)
+    # Wrap in BlockDenseDLRPropagator
     bare_propagator_wrapped = BlockDenseDLRPropagator(
-        bare_propagator_blockdense_tau,
-        bare_propagator_blockdense_dlr
+        bare_propagator_tau,
+        bare_propagator_dlr
     )
 
-    # Create format-specific storage
+    # Create format-specific storage (includes eigenvalues and eigenvectors)
     format_data = BlockDenseModelDataStorage{T}(
+        eigenvalues,
+        eigenvectors,
         ann_opts,
         cre_opts,
         ann_opts_SOE,
@@ -189,8 +169,6 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
         model_params.beta,
         n_flavors,
         n_fock,
-        evals,
-        evecs,
         dlr_grid,
         E_shift,
         n_flavors_physical,
@@ -276,6 +254,30 @@ function _load_hamiltonian_paths(model_params::ModelParams)
 end
 
 """
+    _build_basis(hopping_path::String, ::Type{DenseFormat})
+
+Build a DenseBasis from the hopping file by inferring the number of orbitals.
+"""
+function _build_basis(hopping_path::String, ::Type{DenseFormat})
+    hopping_data = readdlm(hopping_path)
+    n_flavors = Int(maximum(hopping_data[:, 1:2])) + 1
+    return make_basis_dense(n_flavors)
+end
+
+"""
+    _build_basis(hopping_path::String, ::Type{BlockDenseFormat})
+
+Build a BlockDenseBasis from the hopping file by inferring the number of orbitals.
+Assumes particle number conservation (QN_N quantum number).
+"""
+function _build_basis(hopping_path::String, ::Type{BlockDenseFormat})
+    hopping_data = readdlm(hopping_path)
+    n_flavors = Int(maximum(hopping_data[:, 1:2])) + 1
+    site_qns = [QMBToolkitED.BlockDense.QN_N(1) for _ in 1:n_flavors]
+    return make_basis(site_qns)
+end
+
+"""
     _load_hybridization_data(model_params::ModelParams, n_flavors::Int, dlr_grid::DLRGrid)
 
 Load hybridization function data from files and construct SOEData.
@@ -317,14 +319,36 @@ end
 =============================================================================#
 
 """
-    _build_bare_propagator_dense(T, result::DenseEigenResult, tau_grid, E_shift)
+    _get_E_shift(eigenvalues::DenseDiagonalOperator)
 
-Build dense bare propagator on tau grid from DenseEigenResult.
+Get the energy shift (minimum eigenvalue) from a DenseDiagonalOperator.
+"""
+_get_E_shift(eigenvalues::DenseDiagonalOperator) = minimum(eigenvalues.diag)
+
+"""
+    _get_E_shift(eigenvalues::BlockDenseDiagonalOperator)
+
+Get the energy shift (minimum eigenvalue) from a BlockDenseDiagonalOperator.
+"""
+function _get_E_shift(eigenvalues::BlockDenseDiagonalOperator)
+    min_eval = Inf
+    for (_, sector_evals) in eigenvalues.sector_diags
+        sector_min = minimum(sector_evals)
+        if sector_min < min_eval
+            min_eval = sector_min
+        end
+    end
+    return min_eval
+end
+
+"""
+    _build_bare_propagator_dense(T, eigenvalues::DenseDiagonalOperator, tau_grid, E_shift)
+
+Build dense bare propagator on tau grid from eigenvalues.
 The propagator is diagonal in the eigenbasis.
 """
-function _build_bare_propagator_dense(::Type{T}, result::DenseEigenResult, tau_grid::Vector{Float64}, E_shift::Float64) where T
-    # Access eigenvalues from new interface
-    evals = result.eigenvalues.diag
+function _build_bare_propagator_dense(::Type{T}, eigenvalues::DenseDiagonalOperator, tau_grid::Vector{Float64}, E_shift::Float64) where T
+    evals = eigenvalues.diag
     evals_shifted = evals .- E_shift
     n_fock = length(evals)
 
@@ -337,33 +361,17 @@ function _build_bare_propagator_dense(::Type{T}, result::DenseEigenResult, tau_g
 end
 
 """
-    _build_bare_propagator_dense_from_evals(T, tau_grid, evals_shifted, n_fock)
+    _build_bare_propagator_blockdense(T, eigenvalues::BlockDenseDiagonalOperator, tau_grid, E_shift)
 
-Build dense bare propagator on tau grid from pre-shifted eigenvalues.
-Used for DLR error computation in BlockDense format.
-"""
-function _build_bare_propagator_dense_from_evals(::Type{T}, tau_grid, evals_shifted, n_fock) where T
-    bare_propagator = zeros(T, length(tau_grid), n_fock, n_fock)
-    for (k, tau) in enumerate(tau_grid)
-        U_tau = exp.(-tau * evals_shifted)
-        bare_propagator[k, :, :] = Diagonal(U_tau)
-    end
-    return bare_propagator
-end
-
-"""
-    _build_bare_propagator_blockdense(T, result::BlockEigenResult, tau_grid, E_shift)
-
-Build BlockDense bare propagator on tau grid from BlockEigenResult.
+Build BlockDense bare propagator on tau grid from eigenvalues.
 
 The propagator is diagonal in the eigenbasis:
     G[sector](τ) = diag(exp(-τ * (E - E_shift)))
 
 No eigenvector transformation is needed since we work in the eigenbasis.
 """
-function _build_bare_propagator_blockdense(::Type{T}, result::BlockEigenResult, tau_grid::Vector{Float64}, E_shift::Float64) where T
-    # Access basis from eigenvalues (new interface)
-    basis = result.eigenvalues.basis
+function _build_bare_propagator_blockdense(::Type{T}, eigenvalues::BlockDenseDiagonalOperator, tau_grid::Vector{Float64}, E_shift::Float64) where T
+    basis = eigenvalues.basis
     n_tau = length(tau_grid)
 
     # The propagator has flux = 0 (diagonal in sector space)
@@ -374,8 +382,7 @@ function _build_bare_propagator_blockdense(::Type{T}, result::BlockEigenResult, 
     # Build diagonal blocks only (propagator conserves quantum numbers)
     for (sector_idx, sector) in enumerate(basis.sectors)
         sector_dim = sector.dim
-        # Access eigenvalues from new interface
-        sector_evals = result.eigenvalues.sector_diags[sector_idx]
+        sector_evals = eigenvalues.sector_diags[sector_idx]
 
         # Shift eigenvalues
         evals_shifted = sector_evals .- E_shift
@@ -400,11 +407,12 @@ end
 =============================================================================#
 
 """
-    _compute_dlr_quantities(T, dlr_grid, bare_propagator, hyb_poles, beta, n_fock)
+    _compute_dlr_quantities(T, dlr_grid, bare_propagator::Array, hyb_poles, beta, n_fock)
 
-Compute DLR-related quantities: bare_propagator_dlr, error, K0_inverse, caches.
+Compute DLR-related quantities for Dense format.
+Returns: (bare_propagator_dlr, bare_propagator_err, K0_inverse, kernel_cache, convolution_workspace)
 """
-function _compute_dlr_quantities(::Type{T}, dlr_grid, bare_propagator, hyb_poles, beta, n_fock) where T
+function _compute_dlr_quantities(::Type{T}, dlr_grid, bare_propagator::Array, hyb_poles, beta, n_fock) where T
     bare_propagator_dlr = tau2dlr(dlr_grid, bare_propagator, dlr_grid.tau)
     bare_propagator_reconstructed = dlr2tau(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
     bare_propagator_err = maximum(abs.(bare_propagator_reconstructed .- bare_propagator))
@@ -414,6 +422,37 @@ function _compute_dlr_quantities(::Type{T}, dlr_grid, bare_propagator, hyb_poles
     r = length(dlr_grid.omega)
     n_tau = length(dlr_grid.tau)
     convolution_workspace = ConvolutionWorkspace{T}(r, n_fock, n_fock, n_tau)
+
+    return bare_propagator_dlr, bare_propagator_err, K0_inverse, kernel_cache, convolution_workspace
+end
+
+"""
+    _compute_dlr_quantities(T, dlr_grid, bare_propagator::BlockDensePropagator, hyb_poles, beta, n_fock)
+
+Compute DLR-related quantities for BlockDense format.
+Returns: (bare_propagator_dlr, bare_propagator_err, K0_inverse, kernel_cache, convolution_workspace)
+
+Note: For BlockDense, convolution workspaces are created on-demand during evaluation,
+so we return a minimal placeholder ConvolutionWorkspace.
+"""
+function _compute_dlr_quantities(::Type{T}, dlr_grid, bare_propagator::BlockDensePropagator{T}, hyb_poles, beta, n_fock) where T
+    bare_propagator_dlr = tau2dlr_blockdense(dlr_grid, bare_propagator, dlr_grid.tau)
+    bare_propagator_reconstructed = dlr2tau_blockdense(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
+
+    # Compute max error across all blocks
+    bare_propagator_err = 0.0
+    for (block_key, block_tau) in bare_propagator.blocks
+        block_reconstructed = bare_propagator_reconstructed.blocks[block_key]
+        block_err = maximum(abs.(block_reconstructed .- block_tau))
+        bare_propagator_err = max(bare_propagator_err, block_err)
+    end
+
+    K0_inverse = _gen_K0_inverse(hyb_poles, beta)
+    kernel_cache = compute_kernel_cache(dlr_grid)
+    r = length(dlr_grid.omega)
+    n_tau = length(dlr_grid.tau)
+    # Minimal placeholder workspace (BlockDense creates workspaces on-demand)
+    convolution_workspace = ConvolutionWorkspace{T}(r, 1, 1, n_tau)
 
     return bare_propagator_dlr, bare_propagator_err, K0_inverse, kernel_cache, convolution_workspace
 end
@@ -519,8 +558,36 @@ function _gen_opts_SOE(opts::Vector{BlockDenseOperator}, coeffs::Array{Float64,3
 end
 
 #=============================================================================
-# Eigenbasis transformation for BlockDense operators
+# Eigenbasis transformation
 =============================================================================#
+
+"""
+    _transform_to_eigenbasis(ops::Vector{DenseOperator}, evecs::DenseOperator)
+
+Transform a vector of Dense operators to the eigenbasis.
+
+For each operator, performs U' * op * U, where U contains the eigenvectors.
+
+# Arguments
+- `ops::Vector{DenseOperator}`: Operators in the original basis
+- `evecs::DenseOperator`: Eigenvector operator (unitary)
+
+# Returns
+- `Vector{DenseOperator}`: Operators transformed to eigenbasis
+"""
+function _transform_to_eigenbasis(ops::Vector{DenseOperator}, evecs::DenseOperator)
+    basis = ops[1].basis
+    U = evecs.data
+    transformed_ops = Vector{DenseOperator}(undef, length(ops))
+
+    for (i, op) in enumerate(ops)
+        # Transform: U' * op * U
+        transformed_data = adjoint(U) * op.data * U
+        transformed_ops[i] = DenseOperator(basis, transformed_data)
+    end
+
+    return transformed_ops
+end
 
 """
     _transform_to_eigenbasis(ops::Vector{BlockDenseOperator}, evecs::BlockDenseOperator)

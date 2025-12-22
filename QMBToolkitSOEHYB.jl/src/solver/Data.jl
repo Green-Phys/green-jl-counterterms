@@ -1,6 +1,6 @@
 using QMBToolkitDLR
-using QMBToolkitED.Dense: DenseOperator, DenseBasis
-using QMBToolkitED.BlockDense: BlockDenseOperator, BlockDenseBasis, OperatorFlux
+using QMBToolkitED.Dense: DenseOperator, DenseBasis, DenseDiagonalOperator
+using QMBToolkitED.BlockDense: BlockDenseOperator, BlockDenseBasis, BlockDenseDiagonalOperator, OperatorFlux
 
 #=============================================================================
 # SOE Data (shared by both formats)
@@ -36,9 +36,11 @@ abstract type ModelDataStorage{T} end
     DenseModelDataStorage{T}
 
 Format-specific storage for DenseFormat model data.
-Holds operators and bare propagator in dense matrix representation.
+Holds eigenvalues, eigenvectors, operators, and bare propagator in dense matrix representation.
 """
 struct DenseModelDataStorage{T} <: ModelDataStorage{T}
+    eigenvalues::DenseDiagonalOperator     # Eigenvalues as diagonal operator
+    eigenvectors::DenseOperator            # Eigenvectors as unitary operator
     ann_opts::Vector{DenseOperator}        # Annihilation operators (eigenbasis)
     cre_opts::Vector{DenseOperator}        # Creation operators (eigenbasis)
     ann_opts_SOE::Matrix{DenseOperator}    # SOE-transformed annihilation operators
@@ -50,11 +52,13 @@ end
     BlockDenseModelDataStorage{T}
 
 Format-specific storage for BlockDenseFormat model data.
-Holds operators and bare propagator in block-sparse representation.
+Holds eigenvalues, eigenvectors, operators, and bare propagator in block-sparse representation.
 """
 struct BlockDenseModelDataStorage{T} <: ModelDataStorage{T}
-    ann_opts::Vector{BlockDenseOperator}        # Annihilation operators
-    cre_opts::Vector{BlockDenseOperator}        # Creation operators
+    eigenvalues::BlockDenseDiagonalOperator     # Eigenvalues as block-diagonal operator
+    eigenvectors::BlockDenseOperator            # Eigenvectors as block-unitary operator
+    ann_opts::Vector{BlockDenseOperator}        # Annihilation operators (eigenbasis)
+    cre_opts::Vector{BlockDenseOperator}        # Creation operators (eigenbasis)
     ann_opts_SOE::Matrix{BlockDenseOperator}    # SOE-transformed annihilation operators
     cre_opts_SOE::Matrix{BlockDenseOperator}    # SOE-transformed creation operators
     bare_propagator::BlockDenseDLRPropagator{T} # Bare propagator in DLR representation
@@ -114,8 +118,6 @@ struct ModelData{T<:Number, Format<:HilbertSpaceFormat, Storage<:ModelDataStorag
     beta::Float64
     n_flavors::Int
     n_fock::Int
-    evals::Vector{Float64}
-    evecs::Matrix{T}
     dlr_grid::DLRGrid
     E_shift::Float64
     n_flavors_physical::Int
@@ -126,7 +128,7 @@ struct ModelData{T<:Number, Format<:HilbertSpaceFormat, Storage<:ModelDataStorag
     kernel_cache::KernelCache
     convolution_workspace::ConvolutionWorkspace
 
-    # Format-specific storage (no more Union types!)
+    # Format-specific storage (eigenvalues, eigenvectors, operators, bare propagator)
     format_data::Storage
 end
 
@@ -203,6 +205,8 @@ const BlockDenseCalculationData{T} = CalculationData{T, BlockDenseFormat, BlockD
 =============================================================================#
 
 # ModelData accessors
+get_eigenvalues(model::ModelData) = model.format_data.eigenvalues
+get_eigenvectors(model::ModelData) = model.format_data.eigenvectors
 get_ann_opts(model::ModelData) = model.format_data.ann_opts
 get_cre_opts(model::ModelData) = model.format_data.cre_opts
 get_ann_opts_SOE(model::ModelData) = model.format_data.ann_opts_SOE

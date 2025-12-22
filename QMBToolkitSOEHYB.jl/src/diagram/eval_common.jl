@@ -3,23 +3,8 @@ using MPI
 using LinearAlgebra
 using QMBToolkitDLR
 
-# ===== Format-dependent accessors =====
-
-"""
-    get_propagator(calc_data::CalculationData{T, DenseFormat}) -> DenseDLRPropagator{T}
-
-Get the propagator from CalculationData, dispatched by format.
-"""
-get_propagator(calc_data::CalculationData{T, DenseFormat}) where T = calc_data.propagator_dense
-get_propagator(calc_data::CalculationData{T, BlockDenseFormat}) where T = calc_data.propagator_blockdense
-
-"""
-    get_selfenergy(calc_data::CalculationData{T, Format}) -> appropriate type
-
-Get the self-energy from CalculationData, dispatched by format.
-"""
-get_selfenergy(calc_data::CalculationData{T, DenseFormat}) where T = calc_data.selfenergy_dense
-get_selfenergy(calc_data::CalculationData{T, BlockDenseFormat}) where T = calc_data.selfenergy_blockdense
+# Note: Accessor functions get_propagator() and get_selfenergy() are defined in
+# src/solver/Data.jl and dispatch via format_data field
 
 """
     extract_at_tau_blockdense(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid)
@@ -82,6 +67,8 @@ For Green's function diagrams, updates green.
 """
 function eval_diagrams!(solver_data::SolverData{T, DenseFormat}, solver_params::SolverParams, diagram_type::Symbol, diagrams::Vector{Array{BackBone,4}}, comm::MPI.Comm) where T
     rank = MPI.Comm_rank(comm)
+    propagator = get_propagator(solver_data.calc)  # Cache accessor result
+
     if diagram_type == :propagator_diagram &&
            !solver_params.propagator.is_bold
         # Clear partition function by order tracking
@@ -94,14 +81,14 @@ function eval_diagrams!(solver_data::SolverData{T, DenseFormat}, solver_params::
             eval_propagator_given_order!(solver_data, diagrams[order+1], comm)
 
             # Calculate and store partition function after this order
-            propagator_dlr = tau2dlr_dense(solver_data.model.dlr_grid, solver_data.calc.propagator_dense.vals, solver_data.model.dlr_grid.tau)
+            propagator_dlr = tau2dlr_dense(solver_data.model.dlr_grid, propagator.vals, solver_data.model.dlr_grid.tau)
             propagator_at_beta = dlr2tau_dense(solver_data.model.dlr_grid, propagator_dlr, [solver_data.model.beta])
             Z_current = tr(propagator_at_beta.data[1, :, :])
             push!(solver_data.calc.partition_function_by_order, Z_current)
         end
 
         # Update final dlr coefficients
-        solver_data.calc.propagator_dense.coeffs = tau2dlr_dense(solver_data.model.dlr_grid, solver_data.calc.propagator_dense.vals, solver_data.model.dlr_grid.tau)
+        propagator.coeffs = tau2dlr_dense(solver_data.model.dlr_grid, propagator.vals, solver_data.model.dlr_grid.tau)
     elseif diagram_type == :green_diagram
         for order in 1:solver_params.green.expansion_order
             if rank == 0
@@ -134,6 +121,8 @@ end
 # BlockDenseFormat version
 function eval_diagrams!(solver_data::SolverData{T, BlockDenseFormat}, solver_params::SolverParams, diagram_type::Symbol, diagrams::Vector{Array{BackBone,4}}, comm::MPI.Comm) where T
     rank = MPI.Comm_rank(comm)
+    propagator = get_propagator(solver_data.calc)  # Cache accessor result
+
     if diagram_type == :propagator_diagram &&
            !solver_params.propagator.is_bold
         # Clear partition function by order tracking
@@ -147,14 +136,13 @@ function eval_diagrams!(solver_data::SolverData{T, BlockDenseFormat}, solver_par
 
             # Calculate and store partition function after this order
             # For BlockDense, convert to dense at β for trace calculation
-            propagator_blockdense = solver_data.calc.propagator_blockdense.vals
-            propagator_at_beta_dense = extract_at_tau_blockdense(propagator_blockdense, solver_data.model.beta, solver_data.model.dlr_grid)
+            propagator_at_beta_dense = extract_at_tau_blockdense(propagator.vals, solver_data.model.beta, solver_data.model.dlr_grid)
             Z_current = tr(propagator_at_beta_dense)
             push!(solver_data.calc.partition_function_by_order, Z_current)
         end
 
         # Update final dlr coefficients
-        solver_data.calc.propagator_blockdense.coeffs = tau2dlr_blockdense(solver_data.model.dlr_grid, solver_data.calc.propagator_blockdense.vals, solver_data.model.dlr_grid.tau)
+        propagator.coeffs = tau2dlr_blockdense(solver_data.model.dlr_grid, propagator.vals, solver_data.model.dlr_grid.tau)
     elseif diagram_type == :green_diagram
         for order in 1:solver_params.green.expansion_order
             if rank == 0

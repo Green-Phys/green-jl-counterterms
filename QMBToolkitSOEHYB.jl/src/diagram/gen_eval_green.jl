@@ -167,11 +167,14 @@ function eval_green_given_order_dense!(solver_data::SolverData{T, DenseFormat}, 
     n_line_flavors = size(diagrams, 3)
     n_hyb_exponents = size(diagrams, 4)
 
+    # Cache accessor results for efficiency
     if is_bold
-        propagator = solver_data.calc.propagator_dense.vals
+        propagator = get_propagator(solver_data.calc).vals
     else
-        propagator = solver_data.model.bare_propagator.vals
+        propagator = get_bare_propagator(solver_data.model).vals
     end
+    ann_opts = get_ann_opts(solver_data.model)
+    cre_opts = get_cre_opts(solver_data.model)
 
     # Create local accumulator for this rank's work (only for this order)
     local_result = zeros(T, size(solver_data.calc.green.vals.data))
@@ -225,7 +228,7 @@ function eval_green_given_order_dense!(solver_data::SolverData{T, DenseFormat}, 
                     prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
                     for ann_index in 1:solver_data.model.n_flavors_physical
                         # Use in-place versions: annihilation_product_buffer = ann_opt * contrib_0_to_tau, then final_product_buffer = contrib_tau_to_beta * annihilation_product_buffer
-                        _multiplication_23!(op_buffers.annihilation_product_buffer, solver_data.model.ann_opts[ann_index], contrib_0_to_tau)
+                        _multiplication_23!(op_buffers.annihilation_product_buffer, ann_opts[ann_index], contrib_0_to_tau)
                         _multiplication_33!(op_buffers.final_product_buffer, contrib_tau_to_beta, op_buffers.annihilation_product_buffer)
                         backbone_0_to_beta_with_ann[ann_index].data .+= prefactor .* op_buffers.final_product_buffer.data
                     end
@@ -234,7 +237,7 @@ function eval_green_given_order_dense!(solver_data::SolverData{T, DenseFormat}, 
             for ann_index in 1:solver_data.model.n_flavors_physical
                 for cre_index in 1:solver_data.model.n_flavors_physical
                     # Use in-place version: annihilation_product_buffer = backbone * cre_opt, then trace
-                    _multiplication_32!(op_buffers.annihilation_product_buffer, backbone_0_to_beta_with_ann[ann_index], solver_data.model.cre_opts[cre_index])
+                    _multiplication_32!(op_buffers.annihilation_product_buffer, backbone_0_to_beta_with_ann[ann_index], cre_opts[cre_index])
                     _trace_3!(op_buffers.trace_result_buffer, op_buffers.annihilation_product_buffer)
                     local_result[:, ann_index, cre_index] .+= op_buffers.trace_result_buffer
                 end
@@ -262,11 +265,14 @@ function eval_green_given_order_blockdense!(solver_data::SolverData{T, BlockDens
     n_line_flavors = size(diagrams, 3)
     n_hyb_exponents = size(diagrams, 4)
 
+    # Cache accessor results for efficiency
     if is_bold
-        propagator = solver_data.calc.propagator_blockdense.vals
+        propagator = get_propagator(solver_data.calc).vals
     else
-        propagator = solver_data.model.bare_propagator_blockdense.vals
+        propagator = get_bare_propagator(solver_data.model).vals
     end
+    ann_opts = get_ann_opts(solver_data.model)
+    cre_opts = get_cre_opts(solver_data.model)
 
     # Create local accumulator for this rank's work (only for this order)
     local_result = zeros(T, size(solver_data.calc.green.vals.data))
@@ -325,7 +331,7 @@ function eval_green_given_order_blockdense!(solver_data::SolverData{T, BlockDens
 
                     for ann_index in 1:solver_data.model.n_flavors_physical
                         # Apply annihilation operator: ann_opt * contrib_0_to_tau
-                        ann_opt = solver_data.model.ann_opts_blockdense[ann_index]
+                        ann_opt = ann_opts[ann_index]
                         op_flux = OperatorFlux(combine_qn(ann_opt.flux.delta_qn, contrib_0_to_tau.flux.delta_qn))
 
                         # Compute which blocks exist in the product
@@ -384,7 +390,7 @@ function eval_green_given_order_blockdense!(solver_data::SolverData{T, BlockDens
 
                 for cre_index in 1:solver_data.model.n_flavors_physical
                     # Apply creation operator: backbone * cre_opt
-                    cre_opt = solver_data.model.cre_opts_blockdense[cre_index]
+                    cre_opt = cre_opts[cre_index]
                     cre_flux = OperatorFlux(combine_qn(backbone_0_to_beta_with_ann[ann_index].flux.delta_qn, cre_opt.flux.delta_qn))
 
                     # Compute which blocks exist

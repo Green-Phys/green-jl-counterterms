@@ -2,90 +2,213 @@ using QMBToolkitDLR
 using QMBToolkitED.Dense: DenseOperator, DenseBasis
 using QMBToolkitED.BlockDense: BlockDenseOperator, BlockDenseBasis, OperatorFlux
 
+#=============================================================================
+# SOE Data (shared by both formats)
+=============================================================================#
+
 """
-    ModelData
+    SOEData
 
-Holds the derived data for the model, such as the Hamiltonian, operators, and hybridization function.
+Sum-of-Exponentials representation of the hybridization function.
+The value is recovered by sum_{i} coeffs[i] * K(tau, exponents[i]).
+Different matrix elements share the same exponents.
 """
-
-# Note: DLRData has been replaced by DenseDLRPropagator (in dense/DensePropagator.jl)
-# and BlockDenseDLRPropagator (in blockdense/BlockDensePropagator.jl)
-
-mutable struct SOEData # the value is recovered by sum_{i} coeffs[i] * K(tau, exponents[i]), different matrix element share the same exponents
-    coeffs::Array{Float64,3} # SOE coefficients, shape: (p, o1, o2)
-    exponents::Vector{Float64} # SOE exponents, shape: (p,)
-    KPlus_on_DLRtau::Array{Float64,2} # K(tau_k, exponent_i) on the DLR tau grid
+mutable struct SOEData
+    coeffs::Array{Float64,3}         # SOE coefficients, shape: (p, o1, o2)
+    exponents::Vector{Float64}       # SOE exponents, shape: (p,)
+    KPlus_on_DLRtau::Array{Float64,2}  # K(tau_k, exponent_i) on the DLR tau grid
     KMinus_on_DLRtau::Array{Float64,2} # K(tau_k, -exponent_i) on the DLR tau grid
 end
 
-struct ModelData{T<:Number, Format<:HilbertSpaceFormat}
+#=============================================================================
+# Format-Specific Storage Types for ModelData
+=============================================================================#
+
+"""
+    ModelDataStorage{T}
+
+Abstract type for format-specific model data storage.
+Concrete subtypes hold operators and bare propagator in either Dense or BlockDense format.
+"""
+abstract type ModelDataStorage{T} end
+
+"""
+    DenseModelDataStorage{T}
+
+Format-specific storage for DenseFormat model data.
+Holds operators and bare propagator in dense matrix representation.
+"""
+struct DenseModelDataStorage{T} <: ModelDataStorage{T}
+    ann_opts::Vector{DenseOperator}        # Annihilation operators (eigenbasis)
+    cre_opts::Vector{DenseOperator}        # Creation operators (eigenbasis)
+    ann_opts_SOE::Matrix{DenseOperator}    # SOE-transformed annihilation operators
+    cre_opts_SOE::Matrix{DenseOperator}    # SOE-transformed creation operators
+    bare_propagator::DenseDLRPropagator{T} # Bare propagator in DLR representation
+end
+
+"""
+    BlockDenseModelDataStorage{T}
+
+Format-specific storage for BlockDenseFormat model data.
+Holds operators and bare propagator in block-sparse representation.
+"""
+struct BlockDenseModelDataStorage{T} <: ModelDataStorage{T}
+    ann_opts::Vector{BlockDenseOperator}        # Annihilation operators
+    cre_opts::Vector{BlockDenseOperator}        # Creation operators
+    ann_opts_SOE::Matrix{BlockDenseOperator}    # SOE-transformed annihilation operators
+    cre_opts_SOE::Matrix{BlockDenseOperator}    # SOE-transformed creation operators
+    bare_propagator::BlockDenseDLRPropagator{T} # Bare propagator in DLR representation
+end
+
+#=============================================================================
+# Format-Specific Storage Types for CalculationData
+=============================================================================#
+
+"""
+    CalculationDataStorage{T}
+
+Abstract type for format-specific calculation data storage.
+Concrete subtypes hold propagator and self-energy in either Dense or BlockDense format.
+"""
+abstract type CalculationDataStorage{T} end
+
+"""
+    DenseCalculationDataStorage{T}
+
+Format-specific storage for DenseFormat calculation data.
+"""
+struct DenseCalculationDataStorage{T} <: CalculationDataStorage{T}
+    propagator::DenseDLRPropagator{T}  # Propagator in DLR representation
+    selfenergy::DenseDLRPropagator{T}  # Self-energy in DLR representation
+end
+
+"""
+    BlockDenseCalculationDataStorage{T}
+
+Format-specific storage for BlockDenseFormat calculation data.
+"""
+struct BlockDenseCalculationDataStorage{T} <: CalculationDataStorage{T}
+    propagator::BlockDenseDLRPropagator{T}  # Propagator in DLR representation
+    selfenergy::BlockDenseDLRPropagator{T}  # Self-energy in DLR representation
+end
+
+#=============================================================================
+# ModelData
+=============================================================================#
+
+"""
+    ModelData{T, Format, Storage}
+
+Holds the derived data for the model, such as the Hamiltonian, operators, and hybridization function.
+
+The `format_data` field contains format-specific data (operators and bare propagator) in either
+Dense or BlockDense representation, eliminating the need for Union{..., Nothing} fields.
+
+# Type Parameters
+- `T<:Number`: Numeric type for propagator values (typically ComplexF64)
+- `Format<:HilbertSpaceFormat`: Either DenseFormat or BlockDenseFormat
+- `Storage<:ModelDataStorage{T}`: Format-specific storage type
+"""
+struct ModelData{T<:Number, Format<:HilbertSpaceFormat, Storage<:ModelDataStorage{T}}
+    # Common fields (same for both formats)
     beta::Float64
     n_flavors::Int
-    n_fock::Int # 2^n_flavors
-    # Dense format fields (populated for DenseFormat, nothing for BlockDenseFormat)
-    ann_opts::Union{Vector{DenseOperator}, Nothing}  # Dense annihilation operators (eigenbasis)
-    cre_opts::Union{Vector{DenseOperator}, Nothing}  # Dense creation operators (eigenbasis)
+    n_fock::Int
     evals::Vector{Float64}
     evecs::Matrix{T}
     dlr_grid::DLRGrid
     E_shift::Float64
     n_flavors_physical::Int
-    bare_propagator_err::Float64
+    bare_propagator_err::Float64  # Diagnostic: max DLR reconstruction error
     hyb::SOEData
-    bare_propagator::DenseDLRPropagator{T}  # Dense bare propagator DLR representation
     K0_inverse::Vector{Float64}
-    ann_opts_SOE::Union{Matrix{DenseOperator}, Nothing}  # Dense SOE operators (nothing for BlockDenseFormat)
-    cre_opts_SOE::Union{Matrix{DenseOperator}, Nothing}  # Dense SOE operators (nothing for BlockDenseFormat)
     Z_counterterms::Float64
-    # Performance optimization caches
-    kernel_cache::KernelCache  # Pre-computed kernel values for DLR convolution
-    convolution_workspace::ConvolutionWorkspace  # Reusable buffers for convolution (dense)
-    # BlockDense format fields (only populated for BlockDenseFormat)
-    bare_propagator_blockdense::Union{BlockDenseDLRPropagator{T}, Nothing}  # For BlockDenseFormat
-    cre_opts_blockdense::Union{Vector{BlockDenseOperator}, Nothing}  # For BlockDenseFormat
-    ann_opts_blockdense::Union{Vector{BlockDenseOperator}, Nothing}  # For BlockDenseFormat
-    cre_opts_SOE_blockdense::Union{Matrix{BlockDenseOperator}, Nothing}  # For BlockDenseFormat
-    ann_opts_SOE_blockdense::Union{Matrix{BlockDenseOperator}, Nothing}  # For BlockDenseFormat
+    kernel_cache::KernelCache
+    convolution_workspace::ConvolutionWorkspace
+
+    # Format-specific storage (no more Union types!)
+    format_data::Storage
 end
 
+#=============================================================================
+# CalculationData
+=============================================================================#
 
 """
-    CalculationData
+    CalculationData{T, Format, Storage}
 
 Holds the data for the calculation, such as the Green's function, propagator, etc.
 
-Note: Green's function is always stored in dense format (it's a physical observable
-in small orbital space), but propagator and self-energy can be format-dependent.
+The `format_data` field contains format-specific propagator and self-energy in either
+Dense or BlockDense representation.
 
-# Format-dependent storage
-- For DenseFormat: uses propagator_dense and selfenergy_dense (DenseDLRPropagator{T})
-- For BlockDenseFormat: uses propagator_blockdense and selfenergy_blockdense (BlockDenseDLRPropagator{T})
-- Green's function is always dense (physical observable in small orbital space)
+Note: Green's function is always stored in dense format (it's a physical observable
+in small orbital space).
+
+# Type Parameters
+- `T<:Number`: Numeric type for propagator values
+- `Format<:HilbertSpaceFormat`: Either DenseFormat or BlockDenseFormat
+- `Storage<:CalculationDataStorage{T}`: Format-specific storage type
 """
-mutable struct CalculationData{T<:Number, Format<:HilbertSpaceFormat}
-    # Dense format fields
-    propagator_dense::Union{DenseDLRPropagator{T}, Nothing}  # Only for DenseFormat
-    selfenergy_dense::Union{DenseDLRPropagator{T}, Nothing}  # Only for DenseFormat
-    # BlockDense format fields
-    propagator_blockdense::Union{BlockDenseDLRPropagator{T}, Nothing}  # Only for BlockDenseFormat
-    selfenergy_blockdense::Union{BlockDenseDLRPropagator{T}, Nothing}  # Only for BlockDenseFormat
-    # Always dense (physical observables)
-    green::DenseDLRPropagator{T}  # Always dense (physical observable, small orbital space)
-    partition_function_by_order::Vector{Float64}  # Z after including each order
-    green_numerator_by_order::Vector{DensePropagator{T}}  # Green's function numerator after each order (always dense)
-    green_by_order::Vector{DensePropagator{T}}  # Green's function (=numerator/Z) at each order on DLR grid (always dense)
-    green_linear_grid::DensePropagator{T}  # Green's function on uniform linear tau grid (always dense)
-    tau_linear_grid::Vector{Float64}  # Uniform linear tau grid points
+mutable struct CalculationData{T<:Number, Format<:HilbertSpaceFormat, Storage<:CalculationDataStorage{T}}
+    # Format-specific storage
+    format_data::Storage
+
+    # Always dense (physical observables in small orbital space)
+    green::DenseDLRPropagator{T}
+    partition_function_by_order::Vector{Float64}
+    green_numerator_by_order::Vector{DensePropagator{T}}
+    green_by_order::Vector{DensePropagator{T}}
+    green_linear_grid::DensePropagator{T}
+    tau_linear_grid::Vector{Float64}
 end
 
+#=============================================================================
+# SolverData
+=============================================================================#
+
 """
-    SolverData
+    SolverData{T, Format}
 
 Holds all the data required for the solver calculation.
-
 Combines model data and calculation data, both parametrized by the same Format.
 """
 struct SolverData{T<:Number, Format<:HilbertSpaceFormat}
     model::ModelData{T, Format}
     calc::CalculationData{T, Format}
 end
+
+# Allow SolverData to infer Storage types from its components
+function SolverData(model::ModelData{T, Format, MS}, calc::CalculationData{T, Format, CS}) where {T, Format, MS, CS}
+    SolverData{T, Format}(model, calc)
+end
+
+#=============================================================================
+# Type Aliases for Convenience
+=============================================================================#
+
+const DenseModelData{T} = ModelData{T, DenseFormat, DenseModelDataStorage{T}}
+const BlockDenseModelData{T} = ModelData{T, BlockDenseFormat, BlockDenseModelDataStorage{T}}
+
+const DenseCalculationData{T} = CalculationData{T, DenseFormat, DenseCalculationDataStorage{T}}
+const BlockDenseCalculationData{T} = CalculationData{T, BlockDenseFormat, BlockDenseCalculationDataStorage{T}}
+
+#=============================================================================
+# Accessor Functions (Unified Interface)
+#
+# These provide a format-independent way to access format-specific data.
+# Simple accessors like these are typically inlined by Julia's compiler (zero overhead).
+# For clarity and guaranteed performance, cache the result in a local variable
+# when using it multiple times within the same function.
+=============================================================================#
+
+# ModelData accessors
+get_ann_opts(model::ModelData) = model.format_data.ann_opts
+get_cre_opts(model::ModelData) = model.format_data.cre_opts
+get_ann_opts_SOE(model::ModelData) = model.format_data.ann_opts_SOE
+get_cre_opts_SOE(model::ModelData) = model.format_data.cre_opts_SOE
+get_bare_propagator(model::ModelData) = model.format_data.bare_propagator
+
+# CalculationData accessors
+get_propagator(calc::CalculationData) = calc.format_data.propagator
+get_selfenergy(calc::CalculationData) = calc.format_data.selfenergy

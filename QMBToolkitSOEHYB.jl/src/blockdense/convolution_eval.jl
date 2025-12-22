@@ -24,14 +24,20 @@ Appropriate BlockDenseOperator based on node type:
 - `:c` with bar_index≠-1: SOE-transformed annihilation operator
 """
 function get_operator_blockdense(node::BackBoneNode, model_data::ModelData{T, BlockDenseFormat}) where T
+    # Cache accessor results for efficiency
+    cre_opts = get_cre_opts(model_data)
+    ann_opts = get_ann_opts(model_data)
+    cre_opts_SOE = get_cre_opts_SOE(model_data)
+    ann_opts_SOE = get_ann_opts_SOE(model_data)
+
     if node.opt_type == :cdag && node.bar_index == -1
-        return model_data.cre_opts_blockdense[node.flavor]
+        return cre_opts[node.flavor]
     elseif node.opt_type == :c && node.bar_index == -1
-        return model_data.ann_opts_blockdense[node.flavor]
+        return ann_opts[node.flavor]
     elseif node.opt_type == :cdag && node.bar_index != -1
-        return model_data.cre_opts_SOE_blockdense[node.flavor, node.bar_index]
+        return cre_opts_SOE[node.flavor, node.bar_index]
     elseif node.opt_type == :c && node.bar_index != -1
-        return model_data.ann_opts_SOE_blockdense[node.flavor, node.bar_index]
+        return ann_opts_SOE[node.flavor, node.bar_index]
     end
 end
 

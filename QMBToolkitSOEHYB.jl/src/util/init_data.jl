@@ -63,12 +63,19 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
         DensePropagator(bare_propagator_dlr)
     )
 
-    return ModelData{T, DenseFormat}(
+    # Create format-specific storage
+    format_data = DenseModelDataStorage{T}(
+        ann_opts,
+        cre_opts,
+        ann_opts_SOE,
+        cre_opts_SOE,
+        bare_propagator_wrapped
+    )
+
+    return ModelData{T, DenseFormat, DenseModelDataStorage{T}}(
         model_params.beta,
         n_flavors,
         n_fock,
-        ann_opts,
-        cre_opts,
         evals,
         evecs,
         dlr_grid,
@@ -76,18 +83,11 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
         n_flavors_physical,
         bare_propagator_err,
         hyb_soe,
-        bare_propagator_wrapped,
         K0_inverse,
-        ann_opts_SOE,
-        cre_opts_SOE,
         Z_counterterms,
         kernel_cache,
         convolution_workspace,
-        nothing,  # bare_propagator_blockdense
-        nothing,  # cre_opts_blockdense
-        nothing,  # ann_opts_blockdense
-        nothing,  # cre_opts_SOE_blockdense
-        nothing   # ann_opts_SOE_blockdense
+        format_data
     )
 end
 
@@ -152,12 +152,6 @@ function init_model_data_blockdense(model_params::ModelParams, dlr_params::DLRPa
     # Calculate partition function for counter-terms
     Z_counterterms = calculate_Z_counterterms(model_params, n_flavors, n_flavors_physical)
 
-    # Wrap bare propagators in DLR types
-    bare_propagator_wrapped = DenseDLRPropagator(
-        DensePropagator(bare_propagator_dense),
-        DensePropagator(bare_propagator_dlr)
-    )
-
     # Compute DLR coefficients for BlockDense propagator
     bare_propagator_blockdense_dlr = tau2dlr_blockdense(dlr_grid, bare_propagator_blockdense_tau, dlr_grid.tau)
     bare_propagator_blockdense_wrapped = BlockDenseDLRPropagator(
@@ -165,12 +159,19 @@ function init_model_data_blockdense(model_params::ModelParams, dlr_params::DLRPa
         bare_propagator_blockdense_dlr
     )
 
-    return ModelData{T, BlockDenseFormat}(
+    # Create format-specific storage
+    format_data = BlockDenseModelDataStorage{T}(
+        ann_opts_blockdense,
+        cre_opts_blockdense,
+        ann_opts_SOE_blockdense,
+        cre_opts_SOE_blockdense,
+        bare_propagator_blockdense_wrapped
+    )
+
+    return ModelData{T, BlockDenseFormat, BlockDenseModelDataStorage{T}}(
         model_params.beta,
         n_flavors,
         n_fock,
-        nothing,  # ann_opts (not used in BlockDense)
-        nothing,  # cre_opts (not used in BlockDense)
         evals,
         evecs,
         dlr_grid,
@@ -178,18 +179,11 @@ function init_model_data_blockdense(model_params::ModelParams, dlr_params::DLRPa
         n_flavors_physical,
         bare_propagator_err,
         hyb_soe,
-        bare_propagator_wrapped,
         K0_inverse,
-        nothing,  # ann_opts_SOE (not used in BlockDense)
-        nothing,  # cre_opts_SOE (not used in BlockDense)
         Z_counterterms,
         kernel_cache,
         convolution_workspace,
-        bare_propagator_blockdense_wrapped,
-        cre_opts_blockdense,
-        ann_opts_blockdense,
-        cre_opts_SOE_blockdense,
-        ann_opts_SOE_blockdense
+        format_data
     )
 end
 
@@ -199,19 +193,19 @@ end
 
 Initialize a `SolverData` object from the `ModelData`.
 """
-function init_solver_data(model_data::ModelData{T, DenseFormat}) where {T<:Number}
+function init_solver_data(model_data::ModelData{T, DenseFormat, DenseModelDataStorage{T}}) where {T<:Number}
     r = model_data.dlr_grid.size
     n_fock = model_data.n_fock
     n_phys = model_data.n_flavors_physical
 
-    calculation_data = CalculationData{T, DenseFormat}(
-        # Dense format fields
-        DenseDLRPropagator{T}(r, n_fock, n_fock),  # propagator_dense
-        DenseDLRPropagator{T}(r, n_fock, n_fock),  # selfenergy_dense
-        # BlockDense format fields (not used)
-        nothing,  # propagator_blockdense
-        nothing,  # selfenergy_blockdense
-        # Common fields (always dense)
+    # Create format-specific storage
+    format_data = DenseCalculationDataStorage{T}(
+        DenseDLRPropagator{T}(r, n_fock, n_fock),  # propagator
+        DenseDLRPropagator{T}(r, n_fock, n_fock)   # selfenergy
+    )
+
+    calculation_data = CalculationData{T, DenseFormat, DenseCalculationDataStorage{T}}(
+        format_data,
         DenseDLRPropagator{T}(r, n_phys, n_phys),  # green
         Float64[],  # partition function by order
         Vector{DensePropagator{T}}(),  # green numerator by order
@@ -219,27 +213,25 @@ function init_solver_data(model_data::ModelData{T, DenseFormat}) where {T<:Numbe
         zeros(DensePropagator{T}, 0, n_phys, n_phys),  # green_linear_grid
         Float64[]  # tau_linear_grid
     )
-    return SolverData{T, DenseFormat}(model_data, calculation_data)
+    return SolverData(model_data, calculation_data)
 end
 
-function init_solver_data(model_data::ModelData{T, BlockDenseFormat}) where {T<:Number}
-    # Create zero BlockDenseDLRPropagator for propagator and self-energy
-    basis = model_data.bare_propagator_blockdense.vals.basis
-    flux = model_data.bare_propagator_blockdense.vals.flux
+function init_solver_data(model_data::ModelData{T, BlockDenseFormat, BlockDenseModelDataStorage{T}}) where {T<:Number}
+    # Get basis and flux from bare propagator
+    bare_prop = get_bare_propagator(model_data)
+    basis = bare_prop.vals.basis
+    flux = bare_prop.vals.flux
     r = model_data.dlr_grid.size
     n_phys = model_data.n_flavors_physical
 
-    propagator_blockdense = BlockDenseDLRPropagator{T}(basis, flux, r)
-    selfenergy_blockdense = BlockDenseDLRPropagator{T}(basis, flux, r)
+    # Create format-specific storage
+    format_data = BlockDenseCalculationDataStorage{T}(
+        BlockDenseDLRPropagator{T}(basis, flux, r),  # propagator
+        BlockDenseDLRPropagator{T}(basis, flux, r)   # selfenergy
+    )
 
-    calculation_data = CalculationData{T, BlockDenseFormat}(
-        # Dense format fields (not used)
-        nothing,  # propagator_dense
-        nothing,  # selfenergy_dense
-        # BlockDense format fields
-        propagator_blockdense,
-        selfenergy_blockdense,
-        # Common fields (always dense)
+    calculation_data = CalculationData{T, BlockDenseFormat, BlockDenseCalculationDataStorage{T}}(
+        format_data,
         DenseDLRPropagator{T}(r, n_phys, n_phys),  # green
         Float64[],  # partition function by order
         Vector{DensePropagator{T}}(),  # green numerator by order
@@ -247,7 +239,7 @@ function init_solver_data(model_data::ModelData{T, BlockDenseFormat}) where {T<:
         zeros(DensePropagator{T}, 0, n_phys, n_phys),  # green_linear_grid
         Float64[]  # tau_linear_grid
     )
-    return SolverData{T, BlockDenseFormat}(model_data, calculation_data)
+    return SolverData(model_data, calculation_data)
 end
 
 #=============================================================================

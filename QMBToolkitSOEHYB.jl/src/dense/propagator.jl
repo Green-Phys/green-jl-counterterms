@@ -74,10 +74,11 @@ Uses `multiplication_convolution` to evaluate the backbone diagram via
 convolution in DLR space, which is the core dense-format operation.
 """
 function eval_propagator_backbone(diagram::BackBone, solver_data::SolverData{T, DenseFormat}, buffers::PropagatorConvolutionBuffers{T}) where {T<:Number}
+    bare_propagator = get_bare_propagator(solver_data.model)
     return multiplication_convolution(
         diagram.nodes, diagram.edges,
         solver_data.model.dlr_grid, solver_data.model,
-        solver_data.model.bare_propagator.vals,
+        bare_propagator.vals,
         buffers.operator_product_buffer,
         buffers.backbone_accumulator,
         buffers.convolution_operand_buffer

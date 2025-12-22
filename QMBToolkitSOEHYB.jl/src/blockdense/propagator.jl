@@ -43,7 +43,8 @@ function allocate_propagator_buffers(solver_data::SolverData{T, BlockDenseFormat
     n_tau = length(solver_data.model.dlr_grid.tau)
 
     # Get basis from bare propagator vals (it's a BlockDenseDLRPropagator, .vals is BlockDensePropagator)
-    bare_prop = solver_data.model.bare_propagator_blockdense.vals
+    bare_propagator = get_bare_propagator(solver_data.model)
+    bare_prop = bare_propagator.vals
     basis = bare_prop.basis
 
     block_buffers = Dict{Tuple{Int,Int}, Tuple{Array{T,3}, Array{T,3}, Array{T,3}}}()
@@ -84,10 +85,11 @@ Uses `multiplication_convolution_blockdense` to evaluate the backbone diagram vi
 block-aware convolution in DLR space.
 """
 function eval_propagator_backbone(diagram::BackBone, solver_data::SolverData{T, BlockDenseFormat}, buffers::PropagatorConvolutionBuffersBlockDense{T}) where {T<:Number}
+    bare_propagator = get_bare_propagator(solver_data.model)
     return multiplication_convolution_blockdense(
         diagram.nodes, diagram.edges,
         solver_data.model.dlr_grid, solver_data.model,
-        solver_data.model.bare_propagator_blockdense.vals,
+        bare_propagator.vals,
         buffers
     )
 end

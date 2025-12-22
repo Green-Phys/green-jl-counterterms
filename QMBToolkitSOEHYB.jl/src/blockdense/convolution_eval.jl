@@ -169,10 +169,8 @@ function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edge
         to_be_convoluted_dlr = tau2dlr_blockdense(dlr_grid, to_be_convoluted, dlr_grid.tau)
         result_dlr = tau2dlr_blockdense(dlr_grid, result, dlr_grid.tau)
 
-        # Create convolution workspace
-        r = dlr_grid.size
-        n_tau = length(dlr_grid.tau)
-        conv_workspace = create_blockdense_convolution_workspace(basis, to_be_convoluted_dlr.flux, result_dlr.flux, r, n_tau, T)
+        # Use pre-allocated global convolution workspace
+        conv_workspace = get_blockdense_convolution_workspace(model_data)
 
         result = do_convolution_dlr2tau_blockdense!(conv_workspace, dlr_grid, model_data.kernel_cache, to_be_convoluted_dlr, result_dlr)
 
@@ -297,10 +295,8 @@ function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNod
         result_dlr = tau2dlr_blockdense(dlr_grid, result, dlr_grid.tau)
         to_be_convoluted_dlr = tau2dlr_blockdense(dlr_grid, to_be_convoluted, dlr_grid.tau)
 
-        # Create convolution workspace
-        r = dlr_grid.size
-        n_tau = length(dlr_grid.tau)
-        conv_workspace = create_blockdense_convolution_workspace(basis, result_dlr.flux, to_be_convoluted_dlr.flux, r, n_tau, T)
+        # Use pre-allocated global convolution workspace
+        conv_workspace = get_blockdense_convolution_workspace(model_data)
 
         result = do_convolution_dlr2tau_blockdense!(conv_workspace, dlr_grid, model_data.kernel_cache, result_dlr, to_be_convoluted_dlr)
 

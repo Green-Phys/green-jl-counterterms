@@ -75,8 +75,8 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
     # Wrap bare propagator
     bare_propagator_wrapped = _wrap_bare_propagator(bare_propagator_tau, bare_propagator_dlr)
 
-    # Create format-specific storage
-    format_data = _create_format_data(Format, T, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped)
+    # Create format-specific storage (BlockDense also creates global convolution workspace)
+    format_data = _create_format_data(Format, T, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped, dlr_grid)
 
     return ModelData{T, Format, typeof(format_data)}(
         model_params.beta,
@@ -288,6 +288,7 @@ end
 
 Build dense bare propagator on tau grid from eigenvalues.
 The propagator is diagonal in the eigenbasis.
+Returns a DensePropagator{T}.
 """
 function _build_bare_propagator(::Type{T}, eigenvalues::DenseDiagonalOperator, tau_grid::Vector{Float64}, E_shift::Float64) where T
     evals = eigenvalues.diag
@@ -299,7 +300,7 @@ function _build_bare_propagator(::Type{T}, eigenvalues::DenseDiagonalOperator, t
         U_tau = exp.(-tau * evals_shifted)
         bare_propagator[k, :, :] = Diagonal(U_tau)
     end
-    return bare_propagator
+    return DensePropagator(bare_propagator)
 end
 
 """
@@ -349,13 +350,13 @@ end
 =============================================================================#
 
 """
-    _convert_to_dlr(dlr_grid, bare_propagator::Array)
+    _convert_to_dlr(dlr_grid, bare_propagator::DensePropagator)
 
 Convert Dense bare propagator from tau to DLR representation.
-Returns the DLR coefficients array.
+Returns the DLR coefficients as DensePropagator.
 """
-function _convert_to_dlr(dlr_grid, bare_propagator::Array)
-    return tau2dlr(dlr_grid, bare_propagator, dlr_grid.tau)
+function _convert_to_dlr(dlr_grid, bare_propagator::DensePropagator)
+    return DensePropagator(tau2dlr(dlr_grid, bare_propagator.data, dlr_grid.tau))
 end
 
 """
@@ -369,14 +370,14 @@ function _convert_to_dlr(dlr_grid, bare_propagator::BlockDensePropagator)
 end
 
 """
-    _compute_dlr_error(dlr_grid, bare_propagator_tau::Array, bare_propagator_dlr::Array)
+    _compute_dlr_error(dlr_grid, bare_propagator_tau::DensePropagator, bare_propagator_dlr::DensePropagator)
 
 Compute the maximum DLR reconstruction error for Dense format.
 Performs round-trip: tau → dlr → tau, then measures max absolute difference.
 """
-function _compute_dlr_error(dlr_grid, bare_propagator_tau::Array, bare_propagator_dlr::Array)
-    bare_propagator_reconstructed = dlr2tau(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
-    return maximum(abs.(bare_propagator_reconstructed .- bare_propagator_tau))
+function _compute_dlr_error(dlr_grid, bare_propagator_tau::DensePropagator, bare_propagator_dlr::DensePropagator)
+    bare_propagator_reconstructed = dlr2tau(dlr_grid, bare_propagator_dlr.data, dlr_grid.tau)
+    return maximum(abs.(bare_propagator_reconstructed .- bare_propagator_tau.data))
 end
 
 """
@@ -398,28 +399,30 @@ function _compute_dlr_error(dlr_grid, bare_propagator_tau::BlockDensePropagator,
 end
 
 """
-    _create_convolution_workspace(T, dlr_grid, bare_propagator_tau::Array)
+    _create_convolution_workspace(T, dlr_grid, prop::DensePropagator)
 
 Create ConvolutionWorkspace for Dense format with full Fock space dimensions.
-Infers dimensions from the bare propagator array shape (n_tau, n_fock, n_fock).
+Infers dimensions from the propagator shape (n_tau, n_fock, n_fock).
 """
-function _create_convolution_workspace(::Type{T}, dlr_grid, bare_propagator_tau::Array) where T
+function _create_convolution_workspace(::Type{T}, dlr_grid, prop::DensePropagator) where T
     r = length(dlr_grid.omega)
     n_tau = length(dlr_grid.tau)
-    n_fock = size(bare_propagator_tau, 2)
+    n_fock = size(prop, 2)
     return ConvolutionWorkspace{T}(r, n_fock, n_fock, n_tau)
 end
 
 """
-    _create_convolution_workspace(T, dlr_grid, ::BlockDensePropagator)
+    _create_convolution_workspace(T, dlr_grid, prop::BlockDensePropagator)
 
-Create minimal placeholder ConvolutionWorkspace for BlockDense format.
-BlockDense creates actual workspaces on-demand during evaluation.
+Create ConvolutionWorkspace for BlockDense format sized for maximum sector dimension.
+This workspace is reused for all block convolutions using `do_view=true` mode.
 """
-function _create_convolution_workspace(::Type{T}, dlr_grid, ::BlockDensePropagator) where T
+function _create_convolution_workspace(::Type{T}, dlr_grid, prop::BlockDensePropagator) where T
     r = length(dlr_grid.omega)
     n_tau = length(dlr_grid.tau)
-    return ConvolutionWorkspace{T}(r, 1, 1, n_tau)
+    # Size workspace for maximum sector dimension
+    max_dim = maximum(sector.dim for sector in prop.basis.sectors)
+    return ConvolutionWorkspace{T}(r, max_dim, max_dim, max_dim, n_tau)
 end
 
 """
@@ -477,15 +480,12 @@ Get the method symbol for QMBToolkitED.build_hamiltonian.
 _get_method(::Type{BlockDenseFormat}) = :blockdense
 
 """
-    _wrap_bare_propagator(bare_propagator_tau::Array{T,3}, bare_propagator_dlr::Array{T,3}) where T
+    _wrap_bare_propagator(bare_propagator_tau::DensePropagator{T}, bare_propagator_dlr::DensePropagator{T}) where T
 
-Wrap Dense bare propagator arrays into DenseDLRPropagator.
+Wrap Dense bare propagators into DenseDLRPropagator.
 """
-function _wrap_bare_propagator(bare_propagator_tau::Array{T,3}, bare_propagator_dlr::Array{T,3}) where T
-    return DenseDLRPropagator(
-        DensePropagator(bare_propagator_tau),
-        DensePropagator(bare_propagator_dlr)
-    )
+function _wrap_bare_propagator(bare_propagator_tau::DensePropagator{T}, bare_propagator_dlr::DensePropagator{T}) where T
+    return DenseDLRPropagator(bare_propagator_tau, bare_propagator_dlr)
 end
 
 """
@@ -498,11 +498,12 @@ function _wrap_bare_propagator(bare_propagator_tau::BlockDensePropagator{T}, bar
 end
 
 """
-    _create_format_data(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped) where T
+    _create_format_data(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped, dlr_grid) where T
 
 Create DenseModelDataStorage from components.
+Note: dlr_grid is unused for Dense format but included for consistent interface.
 """
-function _create_format_data(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped) where T
+function _create_format_data(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped, dlr_grid) where T
     return DenseModelDataStorage{T}(
         eigenvalues,
         eigenvectors,
@@ -515,11 +516,15 @@ function _create_format_data(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenv
 end
 
 """
-    _create_format_data(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped) where T
+    _create_format_data(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped, dlr_grid) where T
 
-Create BlockDenseModelDataStorage from components.
+Create BlockDenseModelDataStorage from components, including the pre-allocated convolution workspace.
 """
-function _create_format_data(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped) where T
+function _create_format_data(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped, dlr_grid) where T
+    # Create convolution workspace sized for maximum sector dimension
+    # Uses the same _create_convolution_workspace dispatch as the main init
+    conv_workspace = _create_convolution_workspace(T, dlr_grid, bare_propagator_wrapped.vals)
+
     return BlockDenseModelDataStorage{T}(
         eigenvalues,
         eigenvectors,
@@ -527,7 +532,8 @@ function _create_format_data(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, e
         cre_opts,
         ann_opts_SOE,
         cre_opts_SOE,
-        bare_propagator_wrapped
+        bare_propagator_wrapped,
+        conv_workspace
     )
 end
 

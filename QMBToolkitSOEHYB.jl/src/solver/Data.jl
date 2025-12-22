@@ -62,6 +62,7 @@ struct BlockDenseModelDataStorage{T} <: ModelDataStorage{T}
     ann_opts_SOE::Matrix{BlockDenseOperator}    # SOE-transformed annihilation operators
     cre_opts_SOE::Matrix{BlockDenseOperator}    # SOE-transformed creation operators
     bare_propagator::BlockDenseDLRPropagator{T} # Bare propagator in DLR representation
+    convolution_workspace::ConvolutionWorkspace{T}  # Pre-allocated convolution workspace (max-sized)
 end
 
 #=============================================================================
@@ -212,6 +213,9 @@ get_cre_opts(model::ModelData) = model.format_data.cre_opts
 get_ann_opts_SOE(model::ModelData) = model.format_data.ann_opts_SOE
 get_cre_opts_SOE(model::ModelData) = model.format_data.cre_opts_SOE
 get_bare_propagator(model::ModelData) = model.format_data.bare_propagator
+
+# BlockDense-specific accessor for global convolution workspace
+get_blockdense_convolution_workspace(model::ModelData{T, BlockDenseFormat}) where T = model.format_data.convolution_workspace
 
 # CalculationData accessors
 get_propagator(calc::CalculationData) = calc.format_data.propagator

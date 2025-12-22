@@ -220,3 +220,4 @@ function BlockDenseDLRPropagator(::Nothing, coeffs::BlockDensePropagator{T}) whe
     vals = zeros(BlockDensePropagator{T}, coeffs.basis, coeffs.flux, r)
     return BlockDenseDLRPropagator{T}(vals, coeffs)
 end
+

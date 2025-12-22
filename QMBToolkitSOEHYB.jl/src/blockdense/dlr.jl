@@ -89,93 +89,58 @@ end
 =============================================================================#
 
 """
-    BlockDenseConvolutionWorkspace{T}
+    do_convolution_dlr2tau_blockdense!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T
 
-Workspace for block-dense convolution operations.
+Compute convolution H = F * G for block-dense propagators using pre-allocated workspace.
+
+Uses a single ConvolutionWorkspace with `do_view=true` to handle all block sizes.
+The result flux is computed as flux_F + flux_G. Only blocks that have non-zero contributions
+(i.e., where matching F and G blocks exist) are included in the output.
 """
-struct BlockDenseConvolutionWorkspace{T<:Number}
-    basis::BlockDenseBasis
-    flux_result::OperatorFlux
-    block_workspaces::Dict{Tuple{Int,Int}, ConvolutionWorkspace{T}}
-end
-
-"""
-    create_blockdense_convolution_workspace(basis::BlockDenseBasis, flux_F::OperatorFlux, flux_G::OperatorFlux, r::Int, n_tau::Int, ::Type{T}) where T
-
-Create workspace for block-dense convolution.
-"""
-function create_blockdense_convolution_workspace(basis::BlockDenseBasis, flux_F::OperatorFlux, flux_G::OperatorFlux, r::Int, n_tau::Int, ::Type{T}) where T<:Number
-    flux_result = OperatorFlux(combine_qn(flux_F.delta_qn, flux_G.delta_qn))
-    block_workspaces = Dict{Tuple{Int,Int}, ConvolutionWorkspace{T}}()
-
-    # Determine which output blocks exist and find maximum intermediate dimension
-    for (target_idx, target_sector) in enumerate(basis.sectors)
-        for (source_idx, source_sector) in enumerate(basis.sectors)
-            # Check if this block can exist: target_qn = source_qn + flux_result
-            if target_sector.qn == combine_qn(source_sector.qn, flux_result.delta_qn)
-                # This block exists in the output
-                target_dim = target_sector.dim
-                source_dim = source_sector.dim
-
-                # Find maximum intermediate dimension for this block
-                max_intermediate_dim = 0
-                for (intermediate_idx, intermediate_sector) in enumerate(basis.sectors)
-                    if target_sector.qn == combine_qn(intermediate_sector.qn, flux_F.delta_qn) &&
-                       intermediate_sector.qn == combine_qn(source_sector.qn, flux_G.delta_qn)
-                        max_intermediate_dim = max(max_intermediate_dim, intermediate_sector.dim)
-                    end
-                end
-
-                if max_intermediate_dim > 0
-                    block_workspaces[(target_idx, source_idx)] = ConvolutionWorkspace{T}(r, target_dim, max_intermediate_dim, source_dim, n_tau)
-                else
-                    block_workspaces[(target_idx, source_idx)] = ConvolutionWorkspace{T}(r, target_dim, 1, source_dim, n_tau)
-                end
-            end
-        end
-    end
-
-    return BlockDenseConvolutionWorkspace{T}(basis, flux_result, block_workspaces)
-end
-
-"""
-    do_convolution_dlr2tau_blockdense!(workspace::BlockDenseConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T
-
-Compute convolution H = F * G for block-dense propagators in DLR representation.
-"""
-function do_convolution_dlr2tau_blockdense!(workspace::BlockDenseConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T<:Number
+function do_convolution_dlr2tau_blockdense!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T<:Number
     H_tau_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
 
+    # Get basis from F_dlr (both should have the same basis)
+    basis = F_dlr.basis
+
+    # Compute result flux
+    flux_result = OperatorFlux(combine_qn(F_dlr.flux.delta_qn, G_dlr.flux.delta_qn))
+
     # Compute each output block
-    for ((target_idx, source_idx), block_workspace) in workspace.block_workspaces
-        target_sector = workspace.basis.sectors[target_idx]
-        source_sector = workspace.basis.sectors[source_idx]
+    for (target_idx, target_sector) in enumerate(basis.sectors)
+        for (source_idx, source_sector) in enumerate(basis.sectors)
+            # Check if this output block can exist given the result flux
+            if target_sector.qn != combine_qn(source_sector.qn, flux_result.delta_qn)
+                continue
+            end
 
-        H_block_tau = nothing
+            H_block_tau = nothing
 
-        for (intermediate_idx, intermediate_sector) in enumerate(workspace.basis.sectors)
-            F_key = (target_idx, intermediate_idx)
-            G_key = (intermediate_idx, source_idx)
+            # Sum over all intermediate sectors
+            for (intermediate_idx, intermediate_sector) in enumerate(basis.sectors)
+                F_key = (target_idx, intermediate_idx)
+                G_key = (intermediate_idx, source_idx)
 
-            if haskey(F_dlr.blocks, F_key) && haskey(G_dlr.blocks, G_key)
-                F_block = F_dlr.blocks[F_key]
-                G_block = G_dlr.blocks[G_key]
+                if haskey(F_dlr.blocks, F_key) && haskey(G_dlr.blocks, G_key)
+                    F_block = F_dlr.blocks[F_key]
+                    G_block = G_dlr.blocks[G_key]
 
-                # Use dense convolution for this block pair
-                block_contrib = do_convolution_dlr2tau!(block_workspace, dlr_grid, kernel_cache, F_block, G_block)
+                    # Use dense convolution with do_view=true since workspace is max-sized
+                    block_contrib = do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, F_block, G_block, do_view=true)
 
-                if H_block_tau === nothing
-                    H_block_tau = block_contrib
-                else
-                    H_block_tau .+= block_contrib
+                    if H_block_tau === nothing
+                        H_block_tau = copy(block_contrib)
+                    else
+                        H_block_tau .+= block_contrib
+                    end
                 end
             end
-        end
 
-        if H_block_tau !== nothing
-            H_tau_blocks[(target_idx, source_idx)] = H_block_tau
+            if H_block_tau !== nothing
+                H_tau_blocks[(target_idx, source_idx)] = H_block_tau
+            end
         end
     end
 
-    return BlockDensePropagator{T}(workspace.basis, workspace.flux_result, H_tau_blocks)
+    return BlockDensePropagator{T}(basis, flux_result, H_tau_blocks)
 end

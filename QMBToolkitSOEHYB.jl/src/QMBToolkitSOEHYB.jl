@@ -62,9 +62,9 @@ function run(input_file::String)
     params = read_input(input_file)
 
     if params.solver.Hilbert_space_format == "dense"
-        model_data = init_model_data(params.model, params.solver.dlr)
+        model_data = init_model_data(params.model, params.solver.dlr, DenseFormat)
     elseif params.solver.Hilbert_space_format == "blockdense"
-        model_data = init_model_data_blockdense(params.model, params.solver.dlr)
+        model_data = init_model_data(params.model, params.solver.dlr, BlockDenseFormat)
     else
         error("Unknown Hilbert_space_format: $(params.solver.Hilbert_space_format)")
     end

@@ -21,8 +21,8 @@ end
     ConvolutionWorkspace{T<:Number}
 
 Pre-allocated workspace buffers for do_convolution_dlr2tau.
-Reusing these buffers across multiple convolution calls eliminates ~1.4 GB
-of allocations per call.
+Reusing these buffers across multiple convolution calls reduces allocations
+in the main computation loop.
 
 Supports non-square matrix convolutions: F (r × d1 × d2) * G (r × d2 × d3) -> H (n_tau × d1 × d3)
 
@@ -33,8 +33,6 @@ Supports non-square matrix convolutions: F (r × d1 × d2) * G (r × d2 × d3) -
 - `term2`: Temporary buffer for G accumulation (d2 × d3)
 - `term1_result`: Result buffer for term1 * G (d1 × d3)
 - `term2_result`: Result buffer for F * term2 (d1 × d3)
-- `H1_tau`: Buffer for tau-space result of H1 (n_tau × d1 × d3)
-- `H2_tau`: Buffer for tau-space result of H2 (n_tau × d1 × d3)
 """
 struct ConvolutionWorkspace{T<:Number}
     H1_dlr::Array{T,3}
@@ -43,8 +41,6 @@ struct ConvolutionWorkspace{T<:Number}
     term2::Array{T,2}
     term1_result::Array{T,2}
     term2_result::Array{T,2}
-    H1_tau::Array{T,3}
-    H2_tau::Array{T,3}
 end
 
 """
@@ -77,15 +73,14 @@ For F (r × d1 × d2) * G (r × d2 × d3) -> H (n_tau × d1 × d3).
 - `n_tau`: Number of tau grid points
 """
 function ConvolutionWorkspace{T}(r::Int, d1::Int, d2::Int, d3::Int, n_tau::Int) where T<:Number
+    # n_tau is kept for API compatibility but not used for workspace allocation
     return ConvolutionWorkspace{T}(
         zeros(T, r, d1, d3),        # H1_dlr
         zeros(T, r, d1, d3),        # H2_dlr
         zeros(T, d1, d2),           # term1 (accumulates F slices)
         zeros(T, d2, d3),           # term2 (accumulates G slices)
         zeros(T, d1, d3),           # term1_result (term1 * G)
-        zeros(T, d1, d3),           # term2_result (F * term2)
-        zeros(T, n_tau, d1, d3),    # H1_tau
-        zeros(T, n_tau, d1, d3)     # H2_tau
+        zeros(T, d1, d3)            # term2_result (F * term2)
     )
 end
 

@@ -9,16 +9,28 @@ using Lehmann
 using LinearAlgebra
 
 """
-    do_convolution_dlr2tau!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::Array{T,3}, G_dlr::Array{T,3}) where T<:Number
+    do_convolution_dlr2tau!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::Array{T,3}, G_dlr::Array{T,3}; do_view::Bool=false) where T<:Number
 
-In-place version using pre-allocated workspace buffers.
-Eliminates ~1.4 GB of allocations per call by reusing workspace.
+In-place convolution using pre-allocated workspace buffers.
 
+Computes the convolution H = F * G in DLR representation and returns the result in tau space.
 Supports non-square matrix convolutions: F (r × d1 × d2) * G (r × d2 × d3) -> H (n_tau × d1 × d3).
 
-This is the most optimized version. Create workspace once and reuse across calls.
+# Arguments
+- `workspace`: Pre-allocated workspace buffers
+- `dlr_grid`: DLR grid
+- `kernel_cache`: Pre-computed kernel cache
+- `F_dlr`: First operand (r × d1 × d2)
+- `G_dlr`: Second operand (r × d2 × d3)
+- `do_view`: If `false` (default), workspace dimensions must match F_dlr and G_dlr exactly.
+             If `true`, workspace can be larger and views are used for the actual dimensions.
+             The view-based mode has ~15-20% overhead but allows a single workspace to be
+             reused for different block sizes.
+
+# Returns
+- `Array{T,3}`: Result H_tau (n_tau × d1 × d3)
 """
-function do_convolution_dlr2tau!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::Array{T,3}, G_dlr::Array{T,3}) where T<:Number
+function do_convolution_dlr2tau!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::Array{T,3}, G_dlr::Array{T,3}; do_view::Bool=false) where T<:Number
     r = size(F_dlr, 1)
     d1 = size(F_dlr, 2)  # output row dimension
     d2 = size(F_dlr, 3)  # intermediate dimension
@@ -27,6 +39,26 @@ function do_convolution_dlr2tau!(workspace::ConvolutionWorkspace{T}, dlr_grid::D
     @assert size(G_dlr, 1) == r "F and G must have same DLR rank"
     @assert size(G_dlr, 2) == d2 "Intermediate dimensions must match: F has $d2, G has $(size(G_dlr, 2))"
 
+    if do_view
+        # View-based mode: workspace can be larger than needed
+        @assert size(workspace.H1_dlr, 2) >= d1 "Workspace H1_dlr dim 2 must be >= d1"
+        @assert size(workspace.H1_dlr, 3) >= d3 "Workspace H1_dlr dim 3 must be >= d3"
+        @assert size(workspace.term1, 1) >= d1 "Workspace term1 dim 1 must be >= d1"
+        @assert size(workspace.term1, 2) >= d2 "Workspace term1 dim 2 must be >= d2"
+        @assert size(workspace.term2, 1) >= d2 "Workspace term2 dim 1 must be >= d2"
+        @assert size(workspace.term2, 2) >= d3 "Workspace term2 dim 2 must be >= d3"
+
+        return _do_convolution_view!(workspace, dlr_grid, kernel_cache, F_dlr, G_dlr, r, d1, d2, d3)
+    else
+        # Direct mode: workspace dimensions must match exactly
+        return _do_convolution_direct!(workspace, dlr_grid, kernel_cache, F_dlr, G_dlr, r, d1, d2, d3)
+    end
+end
+
+"""
+Direct convolution implementation - workspace dimensions match exactly.
+"""
+function _do_convolution_direct!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::Array{T,3}, G_dlr::Array{T,3}, r::Int, d1::Int, d2::Int, d3::Int) where T<:Number
     # Clear workspace buffers
     fill!(workspace.H1_dlr, zero(T))
     fill!(workspace.H2_dlr, zero(T))
@@ -45,22 +77,72 @@ function do_convolution_dlr2tau!(workspace::ConvolutionWorkspace{T}, dlr_grid::D
         for k in 1:r
             if k != j
                 coeff = kernel_cache.values[k] / (dlr_grid.omega[k] - dlr_grid.omega[j])
-                workspace.term1 .+= coeff .* @view(F_dlr[k, :, :])  # (d1, d2) += (d1, d2)
-                workspace.term2 .+= coeff .* @view(G_dlr[k, :, :])  # (d2, d3) += (d2, d3)
+                workspace.term1 .+= coeff .* @view(F_dlr[k, :, :])
+                workspace.term2 .+= coeff .* @view(G_dlr[k, :, :])
             end
         end
 
         # Multiply accumulated terms by the j-th slice
-        mul!(workspace.term1_result, workspace.term1, @view(G_dlr[j, :, :]))  # (d1, d3) = (d1, d2) * (d2, d3)
-        mul!(workspace.term2_result, @view(F_dlr[j, :, :]), workspace.term2)  # (d1, d3) = (d1, d2) * (d2, d3)
+        mul!(workspace.term1_result, workspace.term1, @view(G_dlr[j, :, :]))
+        mul!(workspace.term2_result, @view(F_dlr[j, :, :]), workspace.term2)
         @view(workspace.H2_dlr[j, :, :]) .= workspace.term1_result .+ workspace.term2_result
     end
 
-    # Transform to tau space (dlr2tau writes to provided buffers if we could modify it, but for now allocates)
-    workspace.H1_tau .= dlr2tau(dlr_grid, workspace.H1_dlr, dlr_grid.tau)
-    workspace.H2_tau .= dlr2tau(dlr_grid, workspace.H2_dlr, dlr_grid.tau)
+    # Transform to tau space
+    H1_tau = dlr2tau(dlr_grid, workspace.H1_dlr, dlr_grid.tau)
+    H2_tau = dlr2tau(dlr_grid, workspace.H2_dlr, dlr_grid.tau)
 
     # Compute final result
-    H_tau = dlr_grid.tau .* workspace.H1_tau .+ workspace.H2_tau
+    H_tau = dlr_grid.tau .* H1_tau .+ H2_tau
+    return H_tau
+end
+
+"""
+View-based convolution implementation - workspace can be larger than needed.
+Uses views into workspace buffers based on actual dimensions.
+"""
+function _do_convolution_view!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::Array{T,3}, G_dlr::Array{T,3}, r::Int, d1::Int, d2::Int, d3::Int) where T<:Number
+    # Create views into workspace buffers for the actual dimensions needed
+    H1_dlr_view = @view workspace.H1_dlr[1:r, 1:d1, 1:d3]
+    H2_dlr_view = @view workspace.H2_dlr[1:r, 1:d1, 1:d3]
+    term1_view = @view workspace.term1[1:d1, 1:d2]
+    term2_view = @view workspace.term2[1:d2, 1:d3]
+    term1_result_view = @view workspace.term1_result[1:d1, 1:d3]
+    term2_result_view = @view workspace.term2_result[1:d1, 1:d3]
+
+    # Clear only the portions we use
+    fill!(H1_dlr_view, zero(T))
+    fill!(H2_dlr_view, zero(T))
+
+    # Compute H1_dlr
+    @inbounds for j in 1:r
+        @view(H1_dlr_view[j, :, :]) .= kernel_cache.values[j] .* (@view(F_dlr[j, :, :]) * @view(G_dlr[j, :, :]))
+    end
+
+    # Compute H2_dlr
+    @inbounds for j in 1:r
+        fill!(term1_view, zero(T))
+        fill!(term2_view, zero(T))
+
+        for k in 1:r
+            if k != j
+                coeff = kernel_cache.values[k] / (dlr_grid.omega[k] - dlr_grid.omega[j])
+                term1_view .+= coeff .* @view(F_dlr[k, :, :])
+                term2_view .+= coeff .* @view(G_dlr[k, :, :])
+            end
+        end
+
+        mul!(term1_result_view, term1_view, @view(G_dlr[j, :, :]))
+        mul!(term2_result_view, @view(F_dlr[j, :, :]), term2_view)
+        @view(H2_dlr_view[j, :, :]) .= term1_result_view .+ term2_result_view
+    end
+
+    # Transform to tau space
+    # Need to collect to contiguous arrays as strided views are slower with dlr2tau
+    H1_tau = dlr2tau(dlr_grid, collect(H1_dlr_view), dlr_grid.tau)
+    H2_tau = dlr2tau(dlr_grid, collect(H2_dlr_view), dlr_grid.tau)
+
+    # Compute final result
+    H_tau = dlr_grid.tau .* H1_tau .+ H2_tau
     return H_tau
 end

@@ -69,7 +69,7 @@ function run(input_file::String)
         error("Unknown Hilbert_space_format: $(params.solver.Hilbert_space_format)")
     end
 
-    solver_data = init_solver_data(model_data)
+    solver_data = init_solver_data(model_data) # solver_data contains model_data and calculation_data
 
     if rank == 0
         print_parameters(params)

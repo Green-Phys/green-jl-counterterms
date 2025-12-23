@@ -76,21 +76,25 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
     bare_propagator_wrapped = _wrap_bare_propagator(bare_propagator_tau, bare_propagator_dlr)
 
     # Create format-specific storage (BlockDense also creates global convolution workspace)
-    format_data = _create_format_data(Format, T, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid)
+    format_data = _create_model_storage(Format, T, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid)
 
     return ModelData{T,Format,typeof(format_data)}(
+        # Model properties
         model_params.beta,
         n_flavors,
-        n_fock,
-        dlr_grid,
-        E_shift,
         n_flavors_physical,
+        n_fock,
+        E_shift,
+        Z_counterterms,
         bare_propagator_err,
+        # Hybridization data
         hyb_soe,
         K0_inverse,
-        Z_counterterms,
+        # Numerical infrastructure
+        dlr_grid,
         kernel_cache,
         convolution_workspace,
+        # Format-specific storage
         format_data
     )
 end
@@ -484,12 +488,12 @@ function _wrap_bare_propagator(bare_propagator_tau::BlockDensePropagator{T}, bar
 end
 
 """
-    _create_format_data(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
+    _create_model_storage(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
 
 Create DenseModelDataStorage from components.
 Note: dlr_grid is unused for Dense format but included for consistent interface.
 """
-function _create_format_data(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
+function _create_model_storage(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
     return DenseModelDataStorage{T}(
         eigenvalues,
         eigenvectors,
@@ -502,11 +506,11 @@ function _create_format_data(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenv
 end
 
 """
-    _create_format_data(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
+    _create_model_storage(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
 
 Create BlockDenseModelDataStorage from components, including the pre-allocated convolution workspace.
 """
-function _create_format_data(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
+function _create_model_storage(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
     # Create convolution workspace sized for maximum sector dimension
     # Uses the same _create_convolution_workspace dispatch as the main init
     conv_workspace = _create_convolution_workspace(T, dlr_grid, bare_propagator_wrapped.vals)

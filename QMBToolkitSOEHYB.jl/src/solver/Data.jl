@@ -115,17 +115,21 @@ Dense or BlockDense representation, eliminating the need for Union{..., Nothing}
 - `Storage<:ModelDataStorage{T}`: Format-specific storage type
 """
 struct ModelData{T<:Number, Format<:HilbertSpaceFormat, Storage<:ModelDataStorage{T}}
-    # Common fields (same for both formats)
+    # Model properties
     beta::Float64
     n_flavors::Int
-    n_fock::Int
-    dlr_grid::DLRGrid
-    E_shift::Float64
     n_flavors_physical::Int
+    n_fock::Int
+    E_shift::Float64
+    Z_counterterms::Float64
     bare_propagator_err::Float64  # Diagnostic: max DLR reconstruction error
+
+    # Hybridization data
     hyb::SOEData
     K0_inverse::Vector{Float64}
-    Z_counterterms::Float64
+
+    # Numerical infrastructure
+    dlr_grid::DLRGrid
     kernel_cache::KernelCache
     convolution_workspace::ConvolutionWorkspace
 

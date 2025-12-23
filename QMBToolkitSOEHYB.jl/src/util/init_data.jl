@@ -1,6 +1,6 @@
-using QMBToolkitED
-using QMBToolkitED.Dense: DenseOperator, DenseBasis, DenseDiagonalOperator, make_basis_dense
-using QMBToolkitED.BlockDense: BlockDenseOperator, BlockDenseBasis, BlockDenseDiagonalOperator, OperatorFlux, make_basis
+using QMBToolkitED: make_basis, build_hamiltonian, solve_hamiltonian
+using QMBToolkitED.Dense: DenseBasis, DenseOperator, DenseDiagonalOperator
+using QMBToolkitED.BlockDense: BlockDenseBasis, BlockDenseOperator, BlockDenseDiagonalOperator, OperatorFlux, QN_N, zero_qn
 using DelimitedFiles
 using QMBToolkitDLR
 using LinearAlgebra
@@ -31,8 +31,8 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
     basis = _build_basis(hopping_path, Format)
 
     # Build and solve Hamiltonian
-    H, ann_opts_raw = QMBToolkitED.build_hamiltonian(hopping_path, interaction_path; method=_get_method(Format), basis=basis)
-    result = QMBToolkitED.solve_hamiltonian(H)
+    H, ann_opts_raw = build_hamiltonian(hopping_path, interaction_path; method=_get_method(Format), basis=basis)
+    result = solve_hamiltonian(H)
 
     eigenvalues = result.eigenvalues
     eigenvectors = result.eigenvectors
@@ -78,7 +78,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
     # Create format-specific storage (BlockDense also creates global convolution workspace)
     format_data = _create_format_data(Format, T, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped, dlr_grid)
 
-    return ModelData{T, Format, typeof(format_data)}(
+    return ModelData{T,Format,typeof(format_data)}(
         model_params.beta,
         n_flavors,
         n_fock,
@@ -101,7 +101,7 @@ end
 Initialize a `SolverData` object from the `ModelData`.
 Dispatches based on the format type to create appropriate storage.
 """
-function init_solver_data(model_data::ModelData{T, Format, Storage}) where {T<:Number, Format<:HilbertSpaceFormat, Storage<:ModelDataStorage{T}}
+function init_solver_data(model_data::ModelData{T,Format,Storage}) where {T<:Number,Format<:HilbertSpaceFormat,Storage<:ModelDataStorage{T}}
     r = model_data.dlr_grid.size
     n_phys = model_data.n_flavors_physical
 
@@ -109,7 +109,7 @@ function init_solver_data(model_data::ModelData{T, Format, Storage}) where {T<:N
     format_data = _create_calculation_storage(model_data, T, Format)
 
     # Create CalculationData with common fields
-    calculation_data = CalculationData{T, Format, typeof(format_data)}(
+    calculation_data = CalculationData{T,Format,typeof(format_data)}(
         format_data,
         DenseDLRPropagator{T}(r, n_phys, n_phys),  # green (always dense)
         Float64[],  # partition function by order
@@ -176,7 +176,7 @@ Build a DenseBasis from the hopping file by inferring the number of orbitals.
 function _build_basis(hopping_path::String, ::Type{DenseFormat})
     hopping_data = readdlm(hopping_path)
     n_flavors = Int(maximum(hopping_data[:, 1:2])) + 1
-    return make_basis_dense(n_flavors)
+    return make_basis(n_flavors)
 end
 
 """
@@ -188,7 +188,7 @@ Assumes particle number conservation (QN_N quantum number).
 function _build_basis(hopping_path::String, ::Type{BlockDenseFormat})
     hopping_data = readdlm(hopping_path)
     n_orbitals = Int(maximum(hopping_data[:, 1:2])) + 1
-    site_qns = [QMBToolkitED.BlockDense.QN_N(1) for _ in 1:n_orbitals]
+    site_qns = [QN_N(1) for _ in 1:n_orbitals]
     return make_basis(site_qns)
 end
 
@@ -318,9 +318,9 @@ function _build_bare_propagator(::Type{T}, eigenvalues::BlockDenseDiagonalOperat
     n_tau = length(tau_grid)
 
     # The propagator has flux = 0 (diagonal in sector space)
-    flux = OperatorFlux(QMBToolkitED.BlockDense.zero_qn(typeof(basis.sectors[1].qn)))
+    flux = OperatorFlux(zero_qn(typeof(basis.sectors[1].qn)))
 
-    blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+    blocks = Dict{Tuple{Int,Int},Array{T,3}}()
 
     # Build diagonal blocks only (propagator conserves quantum numbers)
     for (sector_idx, sector) in enumerate(basis.sectors)
@@ -665,7 +665,7 @@ function _transform_to_eigenbasis(ops::Vector{BlockDenseOperator}, evecs::BlockD
 
     for (i, op) in enumerate(ops)
         # Transform each block: for block (tgt, src), we need U_tgt' * block * U_src
-        new_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
+        new_blocks = Dict{Tuple{Int,Int},Matrix{ComplexF64}}()
 
         for ((tgt, src), block) in op.blocks
             # Get eigenvector matrices for source and target sectors

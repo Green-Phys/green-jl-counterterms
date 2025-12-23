@@ -533,8 +533,8 @@ end
 Generate barred operators for Dense format.
 
 coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation
-- For creation: F̄†_{o,l} = Σ_{o'} Δ_{l,o',o} F†_{o'}
-- For annihilation: F̄_{o,l} = Σ_{o'} Δ_{l,o,o'} F_{o'}
+- For creation: c̄†_{o,l} = Σ_{o'} Δ_{l,o',o} c†_{o'}
+- For annihilation: c̄_{o,l} = Σ_{o'} Δ_{l,o,o'} c_{o'}
 
 # Arguments
 - `opts`: Vector of operators (creation or annihilation)
@@ -574,8 +574,8 @@ end
 Generate barred operators for BlockDense format.
 
 coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation
-- For creation: F̄†_{o,l} = Σ_{o'} Δ_{l,o',o} F†_{o'}
-- For annihilation: F̄_{o,l} = Σ_{o'} Δ_{l,o,o'} F_{o'}
+- For creation: c̄†_{o,l} = Σ_{o'} Δ_{l,o',o} c†_{o'}
+- For annihilation: c̄_{o,l} = Σ_{o'} Δ_{l,o,o'} c_{o'}
 
 # Arguments
 - `opts`: Vector of operators (creation or annihilation)

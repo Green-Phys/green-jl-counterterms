@@ -43,8 +43,8 @@ struct DenseModelDataStorage{T} <: ModelDataStorage{T}
     eigenvectors::DenseOperator            # Eigenvectors as unitary operator
     ann_opts::Vector{DenseOperator}        # Annihilation operators (eigenbasis)
     cre_opts::Vector{DenseOperator}        # Creation operators (eigenbasis)
-    ann_opts_bar::Matrix{DenseOperator}    # Barred annihilation operators F̄_{o,l}
-    cre_opts_bar::Matrix{DenseOperator}    # Barred creation operators F̄†_{o,l}
+    ann_opts_bar::Matrix{DenseOperator}    # Barred annihilation operators c̄_{o,l}
+    cre_opts_bar::Matrix{DenseOperator}    # Barred creation operators c̄†_{o,l}
     bare_propagator::DenseDLRPropagator{T} # Bare propagator in DLR representation
 end
 
@@ -59,8 +59,8 @@ struct BlockDenseModelDataStorage{T} <: ModelDataStorage{T}
     eigenvectors::BlockDenseOperator            # Eigenvectors as block-unitary operator
     ann_opts::Vector{BlockDenseOperator}        # Annihilation operators (eigenbasis)
     cre_opts::Vector{BlockDenseOperator}        # Creation operators (eigenbasis)
-    ann_opts_bar::Matrix{BlockDenseOperator}    # Barred annihilation operators F̄_{o,l}
-    cre_opts_bar::Matrix{BlockDenseOperator}    # Barred creation operators F̄†_{o,l}
+    ann_opts_bar::Matrix{BlockDenseOperator}    # Barred annihilation operators c̄_{o,l}
+    cre_opts_bar::Matrix{BlockDenseOperator}    # Barred creation operators c̄†_{o,l}
     bare_propagator::BlockDenseDLRPropagator{T} # Bare propagator in DLR representation
     convolution_workspace::ConvolutionWorkspace{T}  # Pre-allocated convolution workspace (max-sized)
 end

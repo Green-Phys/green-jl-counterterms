@@ -28,7 +28,7 @@ using LinearAlgebra
 
     @testset "Simple 2-flavor operator with QN_N" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         # Create annihilator for orbital 1
         c1 = get_annihilator_blockdense(basis, 1)
@@ -53,7 +53,7 @@ using LinearAlgebra
 
     @testset "2-flavor spin system with QN_NSz" begin
         site_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]  # [↑, ↓]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         # Annihilate spin-up
         c_up = get_annihilator_blockdense(basis, 1)
@@ -69,7 +69,7 @@ using LinearAlgebra
 
     @testset "Block structure for 2-flavor QN_N" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
         c1 = get_annihilator_blockdense(basis, 1)
 
         # Sectors: N=0 (vacuum), N=1 (single), N=2 (double)
@@ -92,7 +92,7 @@ using LinearAlgebra
     @testset "Fermionic signs in operators" begin
         # Test that signs are correct
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
         c2 = get_annihilator_blockdense(basis, 2)
@@ -145,7 +145,7 @@ using LinearAlgebra
 
     @testset "Operator action on vacuum" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
 
@@ -160,7 +160,7 @@ using LinearAlgebra
     @testset "Operator block non-zero checks" begin
         # Blocks should only be stored if non-zero
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
 
@@ -173,7 +173,7 @@ using LinearAlgebra
 
     @testset "Multiple operators on same basis" begin
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         operators = [get_annihilator_blockdense(basis, i) for i in 1:3]
 
@@ -190,7 +190,7 @@ using LinearAlgebra
 
     @testset "4-flavor Hubbard atom operators" begin
         site_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         # Create all annihilators
         c = [get_annihilator_blockdense(basis, i) for i in 1:4]
@@ -211,7 +211,7 @@ using LinearAlgebra
 
     @testset "Operator display" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
         c1 = get_annihilator_blockdense(basis, 1)
 
         # Should not error
@@ -227,7 +227,7 @@ using LinearAlgebra
 
     @testset "Nonzero count" begin
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
         c1 = get_annihilator_blockdense(basis, 1)
 
         # Count total nonzeros
@@ -243,7 +243,7 @@ using LinearAlgebra
 
     @testset "Boundary conditions - invalid flavor" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         # Should error for out-of-range flavor
         @test_throws AssertionError get_annihilator_blockdense(basis, 0)
@@ -252,7 +252,7 @@ using LinearAlgebra
 
     @testset "Single flavor system" begin
         site_qns = [QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
 
@@ -272,7 +272,7 @@ using LinearAlgebra
     @testset "Block matrix element values" begin
         # Verify specific matrix elements match expected values
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
         c1 = get_annihilator_blockdense(basis, 1)
         c2 = get_annihilator_blockdense(basis, 2)
 
@@ -307,7 +307,7 @@ using LinearAlgebra
 
     @testset "All blocks have correct dimensions" begin
         site_qns = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         for flavor in 1:4
             c = get_annihilator_blockdense(basis, flavor)
@@ -329,7 +329,7 @@ using LinearAlgebra
 
     @testset "Sector connectivity from flux" begin
         site_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c_up = get_annihilator_blockdense(basis, 1)  # Flux: (-1, -1)
 

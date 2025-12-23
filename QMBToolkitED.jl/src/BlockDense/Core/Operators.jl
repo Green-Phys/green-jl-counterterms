@@ -58,7 +58,7 @@ This follows the standard linear algebra convention: operator O has matrix eleme
 Example:
 ```julia
 # Create annihilation operator
-basis = make_basis([QN_N(1), QN_N(1)])
+basis = make_basis_blockdense([QN_N(1), QN_N(1)])
 c1 = get_annihilator_blockdense(basis, 1)
 
 # Check flux
@@ -120,7 +120,7 @@ Example:
 ```julia
 # 2-flavor spin system
 site_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]  # [↑, ↓]
-basis = make_basis(site_qns)
+basis = make_basis_blockdense(site_qns)
 
 # Annihilate spin-up electron
 c_up = get_annihilator_blockdense(basis, 1)

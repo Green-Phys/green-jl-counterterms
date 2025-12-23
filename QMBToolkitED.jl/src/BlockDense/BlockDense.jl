@@ -19,7 +19,7 @@ using QMBToolkitED.BlockDense
 
 # Define a 4-flavor Hubbard atom with (N, Sz) conservation
 site_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
-basis = make_basis(site_qns)
+basis = make_basis_blockdense(site_qns)
 
 # Get annihilation operators
 c = get_annihilators_blockdense(basis)
@@ -33,7 +33,7 @@ n_up = c[1]' * c[1]
 ## Core/ - Core types and data structures
 - `QuantumNumbers.jl` - Abstract QuantumNumber type, QN_NSz, QN_N
 - `Sectors.jl` - Sector type for grouping states
-- `Basis.jl` - BlockDenseBasis and make_basis function
+- `Basis.jl` - BlockDenseBasis and make_basis_blockdense function
 - `Operators.jl` - BlockDenseOperator type and single-operator construction
 
 ## Operations/ - Low-level operations on operators
@@ -62,7 +62,7 @@ n_up = c[1]' * c[1]
 # Exported Functions
 
 ## Core functions
-- `make_basis` - Construct basis from site quantum numbers
+- `make_basis_blockdense` - Construct basis from site quantum numbers
 - `get_annihilator_blockdense` - Create single annihilation operator
 - `combine_qn`, `reverse_qn`, `zero_qn` - Quantum number arithmetic
 - `sum_occupied_sites`, `compute_fermion_sign` - Utility functions
@@ -73,13 +73,12 @@ n_up = c[1]' * c[1]
 - `solve_hamiltonian_blockdense` - Efficient block-diagonal diagonalization
 
 ## Conversion
-- `to_matrix`, `from_matrix` - Convert between block-dense and dense matrix formats
-- `to_vector` - Extract eigenvalues as a concatenated vector
+- `to_matrix_blockdense` - Convert block-dense operator to dense matrix
+- `to_vector_blockdense` - Extract eigenvalues as a concatenated vector
 """
 module BlockDense
 
 using LinearAlgebra
-import ..Dense: to_matrix
 
 # ============================================================================
 # Core Types and Data Structures
@@ -122,7 +121,7 @@ export QuantumNumber, QN_NSz, QN_N
 export combine_qn, reverse_qn, zero_qn
 
 # Sectors and Basis
-export Sector, BlockDenseBasis, make_basis
+export Sector, BlockDenseBasis, make_basis_blockdense
 
 # Operators
 export OperatorFlux, BlockDenseOperator
@@ -133,7 +132,7 @@ export get_annihilator_blockdense  # Single operator (low-level)
 export sum_occupied_sites, compute_fermion_sign
 
 # Conversion
-export to_matrix, from_matrix
+export to_matrix_blockdense, to_vector_blockdense
 
 # High-Level API (compatible with QMBToolkitED)
 export get_annihilators_blockdense        # Vector of operators
@@ -144,8 +143,5 @@ export calculate_green_matsubara_blockdense # Green's function (Matsubara)
 
 # Eigenvalue decomposition results
 export BlockEigenResult
-
-# Conversion
-export to_vector
 
 end # module BlockDense

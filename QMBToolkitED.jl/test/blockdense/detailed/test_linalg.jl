@@ -13,7 +13,7 @@ using LinearAlgebra
 
     @testset "Operator multiplication" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
         c2 = get_annihilator_blockdense(basis, 2)
@@ -40,7 +40,7 @@ using LinearAlgebra
 
     @testset "Operator addition" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
         c2 = get_annihilator_blockdense(basis, 2)
@@ -58,7 +58,7 @@ using LinearAlgebra
 
     @testset "Operator subtraction" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
         c2 = get_annihilator_blockdense(basis, 2)
@@ -73,7 +73,7 @@ using LinearAlgebra
 
     @testset "Scalar multiplication" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
 
@@ -111,7 +111,7 @@ using LinearAlgebra
 
     @testset "Unary negation" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
 
@@ -125,7 +125,7 @@ using LinearAlgebra
 
     @testset "Adjoint operator" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
 
@@ -147,7 +147,7 @@ using LinearAlgebra
 
     @testset "Fermionic anticommutation {c_i, c_j} = 0" begin
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
         c2 = get_annihilator_blockdense(basis, 2)
@@ -166,7 +166,7 @@ using LinearAlgebra
 
     @testset "Fermionic anticommutation {c_i, c_j'} = δ_ij" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
         c2 = get_annihilator_blockdense(basis, 2)
@@ -179,7 +179,7 @@ using LinearAlgebra
         @test anticomm_11.flux.delta_qn == QN_N(0)
 
         # Convert to matrix to check it's identity
-        anticomm_11_mat = to_matrix(anticomm_11)
+        anticomm_11_mat = to_matrix_blockdense(anticomm_11)
         I_matrix = Matrix{ComplexF64}(I, basis.total_dim, basis.total_dim)
         @test anticomm_11_mat ≈ I_matrix atol=1e-14
 
@@ -187,18 +187,18 @@ using LinearAlgebra
         anticomm_12 = c1 * c2_dag + c2_dag * c1
         @test anticomm_12.flux.delta_qn == QN_N(0)
 
-        anticomm_12_mat = to_matrix(anticomm_12)
+        anticomm_12_mat = to_matrix_blockdense(anticomm_12)
         @test iszero(anticomm_12_mat)
     end
 
     @testset "Conversion to matrix" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
 
         # Convert to matrix
-        c1_mat = to_matrix(c1)
+        c1_mat = to_matrix_blockdense(c1)
 
         # Check dimensions
         @test size(c1_mat) == (basis.total_dim, basis.total_dim)
@@ -208,30 +208,9 @@ using LinearAlgebra
         @test c1_mat isa Matrix{ComplexF64}
     end
 
-    @testset "Conversion from matrix" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
-
-        c1 = get_annihilator_blockdense(basis, 1)
-
-        # Round trip: block -> matrix -> block
-        c1_mat = to_matrix(c1)
-        c1_reconstructed = from_matrix(c1_mat, basis, c1.flux)
-
-        # Should have same flux
-        @test c1_reconstructed.flux.delta_qn == c1.flux.delta_qn
-
-        # Should have same blocks (up to numerical precision)
-        @test Set(keys(c1.blocks)) == Set(keys(c1_reconstructed.blocks))
-
-        for key in keys(c1.blocks)
-            @test c1.blocks[key] ≈ c1_reconstructed.blocks[key] atol=1e-14
-        end
-    end
-
     @testset "Matrix conversion consistency" begin
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
         c2 = get_annihilator_blockdense(basis, 2)
@@ -243,7 +222,7 @@ using LinearAlgebra
         n1 = c1_dag * c1
 
         # Convert to matrix
-        n1_mat = to_matrix(n1)
+        n1_mat = to_matrix_blockdense(n1)
 
         # Should be Hermitian (up to numerical precision)
         @test n1_mat ≈ adjoint(n1_mat) atol=1e-14
@@ -255,7 +234,7 @@ using LinearAlgebra
 
     @testset "Operator algebra distributivity" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
         c2 = get_annihilator_blockdense(basis, 2)
@@ -266,15 +245,15 @@ using LinearAlgebra
         lhs = (c1 + c2) * c1_dag
         rhs = c1 * c1_dag + c2 * c1_dag
 
-        lhs_mat = to_matrix(lhs)
-        rhs_mat = to_matrix(rhs)
+        lhs_mat = to_matrix_blockdense(lhs)
+        rhs_mat = to_matrix_blockdense(rhs)
 
         @test lhs_mat ≈ rhs_mat atol=1e-14
     end
 
     @testset "Scalar multiplication distributivity" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
         c2 = get_annihilator_blockdense(basis, 2)
@@ -285,15 +264,15 @@ using LinearAlgebra
         lhs = α * (c1 + c2)
         rhs = α * c1 + α * c2
 
-        lhs_mat = to_matrix(lhs)
-        rhs_mat = to_matrix(rhs)
+        lhs_mat = to_matrix_blockdense(lhs)
+        rhs_mat = to_matrix_blockdense(rhs)
 
         @test lhs_mat ≈ rhs_mat atol=1e-14
     end
 
     @testset "Adjoint distributivity" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         c1 = get_annihilator_blockdense(basis, 1)
         c2 = get_annihilator_blockdense(basis, 2)
@@ -302,8 +281,8 @@ using LinearAlgebra
         lhs = (c1 + c2)'
         rhs = c1' + c2'
 
-        lhs_mat = to_matrix(lhs)
-        rhs_mat = to_matrix(rhs)
+        lhs_mat = to_matrix_blockdense(lhs)
+        rhs_mat = to_matrix_blockdense(rhs)
 
         @test lhs_mat ≈ rhs_mat atol=1e-14
 
@@ -315,15 +294,15 @@ using LinearAlgebra
         c1_dag = c1'
         c2dag_c1dag = c2_dag * c1_dag
 
-        c12_dag_mat = to_matrix(c12_dag)
-        c2dag_c1dag_mat = to_matrix(c2dag_c1dag)
+        c12_dag_mat = to_matrix_blockdense(c12_dag)
+        c2dag_c1dag_mat = to_matrix_blockdense(c2dag_c1dag)
 
         @test c12_dag_mat ≈ c2dag_c1dag_mat atol=1e-14
     end
 
     @testset "Total number operator" begin
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         # Total number operator: N = Σ_i c_i' * c_i
         N = sum([get_annihilator_blockdense(basis, i)' * get_annihilator_blockdense(basis, i)
@@ -332,7 +311,7 @@ using LinearAlgebra
         @test N.flux.delta_qn == QN_N(0)
 
         # Convert to matrix and check eigenvalues
-        N_mat = to_matrix(N)
+        N_mat = to_matrix_blockdense(N)
 
         # Should be Hermitian
         @test N_mat ≈ adjoint(N_mat) atol=1e-14
@@ -346,7 +325,7 @@ using LinearAlgebra
 
     @testset "Operator on larger system" begin
         site_qns = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         @test basis.total_dim == 16  # 2^4
 
@@ -359,7 +338,7 @@ using LinearAlgebra
         @test hopping.flux.delta_qn == QN_N(0)
 
         # Should be Hermitian
-        hopping_mat = to_matrix(hopping)
+        hopping_mat = to_matrix_blockdense(hopping)
         @test hopping_mat ≈ adjoint(hopping_mat) atol=1e-14
     end
 

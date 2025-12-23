@@ -14,13 +14,12 @@ using .BlockDense
 include("UnifiedInterface.jl")
 
 # Exports - main functions (from unified interface)
+export make_basis
 export get_annihilators, build_hamiltonian, solve_hamiltonian
 export calculate_green_tau, calculate_green_matsubara, get_Z
 
-# Export conversion functions
-# to_matrix is defined in Dense and extended by BlockDense
-# from_matrix is defined in BlockDense only
-export to_matrix, from_matrix
+# Export conversion functions (from unified interface)
+export to_matrix, to_vector
 
 # Export submodules for direct access
 export Dense, BlockDense

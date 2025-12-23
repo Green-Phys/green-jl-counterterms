@@ -21,7 +21,7 @@ states within the same sector.
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
+basis = make_basis_blockdense([QN_N(1), QN_N(1)])
 H = ...  # Build Hamiltonian
 result = solve_hamiltonian_blockdense(H)
 

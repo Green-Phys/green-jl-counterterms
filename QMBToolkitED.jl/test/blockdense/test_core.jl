@@ -30,7 +30,7 @@ using Main.BlockDense
     @testset "Sector Partitioning" begin
         # Basis partitions Fock space into sectors
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         # All 2^nflavors states accounted for
         @test basis.total_dim == 8
@@ -47,13 +47,13 @@ using Main.BlockDense
     @testset "Operator Flux from site_qns" begin
         # Flux determined by site_qns
         site_qns_n = [QN_N(1), QN_N(1)]
-        basis_n = make_basis(site_qns_n)
+        basis_n = make_basis_blockdense(site_qns_n)
         c_n = get_annihilator_blockdense(basis_n, 1)
         @test c_n.flux.delta_qn == QN_N(-1)
 
         # Different QN type gives different flux
         site_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis_sz = make_basis(site_qns_sz)
+        basis_sz = make_basis_blockdense(site_qns_sz)
         c_up = get_annihilator_blockdense(basis_sz, 1)  # Remove spin-up
         c_down = get_annihilator_blockdense(basis_sz, 2)  # Remove spin-down
         @test c_up.flux.delta_qn == QN_NSz(-1, -1)

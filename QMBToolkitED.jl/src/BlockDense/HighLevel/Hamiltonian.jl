@@ -34,7 +34,7 @@ Note: The Hamiltonian should have flux = 0 (number conserving).
 Example:
 ```julia
 site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-basis = make_basis(site_qns)
+basis = make_basis_blockdense(site_qns)
 
 H, c = build_hamiltonian_blockdense(basis, "hopping.txt", "coulomb.txt")
 
@@ -52,7 +52,7 @@ Comparison with Dense version:
 H_dense, c_dense = build_hamiltonian("hopping.txt", "coulomb.txt")
 
 # BlockDense version
-basis = make_basis([QN_N(1) for _ in 1:nflavors])
+basis = make_basis_blockdense([QN_N(1) for _ in 1:nflavors])
 H_block, c_block = build_hamiltonian_blockdense(basis, "hopping.txt", "coulomb.txt")
 
 # Hamiltonians should match

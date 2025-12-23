@@ -62,7 +62,7 @@ evecs = result.eigenvectors.data
 - `solve_hamiltonian_dense` - Diagonalize Hamiltonian
 - `calculate_green_tau_dense` - Compute G(τ)
 - `calculate_green_matsubara_dense` - Compute G(iωₙ)
-- `to_matrix` - Extract underlying matrix from DenseOperator
+- `to_matrix_dense` - Extract underlying matrix from DenseOperator
 """
 module Dense
 
@@ -98,8 +98,8 @@ include("HighLevel/Greens.jl")
 
 # Core types
 export DenseBasis, make_basis_dense
-export DenseOperator, to_matrix
-export DenseDiagonalOperator, to_vector
+export DenseOperator, to_matrix_dense
+export DenseDiagonalOperator, to_vector_dense
 
 # High-level API
 export get_annihilators_dense

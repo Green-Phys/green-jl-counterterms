@@ -21,7 +21,7 @@ Example:
 ```julia
 # Create basis for 3-orbital system with N conservation
 site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-basis = make_basis(site_qns)
+basis = make_basis_blockdense(site_qns)
 
 # Get annihilation operators
 c = get_annihilators_blockdense(basis)
@@ -35,7 +35,7 @@ Comparison with Dense version:
 c_dense = get_annihilators(3)
 
 # BlockDense version
-basis = make_basis([QN_N(1), QN_N(1), QN_N(1)])
+basis = make_basis_blockdense([QN_N(1), QN_N(1), QN_N(1)])
 c_block = get_annihilators_blockdense(basis)
 
 # Should match when converted to matrix

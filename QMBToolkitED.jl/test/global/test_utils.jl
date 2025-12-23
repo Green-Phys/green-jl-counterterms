@@ -4,7 +4,6 @@ using Test
 using QMBToolkitED
 using QMBToolkitED.Dense
 using QMBToolkitED.BlockDense
-using QMBToolkitED.BlockDense: to_vector
 using LinearAlgebra
 
 export run_hamiltonian_test, run_greens_test, verify_anticommutation, get_evals
@@ -20,7 +19,7 @@ end
 
 function get_evals(result::BlockEigenResult)
     # Use to_vector to get concatenated eigenvalues
-    return to_vector(result.eigenvalues)
+    return QMBToolkitED.to_vector(result.eigenvalues)
 end
 
 """

@@ -22,7 +22,7 @@ Example:
 ```julia
 # 4-flavor Hubbard atom with (N, Sz) conservation
 site_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
-basis = make_basis(site_qns)
+basis = make_basis_blockdense(site_qns)
 println("Number of sectors: ", length(basis.sectors))
 println("Total dimension: ", basis.total_dim)
 ```
@@ -57,7 +57,7 @@ struct BlockDenseBasis
 end
 
 """
-    make_basis(site_qns::Vector{QN}) where {QN <: QuantumNumber} -> BlockDenseBasis
+    make_basis_blockdense(site_qns::Vector{QN}) where {QN <: QuantumNumber} -> BlockDenseBasis
 
 Construct a block-dense basis from site quantum numbers.
 
@@ -81,7 +81,7 @@ Example:
 ```julia
 # Simple 2-flavor spin system: [↑, ↓]
 site_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]
-basis = make_basis(site_qns)
+basis = make_basis_blockdense(site_qns)
 
 # Should have 4 sectors:
 # Sector 1: N=0, Sz=0  (vacuum)
@@ -93,13 +93,13 @@ basis = make_basis(site_qns)
 Example with N-only conservation:
 ```julia
 site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-basis = make_basis(site_qns)
+basis = make_basis_blockdense(site_qns)
 
 # Should have 4 sectors: N=0, 1, 2, 3
 # With dimensions: 1, 3, 3, 1 (binomial coefficients)
 ```
 """
-function make_basis(site_qns::Vector{QN}) where {QN <: QuantumNumber}
+function make_basis_blockdense(site_qns::Vector{QN}) where {QN <: QuantumNumber}
     nflavors = length(site_qns)
     nfock = 1 << nflavors
 

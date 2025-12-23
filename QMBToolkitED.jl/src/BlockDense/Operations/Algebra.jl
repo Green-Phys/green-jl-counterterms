@@ -30,7 +30,7 @@ Requirements:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
+basis = make_basis_blockdense([QN_N(1), QN_N(1)])
 c1 = get_annihilator_blockdense(basis, 1)
 c1_dag = c1'
 
@@ -211,7 +211,7 @@ Requirements:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
+basis = make_basis_blockdense([QN_N(1), QN_N(1)])
 c1 = get_annihilator_blockdense(basis, 1)
 c2 = get_annihilator_blockdense(basis, 2)
 
@@ -266,7 +266,7 @@ Returns:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
+basis = make_basis_blockdense([QN_N(1), QN_N(1)])
 c1 = get_annihilator_blockdense(basis, 1)
 
 # Scale by coefficient
@@ -321,7 +321,7 @@ Returns:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
+basis = make_basis_blockdense([QN_N(1), QN_N(1)])
 c1 = get_annihilator_blockdense(basis, 1)
 
 # Creation operator

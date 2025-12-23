@@ -1,7 +1,7 @@
 """
 BlockDense Tests: Site-Based Basis Construction
 
-Tests for BlockDenseBasis and make_basis function.
+Tests for BlockDenseBasis and make_basis_blockdense function.
 Validates basis partitioning, sector generation, and state coverage.
 """
 
@@ -13,7 +13,7 @@ using Main.BlockDense
     @testset "Simple 2-flavor spin system with QN_NSz" begin
         # [↑, ↓] system
         site_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         # Basic properties
         @test basis.nflavors == 2
@@ -57,7 +57,7 @@ using Main.BlockDense
     @testset "4-flavor Hubbard atom with QN_NSz" begin
         # [↑, ↓, ↑, ↓] - two sites, two spins each
         site_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         @test basis.nflavors == 4
         @test basis.total_dim == 16  # 2^4 = 16 states
@@ -95,7 +95,7 @@ using Main.BlockDense
     @testset "Simple N-only system with QN_N" begin
         # 3 orbitals, N conservation only
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         @test basis.nflavors == 3
         @test basis.total_dim == 8  # 2^3 = 8 states
@@ -130,7 +130,7 @@ using Main.BlockDense
     @testset "Larger N-only system" begin
         # 4 orbitals
         site_qns = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         @test basis.nflavors == 4
         @test basis.total_dim == 16
@@ -148,7 +148,7 @@ using Main.BlockDense
         # Every Fock state should appear exactly once
         for nflavors in [2, 3, 4]
             site_qns = [QN_N(1) for _ in 1:nflavors]
-            basis = make_basis(site_qns)
+            basis = make_basis_blockdense(site_qns)
 
             # Collect all states from all sectors
             all_states = Int[]
@@ -169,7 +169,7 @@ using Main.BlockDense
 
     @testset "State lookup in sectors" begin
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         # Check that state_to_index works correctly
         for sector in basis.sectors
@@ -193,8 +193,8 @@ using Main.BlockDense
         # Sectors should be in deterministic order
         site_qns = [QN_N(1), QN_N(1), QN_N(1)]
 
-        basis1 = make_basis(site_qns)
-        basis2 = make_basis(site_qns)
+        basis1 = make_basis_blockdense(site_qns)
+        basis2 = make_basis_blockdense(site_qns)
 
         # Same number of sectors
         @test length(basis1.sectors) == length(basis2.sectors)
@@ -215,14 +215,14 @@ using Main.BlockDense
     @testset "Edge cases" begin
         # Single orbital
         site_qns = [QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
         @test basis.nflavors == 1
         @test basis.total_dim == 2
         @test length(basis.sectors) == 2  # N=0, N=1
 
         # All same spin
         site_qns = [QN_NSz(1, 1), QN_NSz(1, 1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
         @test basis.nflavors == 2
         # Sectors: (0,0), (1,1), (2,2)
         @test length(basis.sectors) == 3
@@ -233,7 +233,7 @@ using Main.BlockDense
 
     @testset "Basis display" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         # Should not error
         io = IOBuffer()
@@ -248,7 +248,7 @@ using Main.BlockDense
     @testset "Mixed site quantum numbers with QN_NSz" begin
         # Different spin configurations on different orbitals
         site_qns = [QN_NSz(1, 1), QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
 
         @test basis.nflavors == 3
         @test basis.total_dim == 8

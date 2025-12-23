@@ -20,7 +20,7 @@ for that sector as columns.
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
+basis = make_basis_blockdense([QN_N(1), QN_N(1)])
 c = get_annihilators_blockdense(basis)
 H = sum(c[i]' * c[i] for i in 1:2)
 
@@ -62,7 +62,7 @@ Requirements:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
+basis = make_basis_blockdense([QN_N(1), QN_N(1)])
 c = get_annihilators_blockdense(basis)
 H = sum(c[i]' * c[i] for i in 1:2)
 

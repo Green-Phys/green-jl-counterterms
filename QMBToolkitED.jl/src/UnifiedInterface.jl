@@ -5,6 +5,35 @@ Provides a consistent API that works with both implementations, allowing users
 to choose the backend via the `method` keyword argument.
 """
 
+# ============================================================================
+# Basis Construction
+# ============================================================================
+
+"""
+    make_basis(nflavors::Int) -> DenseBasis
+    make_basis(site_qns::Vector{<:QuantumNumber}) -> BlockDenseBasis
+
+Unified interface for constructing a basis.
+
+For dense method, pass the number of flavors:
+```julia
+basis = make_basis(3)  # Returns DenseBasis
+```
+
+For block-dense method, pass site quantum numbers:
+```julia
+basis = make_basis([QN_N(1), QN_N(1), QN_N(1)])  # Returns BlockDenseBasis
+```
+
+The method is automatically determined by the argument type.
+"""
+make_basis(nflavors::Int) = Dense.make_basis_dense(nflavors)
+make_basis(site_qns::Vector{<:BlockDense.QuantumNumber}) = BlockDense.make_basis_blockdense(site_qns)
+
+# ============================================================================
+# Fermionic Operators
+# ============================================================================
+
 """
     get_annihilators(nflavors::Int; method::Symbol=:dense)
     get_annihilators(basis::Dense.DenseBasis; method::Symbol=:dense)
@@ -239,3 +268,58 @@ function get_Z(evals::Vector{<:Real}, beta::Real; shift_energy::Bool=false)
     end
     return sum(exp.(-beta .* local_evals))
 end
+
+# ============================================================================
+# Conversion Functions
+# ============================================================================
+
+"""
+    to_matrix(op) -> Matrix{ComplexF64}
+
+Unified interface for converting an operator to a dense matrix.
+
+Works with:
+- `DenseOperator` → extracts underlying matrix
+- `BlockDenseOperator` → assembles blocks into full matrix
+- `DenseDiagonalOperator` → converts to full diagonal matrix
+- `BlockDenseDiagonalOperator` → converts to full diagonal matrix
+
+Example:
+```julia
+# Dense operator
+c = get_annihilators(3)
+mat = to_matrix(c[1])
+
+# Block-dense operator
+basis = make_basis([QN_N(1), QN_N(1), QN_N(1)])
+c_block = get_annihilators(basis)
+mat_block = to_matrix(c_block[1])
+```
+"""
+to_matrix(op::Dense.DenseOperator) = Dense.to_matrix_dense(op)
+to_matrix(op::Dense.DenseDiagonalOperator) = Dense.to_matrix_dense(op)
+to_matrix(op::BlockDense.BlockDenseOperator) = BlockDense.to_matrix_blockdense(op)
+to_matrix(op::BlockDense.BlockDenseDiagonalOperator) = BlockDense.to_matrix_blockdense(op)
+
+"""
+    to_vector(D) -> Vector{Float64}
+
+Unified interface for extracting diagonal values from a diagonal operator.
+
+Works with:
+- `DenseDiagonalOperator` → returns diagonal elements
+- `BlockDenseDiagonalOperator` → returns concatenated diagonal elements in sector order
+
+Example:
+```julia
+# Dense eigenvalues
+result = solve_hamiltonian(H)
+evals = to_vector(result.eigenvalues)
+
+# Block-dense eigenvalues
+result_block = solve_hamiltonian(H_block)
+evals_block = to_vector(result_block.eigenvalues)
+```
+"""
+to_vector(D::Dense.DenseDiagonalOperator) = Dense.to_vector_dense(D)
+to_vector(D::BlockDense.BlockDenseDiagonalOperator) = BlockDense.to_vector_blockdense(D)

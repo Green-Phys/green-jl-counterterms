@@ -19,7 +19,7 @@ include("detailed/test_linalg.jl")
 
     @testset "Flux Arithmetic" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
         c = get_annihilators_blockdense(basis)
 
         # Multiplication composes flux
@@ -41,11 +41,11 @@ include("detailed/test_linalg.jl")
 
     @testset "Block-to-Matrix Conversion" begin
         site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        basis = make_basis_blockdense(site_qns)
         c = get_annihilators_blockdense(basis)
 
         # Conversion produces correct type and size
-        c1_mat = to_matrix(c[1])
+        c1_mat = to_matrix_blockdense(c[1])
         @test c1_mat isa Matrix{ComplexF64}
         @test size(c1_mat) == (basis.total_dim, basis.total_dim)
     end

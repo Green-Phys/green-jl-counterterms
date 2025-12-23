@@ -38,12 +38,12 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
     else
         # Generate propagator diagrams
         t_start = MPI.Wtime()
-        diagrams = gen_diagrams(solver_data, solver_params, :propagator_diagram, comm)
+        diagrams_prop = gen_diagrams(solver_data, solver_params, :propagator_diagram, comm)
         t_gen_prop_wall = MPI.Wtime() - t_start
 
         # Evaluate propagator diagrams
         t_start = MPI.Wtime()
-        eval_diagrams!(solver_data, solver_params, :propagator_diagram, diagrams, comm)
+        eval_diagrams!(solver_data, solver_params, :propagator_diagram, diagrams_prop, comm)
         t_eval_prop_wall = MPI.Wtime() - t_start
 
         # Compute total CPU time across all ranks for evaluation

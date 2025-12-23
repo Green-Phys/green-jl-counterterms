@@ -65,9 +65,9 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
     kernel_cache = compute_kernel_cache(dlr_grid)
     convolution_workspace = _create_convolution_workspace(T, dlr_grid, bare_propagator_tau)
 
-    # Precompute SOE operators
-    ann_opts_SOE = _gen_opts_SOE(ann_opts, hyb_soe.coeffs, false)
-    cre_opts_SOE = _gen_opts_SOE(cre_opts, hyb_soe.coeffs, true)
+    # Precompute barred operators
+    ann_opts_bar = _gen_opts_bar(ann_opts, hyb_soe.coeffs, :annihilation)
+    cre_opts_bar = _gen_opts_bar(cre_opts, hyb_soe.coeffs, :creation)
 
     # Calculate partition function for counter-terms
     Z_counterterms = calculate_Z_counterterms(model_params, n_flavors, n_flavors_physical)
@@ -76,7 +76,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
     bare_propagator_wrapped = _wrap_bare_propagator(bare_propagator_tau, bare_propagator_dlr)
 
     # Create format-specific storage (BlockDense also creates global convolution workspace)
-    format_data = _create_format_data(Format, T, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped, dlr_grid)
+    format_data = _create_format_data(Format, T, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid)
 
     return ModelData{T,Format,typeof(format_data)}(
         model_params.beta,
@@ -484,29 +484,29 @@ function _wrap_bare_propagator(bare_propagator_tau::BlockDensePropagator{T}, bar
 end
 
 """
-    _create_format_data(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped, dlr_grid) where T
+    _create_format_data(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
 
 Create DenseModelDataStorage from components.
 Note: dlr_grid is unused for Dense format but included for consistent interface.
 """
-function _create_format_data(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped, dlr_grid) where T
+function _create_format_data(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
     return DenseModelDataStorage{T}(
         eigenvalues,
         eigenvectors,
         ann_opts,
         cre_opts,
-        ann_opts_SOE,
-        cre_opts_SOE,
+        ann_opts_bar,
+        cre_opts_bar,
         bare_propagator_wrapped
     )
 end
 
 """
-    _create_format_data(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped, dlr_grid) where T
+    _create_format_data(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
 
 Create BlockDenseModelDataStorage from components, including the pre-allocated convolution workspace.
 """
-function _create_format_data(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_SOE, cre_opts_SOE, bare_propagator_wrapped, dlr_grid) where T
+function _create_format_data(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
     # Create convolution workspace sized for maximum sector dimension
     # Uses the same _create_convolution_workspace dispatch as the main init
     conv_workspace = _create_convolution_workspace(T, dlr_grid, bare_propagator_wrapped.vals)
@@ -516,38 +516,44 @@ function _create_format_data(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, e
         eigenvectors,
         ann_opts,
         cre_opts,
-        ann_opts_SOE,
-        cre_opts_SOE,
+        ann_opts_bar,
+        cre_opts_bar,
         bare_propagator_wrapped,
         conv_workspace
     )
 end
 
 #=============================================================================
-# SOE operator construction (unified interface)
+# Barred operator construction
 =============================================================================#
 
 """
-    _gen_opts_SOE(opts::Vector{DenseOperator}, coeffs::Array{Float64,3}, is_creation::Bool)
+    _gen_opts_bar(opts::Vector{DenseOperator}, coeffs::Array{Float64,3}, opt_type::Symbol)
 
-Generate SOE-transformed operators for Dense format.
+Generate barred operators for Dense format.
 
 coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation
 - For creation: F̄†_{o,l} = Σ_{o'} Δ_{l,o',o} F†_{o'}
 - For annihilation: F̄_{o,l} = Σ_{o'} Δ_{l,o,o'} F_{o'}
+
+# Arguments
+- `opts`: Vector of operators (creation or annihilation)
+- `coeffs`: SOE coefficients array
+- `opt_type`: Either `:creation` or `:annihilation`
 """
-function _gen_opts_SOE(opts::Vector{DenseOperator}, coeffs::Array{Float64,3}, is_creation::Bool)
+function _gen_opts_bar(opts::Vector{DenseOperator}, coeffs::Array{Float64,3}, opt_type::Symbol)
+    opt_type in (:creation, :annihilation) || error("opt_type must be :creation or :annihilation, got $opt_type")
     basis = opts[1].basis
     n_flavors = length(opts)
     p = size(coeffs, 1)
     size(coeffs, 2) == n_flavors || error("Size mismatch between coeffs dimension 2 and number of flavors: expected $n_flavors, got $(size(coeffs, 2))")
     size(coeffs, 3) == n_flavors || error("Size mismatch between coeffs dimension 3 and number of flavors: expected $n_flavors, got $(size(coeffs, 3))")
 
-    opts_SOE = Matrix{DenseOperator}(undef, n_flavors, p)
+    opts_bar = Matrix{DenseOperator}(undef, n_flavors, p)
     for o in 1:n_flavors
         for l in 1:p
             mat = zeros(eltype(opts[1].data), size(opts[1].data)...)
-            if is_creation
+            if opt_type == :creation
                 for o_prime in 1:n_flavors
                     mat .+= coeffs[l, o_prime, o] * opts[o_prime].data
                 end
@@ -556,35 +562,41 @@ function _gen_opts_SOE(opts::Vector{DenseOperator}, coeffs::Array{Float64,3}, is
                     mat .+= coeffs[l, o, o_prime] * opts[o_prime].data
                 end
             end
-            opts_SOE[o, l] = DenseOperator(basis, mat)
+            opts_bar[o, l] = DenseOperator(basis, mat)
         end
     end
-    return opts_SOE
+    return opts_bar
 end
 
 """
-    _gen_opts_SOE(opts::Vector{BlockDenseOperator}, coeffs::Array{Float64,3}, is_creation::Bool)
+    _gen_opts_bar(opts::Vector{BlockDenseOperator}, coeffs::Array{Float64,3}, opt_type::Symbol)
 
-Generate SOE-transformed operators for BlockDense format.
+Generate barred operators for BlockDense format.
 
 coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation
 - For creation: F̄†_{o,l} = Σ_{o'} Δ_{l,o',o} F†_{o'}
 - For annihilation: F̄_{o,l} = Σ_{o'} Δ_{l,o,o'} F_{o'}
+
+# Arguments
+- `opts`: Vector of operators (creation or annihilation)
+- `coeffs`: SOE coefficients array
+- `opt_type`: Either `:creation` or `:annihilation`
 """
-function _gen_opts_SOE(opts::Vector{BlockDenseOperator}, coeffs::Array{Float64,3}, is_creation::Bool)
+function _gen_opts_bar(opts::Vector{BlockDenseOperator}, coeffs::Array{Float64,3}, opt_type::Symbol)
+    opt_type in (:creation, :annihilation) || error("opt_type must be :creation or :annihilation, got $opt_type")
     n_flavors = length(opts)
     p = size(coeffs, 1)
     size(coeffs, 2) == n_flavors || error("Size mismatch between coeffs dimension 2 and number of flavors: expected $n_flavors, got $(size(coeffs, 2))")
     size(coeffs, 3) == n_flavors || error("Size mismatch between coeffs dimension 3 and number of flavors: expected $n_flavors, got $(size(coeffs, 3))")
 
-    opts_SOE = Matrix{BlockDenseOperator}(undef, n_flavors, p)
+    opts_bar = Matrix{BlockDenseOperator}(undef, n_flavors, p)
     for o in 1:n_flavors
         for l in 1:p
             # Start with zero operator (same structure as opts[1])
             result = coeffs[l, 1, 1] * opts[1]  # Initialize with scaled first operator
             result = result - result  # Set to zero (preserves structure)
 
-            if is_creation
+            if opt_type == :creation
                 for o_prime in 1:n_flavors
                     result = result + coeffs[l, o_prime, o] * opts[o_prime]
                 end
@@ -593,10 +605,10 @@ function _gen_opts_SOE(opts::Vector{BlockDenseOperator}, coeffs::Array{Float64,3
                     result = result + coeffs[l, o, o_prime] * opts[o_prime]
                 end
             end
-            opts_SOE[o, l] = result
+            opts_bar[o, l] = result
         end
     end
-    return opts_SOE
+    return opts_bar
 end
 
 #=============================================================================

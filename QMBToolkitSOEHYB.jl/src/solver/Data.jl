@@ -43,8 +43,8 @@ struct DenseModelDataStorage{T} <: ModelDataStorage{T}
     eigenvectors::DenseOperator            # Eigenvectors as unitary operator
     ann_opts::Vector{DenseOperator}        # Annihilation operators (eigenbasis)
     cre_opts::Vector{DenseOperator}        # Creation operators (eigenbasis)
-    ann_opts_SOE::Matrix{DenseOperator}    # SOE-transformed annihilation operators
-    cre_opts_SOE::Matrix{DenseOperator}    # SOE-transformed creation operators
+    ann_opts_bar::Matrix{DenseOperator}    # Barred annihilation operators F̄_{o,l}
+    cre_opts_bar::Matrix{DenseOperator}    # Barred creation operators F̄†_{o,l}
     bare_propagator::DenseDLRPropagator{T} # Bare propagator in DLR representation
 end
 
@@ -59,8 +59,8 @@ struct BlockDenseModelDataStorage{T} <: ModelDataStorage{T}
     eigenvectors::BlockDenseOperator            # Eigenvectors as block-unitary operator
     ann_opts::Vector{BlockDenseOperator}        # Annihilation operators (eigenbasis)
     cre_opts::Vector{BlockDenseOperator}        # Creation operators (eigenbasis)
-    ann_opts_SOE::Matrix{BlockDenseOperator}    # SOE-transformed annihilation operators
-    cre_opts_SOE::Matrix{BlockDenseOperator}    # SOE-transformed creation operators
+    ann_opts_bar::Matrix{BlockDenseOperator}    # Barred annihilation operators F̄_{o,l}
+    cre_opts_bar::Matrix{BlockDenseOperator}    # Barred creation operators F̄†_{o,l}
     bare_propagator::BlockDenseDLRPropagator{T} # Bare propagator in DLR representation
     convolution_workspace::ConvolutionWorkspace{T}  # Pre-allocated convolution workspace (max-sized)
 end
@@ -210,8 +210,8 @@ get_eigenvalues(model::ModelData) = model.format_data.eigenvalues
 get_eigenvectors(model::ModelData) = model.format_data.eigenvectors
 get_ann_opts(model::ModelData) = model.format_data.ann_opts
 get_cre_opts(model::ModelData) = model.format_data.cre_opts
-get_ann_opts_SOE(model::ModelData) = model.format_data.ann_opts_SOE
-get_cre_opts_SOE(model::ModelData) = model.format_data.cre_opts_SOE
+get_ann_opts_bar(model::ModelData) = model.format_data.ann_opts_bar
+get_cre_opts_bar(model::ModelData) = model.format_data.cre_opts_bar
 get_bare_propagator(model::ModelData) = model.format_data.bare_propagator
 
 # BlockDense-specific accessor for global convolution workspace

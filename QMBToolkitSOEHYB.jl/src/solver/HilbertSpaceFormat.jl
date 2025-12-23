@@ -26,3 +26,11 @@ struct BlockDenseFormat <: HilbertSpaceFormat end
 
 Base.show(io::IO, ::DenseFormat) = print(io, "DenseFormat")
 Base.show(io::IO, ::BlockDenseFormat) = print(io, "BlockDenseFormat")
+
+"""
+    ed_method(::Type{<:HilbertSpaceFormat}) -> Symbol
+
+Return the QMBToolkitED method symbol for Hamiltonian construction.
+"""
+ed_method(::Type{DenseFormat}) = :dense
+ed_method(::Type{BlockDenseFormat}) = :blockdense

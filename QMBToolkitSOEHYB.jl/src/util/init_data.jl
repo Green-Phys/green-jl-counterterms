@@ -31,7 +31,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
     basis = _build_basis(hopping_path, Format)
 
     # Build and solve Hamiltonian
-    H, ann_opts_raw = build_hamiltonian(hopping_path, interaction_path; method=_get_method(Format), basis=basis)
+    H, ann_opts_raw = build_hamiltonian(hopping_path, interaction_path; method=ed_method(Format), basis=basis)
     result = solve_hamiltonian(H)
 
     eigenvalues = result.eigenvalues
@@ -244,7 +244,7 @@ function _load_hybridization_data(model_params::ModelParams, n_flavors::Int, dlr
     hyb_weights_permuted = reshape(hyb_weights_flat, (n_flavors_physical, n_flavors_physical, n_poles))
     hyb_weights_physical = permutedims(hyb_weights_permuted, (3, 2, 1))
 
-    # hyb_weights contains both physical weights and counterterms (zeros)
+    # hyb_weights contains both weights for physical orbitals and those for counterterms (which are trivially zeros)
     hyb_weights = zeros(Float64, n_poles, n_flavors, n_flavors)
     hyb_weights[:, 1:n_flavors_physical, 1:n_flavors_physical] = hyb_weights_physical
 
@@ -356,7 +356,7 @@ Convert Dense bare propagator from tau to DLR representation.
 Returns the DLR coefficients as DensePropagator.
 """
 function _convert_to_dlr(dlr_grid, bare_propagator::DensePropagator)
-    return DensePropagator(tau2dlr(dlr_grid, bare_propagator.data, dlr_grid.tau))
+    return tau2dlr_dense(dlr_grid, bare_propagator, dlr_grid.tau)
 end
 
 """
@@ -376,8 +376,8 @@ Compute the maximum DLR reconstruction error for Dense format.
 Performs round-trip: tau → dlr → tau, then measures max absolute difference.
 """
 function _compute_dlr_error(dlr_grid, bare_propagator_tau::DensePropagator, bare_propagator_dlr::DensePropagator)
-    bare_propagator_reconstructed = dlr2tau(dlr_grid, bare_propagator_dlr.data, dlr_grid.tau)
-    return maximum(abs.(bare_propagator_reconstructed .- bare_propagator_tau.data))
+    bare_propagator_reconstructed = dlr2tau_dense(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
+    return maximum(abs.(bare_propagator_reconstructed.data .- bare_propagator_tau.data))
 end
 
 """
@@ -466,20 +466,6 @@ end
 =============================================================================#
 
 """
-    _get_method(::Type{DenseFormat})
-
-Get the method symbol for QMBToolkitED.build_hamiltonian.
-"""
-_get_method(::Type{DenseFormat}) = :dense
-
-"""
-    _get_method(::Type{BlockDenseFormat})
-
-Get the method symbol for QMBToolkitED.build_hamiltonian.
-"""
-_get_method(::Type{BlockDenseFormat}) = :blockdense
-
-"""
     _wrap_bare_propagator(bare_propagator_tau::DensePropagator{T}, bare_propagator_dlr::DensePropagator{T}) where T
 
 Wrap Dense bare propagators into DenseDLRPropagator.
@@ -560,7 +546,7 @@ function _gen_opts_SOE(opts::Vector{DenseOperator}, coeffs::Array{Float64,3}, is
     opts_SOE = Matrix{DenseOperator}(undef, n_flavors, p)
     for o in 1:n_flavors
         for l in 1:p
-            mat = zeros(ComplexF64, size(opts[1].data)...)
+            mat = zeros(eltype(opts[1].data), size(opts[1].data)...)
             if is_creation
                 for o_prime in 1:n_flavors
                     mat .+= coeffs[l, o_prime, o] * opts[o_prime].data
@@ -632,14 +618,13 @@ For each operator, performs U' * op * U, where U contains the eigenvectors.
 - `Vector{DenseOperator}`: Operators transformed to eigenbasis
 """
 function _transform_to_eigenbasis(ops::Vector{DenseOperator}, evecs::DenseOperator)
-    basis = ops[1].basis
     U = evecs.data
     transformed_ops = Vector{DenseOperator}(undef, length(ops))
 
     for (i, op) in enumerate(ops)
         # Transform: U' * op * U
         transformed_data = adjoint(U) * op.data * U
-        transformed_ops[i] = DenseOperator(basis, transformed_data)
+        transformed_ops[i] = DenseOperator(op.basis, transformed_data)
     end
 
     return transformed_ops
@@ -665,7 +650,8 @@ function _transform_to_eigenbasis(ops::Vector{BlockDenseOperator}, evecs::BlockD
 
     for (i, op) in enumerate(ops)
         # Transform each block: for block (tgt, src), we need U_tgt' * block * U_src
-        new_blocks = Dict{Tuple{Int,Int},Matrix{ComplexF64}}()
+        T = eltype(first(values(op.blocks)))
+        new_blocks = Dict{Tuple{Int,Int},Matrix{T}}()
 
         for ((tgt, src), block) in op.blocks
             # Get eigenvector matrices for source and target sectors

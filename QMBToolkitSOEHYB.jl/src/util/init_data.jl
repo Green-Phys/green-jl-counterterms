@@ -511,9 +511,6 @@ end
 Create BlockDenseModelDataStorage from components, including the pre-allocated convolution workspace.
 """
 function _create_model_storage(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
-    # Create convolution workspace sized for maximum sector dimension
-    # Uses the same _create_convolution_workspace dispatch as the main init
-    conv_workspace = _create_convolution_workspace(T, dlr_grid, bare_propagator_wrapped.vals)
 
     return BlockDenseModelDataStorage{T}(
         eigenvalues,
@@ -523,7 +520,6 @@ function _create_model_storage(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues,
         ann_opts_bar,
         cre_opts_bar,
         bare_propagator_wrapped,
-        conv_workspace
     )
 end
 

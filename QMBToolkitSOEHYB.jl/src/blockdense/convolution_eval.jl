@@ -169,10 +169,7 @@ function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edge
         to_be_convoluted_dlr = tau2dlr_blockdense(dlr_grid, to_be_convoluted, dlr_grid.tau)
         result_dlr = tau2dlr_blockdense(dlr_grid, result, dlr_grid.tau)
 
-        # Use pre-allocated global convolution workspace
-        conv_workspace = get_blockdense_convolution_workspace(model_data)
-
-        result = do_convolution_dlr2tau_blockdense!(conv_workspace, dlr_grid, model_data.kernel_cache, to_be_convoluted_dlr, result_dlr)
+        result = do_convolution_dlr2tau_blockdense!(model_data.convolution_workspace, dlr_grid, model_data.kernel_cache, to_be_convoluted_dlr, result_dlr)
 
         # Update temp_buffer to match new result structure
         temp_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
@@ -295,10 +292,7 @@ function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNod
         result_dlr = tau2dlr_blockdense(dlr_grid, result, dlr_grid.tau)
         to_be_convoluted_dlr = tau2dlr_blockdense(dlr_grid, to_be_convoluted, dlr_grid.tau)
 
-        # Use pre-allocated global convolution workspace
-        conv_workspace = get_blockdense_convolution_workspace(model_data)
-
-        result = do_convolution_dlr2tau_blockdense!(conv_workspace, dlr_grid, model_data.kernel_cache, result_dlr, to_be_convoluted_dlr)
+        result = do_convolution_dlr2tau_blockdense!(model_data.convolution_workspace, dlr_grid, model_data.kernel_cache, result_dlr, to_be_convoluted_dlr)
 
         # Update temp_buffer to match new result structure
         temp_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()

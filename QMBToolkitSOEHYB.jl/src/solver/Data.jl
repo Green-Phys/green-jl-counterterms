@@ -62,7 +62,6 @@ struct BlockDenseModelDataStorage{T} <: ModelDataStorage{T}
     ann_opts_bar::Matrix{BlockDenseOperator}    # Barred annihilation operators c̄_{o,l}
     cre_opts_bar::Matrix{BlockDenseOperator}    # Barred creation operators c̄†_{o,l}
     bare_propagator::BlockDenseDLRPropagator{T} # Bare propagator in DLR representation
-    convolution_workspace::ConvolutionWorkspace{T}  # Pre-allocated convolution workspace (max-sized)
 end
 
 #=============================================================================
@@ -191,16 +190,6 @@ function SolverData(model::ModelData{T, Format, MS}, calc::CalculationData{T, Fo
 end
 
 #=============================================================================
-# Type Aliases for Convenience
-=============================================================================#
-
-const DenseModelData{T} = ModelData{T, DenseFormat, DenseModelDataStorage{T}}
-const BlockDenseModelData{T} = ModelData{T, BlockDenseFormat, BlockDenseModelDataStorage{T}}
-
-const DenseCalculationData{T} = CalculationData{T, DenseFormat, DenseCalculationDataStorage{T}}
-const BlockDenseCalculationData{T} = CalculationData{T, BlockDenseFormat, BlockDenseCalculationDataStorage{T}}
-
-#=============================================================================
 # Accessor Functions (Unified Interface)
 #
 # These provide a format-independent way to access format-specific data.
@@ -210,16 +199,11 @@ const BlockDenseCalculationData{T} = CalculationData{T, BlockDenseFormat, BlockD
 =============================================================================#
 
 # ModelData accessors
-get_eigenvalues(model::ModelData) = model.format_data.eigenvalues
-get_eigenvectors(model::ModelData) = model.format_data.eigenvectors
 get_ann_opts(model::ModelData) = model.format_data.ann_opts
 get_cre_opts(model::ModelData) = model.format_data.cre_opts
 get_ann_opts_bar(model::ModelData) = model.format_data.ann_opts_bar
 get_cre_opts_bar(model::ModelData) = model.format_data.cre_opts_bar
 get_bare_propagator(model::ModelData) = model.format_data.bare_propagator
-
-# BlockDense-specific accessor for global convolution workspace
-get_blockdense_convolution_workspace(model::ModelData{T, BlockDenseFormat}) where T = model.format_data.convolution_workspace
 
 # CalculationData accessors
 get_propagator(calc::CalculationData) = calc.format_data.propagator

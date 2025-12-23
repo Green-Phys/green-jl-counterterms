@@ -3,9 +3,6 @@ using MPI
 using LinearAlgebra
 using QMBToolkitDLR
 
-# Note: Accessor functions get_propagator() and get_selfenergy() are defined in
-# src/solver/Data.jl and dispatch via format_data field
-
 """
     extract_at_tau_blockdense(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid)
 

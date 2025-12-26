@@ -144,3 +144,51 @@ function do_convolution_dlr2tau_blockdense!(workspace::ConvolutionWorkspace{T}, 
 
     return BlockDensePropagator{T}(basis, flux_result, H_tau_blocks)
 end
+
+#=============================================================================
+# Tau Extraction Operations
+=============================================================================#
+
+"""
+    extract_at_tau_blockdense(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where T
+
+Extract propagator value at specific tau by DLR interpolation, return as dense matrix.
+"""
+function extract_at_tau_blockdense(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where T
+    # Convert to DLR coefficients
+    prop_dlr = tau2dlr_blockdense(dlr_grid, propagator, dlr_grid.tau)
+
+    # Evaluate at the requested tau
+    prop_at_tau = dlr2tau_blockdense(dlr_grid, prop_dlr, [tau])
+
+    # Convert single-time-slice BlockDensePropagator to dense matrix
+    return blockdense_to_dense_single_tau(prop_at_tau)
+end
+
+"""
+    blockdense_to_dense_single_tau(bda::BlockDensePropagator{T}) where T
+
+Convert a BlockDensePropagator with single time slice (n_tau=1) to a dense matrix.
+"""
+function blockdense_to_dense_single_tau(bda::BlockDensePropagator{T}) where T
+    # Determine total dimension from basis
+    n_total = sum(sector.dim for sector in bda.basis.sectors)
+    result = zeros(T, n_total, n_total)
+
+    # Fill in blocks
+    for (key, block) in bda.blocks
+        (i, j) = key
+        dim_i = bda.basis.sectors[i].dim
+        dim_j = bda.basis.sectors[j].dim
+
+        # Get row and column offsets
+        row_offset = sum(bda.basis.sectors[k].dim for k in 1:i-1; init=0)
+        col_offset = sum(bda.basis.sectors[k].dim for k in 1:j-1; init=0)
+
+        # Extract single time slice (should be at index 1)
+        @assert size(block, 1) == 1 "Expected single time slice"
+        result[row_offset+1:row_offset+dim_i, col_offset+1:col_offset+dim_j] = block[1, :, :]
+    end
+
+    return result
+end

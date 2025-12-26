@@ -71,3 +71,23 @@ function do_convolution_dlr2tau_dense!(workspace::ConvolutionWorkspace{T}, dlr_g
     result = do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, F_dlr.data, G_dlr.data)
     return DensePropagator{T}(result)
 end
+
+#=============================================================================
+# Tau Extraction Operations
+=============================================================================#
+
+"""
+    extract_at_tau_dense(propagator::DensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where T
+
+Extract propagator value at specific tau by DLR interpolation, return as dense matrix.
+"""
+function extract_at_tau_dense(propagator::DensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where T
+    # Convert to DLR coefficients
+    prop_dlr = tau2dlr_dense(dlr_grid, propagator, dlr_grid.tau)
+
+    # Evaluate at the requested tau
+    prop_at_tau = dlr2tau_dense(dlr_grid, prop_dlr, [tau])
+
+    # Return the single time slice as a matrix
+    return prop_at_tau.data[1, :, :]
+end

@@ -29,7 +29,7 @@ struct HybridizationState
     index::Int  # 0 for NoHyb, positive for KPlus(l), negative for KMinus(l)
 end
 
-# Constructor helpers for backward compatibility and clarity
+# Constructor helpers for clarity
 NoHyb() = HybridizationState(0)
 KPlus(l::Int) = HybridizationState(l)
 KMinus(l::Int) = HybridizationState(-l)

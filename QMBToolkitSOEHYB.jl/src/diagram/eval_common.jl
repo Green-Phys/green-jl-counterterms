@@ -166,5 +166,27 @@ function eval_diagrams!(solver_data::SolverData{T, BlockDenseFormat}, solver_par
     end
 end
 
-# All operator multiplication, hybridization, and convolution functions
-# have been moved to src/dense/ folder for better organization
+"""
+    compute_diagram_prefactor(diagram::BackBone, K0_inverse::Vector{Float64})
+
+Compute the overall prefactor for a diagram.
+
+The prefactor is:
+    sign * ∏ᵢ (1/K₀ᵢ)^{Kexp_i}
+
+where:
+- sign is the diagram's sign (from topology and crossing parity)
+- K₀ᵢ are the hybridization function values at τ=0
+- Kexp_i are the exponent counts for each SOE component
+
+Only non-zero exponents contribute to the product.
+"""
+function compute_diagram_prefactor(diagram::BackBone, K0_inverse::Vector{Float64})
+    prefactor = diagram.sign
+    for (idx, Kexp) in enumerate(diagram.prefactor_Kexps)
+        if Kexp != 0
+            prefactor *= K0_inverse[idx]^Kexp
+        end
+    end
+    return prefactor
+end

@@ -32,8 +32,12 @@ include("blockdense/propagator.jl")
 include("blockdense/convolution_eval.jl")
 
 include("diagram/eval_common.jl")
-include("diagram/gen_eval_propagator.jl")
-include("diagram/gen_eval_green.jl")
+include("diagram/gen_propagator.jl")
+include("diagram/eval_propagator.jl")
+include("diagram/gen_green.jl")
+include("diagram/eval_green.jl")
+include("diagram/gen_selfenergy.jl")
+include("diagram/eval_selfenergy.jl")
 
 
 export run

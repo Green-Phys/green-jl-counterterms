@@ -103,3 +103,65 @@ end
 
 # Convenience constructor that infers type parameter
 DenseDLRPropagator(r::Int, dim1::Int, dim2::Int) = DenseDLRPropagator{Float64}(r, dim1, dim2)
+
+#=============================================================================
+# Interface Implementations
+=============================================================================#
+
+"""
+    zeros_like(template::DensePropagator{T}) where T
+
+Create a zero-initialized DensePropagator with the same shape as template.
+"""
+zeros_like(template::DensePropagator{T}) where T = zeros(DensePropagator{T}, size(template)...)
+
+"""
+    add_scaled!(dest::DensePropagator{T}, scale, src::DensePropagator{T}) where T
+
+Add scaled contribution: dest += scale * src
+"""
+function add_scaled!(dest::DensePropagator{T}, scale, src::DensePropagator{T}) where T
+    dest.data .+= scale .* src.data
+    return dest
+end
+
+"""
+    get_data(prop::DensePropagator)
+
+Get the underlying data array.
+"""
+get_data(prop::DensePropagator) = prop.data
+
+#=============================================================================
+# MPI Operations
+=============================================================================#
+
+"""
+    create_local_accumulator(::Type{DensePropagator{T}}, template::DensePropagator{T}) where T
+
+Create a zero-initialized local accumulator for MPI reduction.
+"""
+function create_local_accumulator(::Type{DensePropagator{T}}, template::DensePropagator{T}) where T
+    return zeros(T, size(template.data))
+end
+
+"""
+    accumulate_contribution!(accumulator::Array{T}, prefactor, contribution::DensePropagator{T}) where T
+
+Add scaled contribution to accumulator: accumulator += prefactor * contribution.data
+"""
+function accumulate_contribution!(accumulator::Array{T}, prefactor, contribution::DensePropagator{T}) where T
+    accumulator .+= prefactor .* contribution.data
+    return accumulator
+end
+
+"""
+    mpi_reduce_and_add!(propagator::DenseDLRPropagator{T}, local_result::Array{T}, comm::MPI.Comm) where T
+
+Perform MPI Allreduce on local_result and add to propagator.vals.
+"""
+function mpi_reduce_and_add!(propagator::DenseDLRPropagator{T}, local_result::Array{T}, comm::MPI.Comm) where T
+    order_result = MPI.Allreduce(local_result, MPI.SUM, comm)
+    propagator.vals.data .+= order_result
+    return propagator
+end

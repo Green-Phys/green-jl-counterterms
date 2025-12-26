@@ -6,9 +6,10 @@ using MPI
 
 Evaluate all propagator diagrams at a given order and accumulate into solver_data.
 
-This is the format-dependent function that handles MPI distribution and accumulation.
-Format-specific evaluation is delegated to `allocate_propagator_buffers` and
-`eval_propagator_backbone`.
+Uses format-agnostic interface functions for:
+- Creating local accumulators
+- Accumulating contributions
+- MPI reduction
 
 # Arguments
 - `solver_data::SolverData{T, Format}`: Solver data containing model and calculation results
@@ -24,7 +25,7 @@ Format-specific evaluation is delegated to `allocate_propagator_buffers` and
 - Results are summed across all ranks using MPI.Allreduce
 - The global sum is added to the existing propagator values
 """
-function eval_propagator_given_order!(solver_data::SolverData{T, DenseFormat}, diagrams::Array{BackBone,4}, comm::MPI.Comm) where {T<:Number}
+function eval_propagator_given_order!(solver_data::SolverData{T, Format}, diagrams::Array{BackBone,4}, comm::MPI.Comm) where {T<:Number, Format<:HilbertSpaceFormat}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 
@@ -33,10 +34,11 @@ function eval_propagator_given_order!(solver_data::SolverData{T, DenseFormat}, d
     diagrams_flat = vcat(diagrams...)
     n_diagrams = length(diagrams_flat)
 
-    # Create local accumulator for this rank's work (only for this order)
-    local_result = zeros(T, size(propagator.vals.data))
+    # Create local accumulator using format-agnostic interface
+    PropType = typeof(propagator.vals)
+    local_result = create_local_accumulator(PropType, propagator.vals)
 
-    # Allocate format-specific buffers (dense vs blockdense)
+    # Allocate format-specific buffers
     buffers = allocate_propagator_buffers(solver_data)
 
     # Distribute diagrams across ranks: rank processes indices rank+1:nprocs:n_diagrams
@@ -48,55 +50,10 @@ function eval_propagator_given_order!(solver_data::SolverData{T, DenseFormat}, d
         # Format-specific backbone evaluation
         contribution = eval_propagator_backbone(diagram, solver_data, buffers)
         prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
-        local_result .+= prefactor .* contribution.data
+        # Use format-agnostic accumulation
+        accumulate_contribution!(local_result, prefactor, contribution)
     end
 
-    # Sum results from all ranks for this order, then ADD to existing propagator values
-    order_result = MPI.Allreduce(local_result, MPI.SUM, comm)
-    propagator.vals.data .+= order_result
-end
-
-function eval_propagator_given_order!(solver_data::SolverData{T, BlockDenseFormat}, diagrams::Array{BackBone,4}, comm::MPI.Comm) where {T<:Number}
-    rank = MPI.Comm_rank(comm)
-    nprocs = MPI.Comm_size(comm)
-
-    propagator = get_propagator(solver_data.calc)  # Cache accessor result
-
-    diagrams_flat = vcat(diagrams...)
-    n_diagrams = length(diagrams_flat)
-
-    # Create local accumulator (BlockDensePropagator) for this rank's work
-    basis = propagator.vals.basis
-    flux = propagator.vals.flux
-    n_tau = length(solver_data.model.dlr_grid.tau)
-    local_result = zeros(BlockDensePropagator{T}, basis, flux, n_tau)
-
-    # Allocate format-specific buffers
-    buffers = allocate_propagator_buffers(solver_data)
-
-    # Distribute diagrams across ranks
-    my_diagrams = rank+1:nprocs:n_diagrams
-
-    # Evaluate diagrams assigned to this rank
-    for i in my_diagrams
-        diagram = diagrams_flat[i]
-        contribution = eval_propagator_backbone(diagram, solver_data, buffers)
-        prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
-        # Use add_scaled! for efficient in-place addition
-        add_scaled!(local_result, prefactor, contribution)
-    end
-
-    # Perform MPI reduction block-by-block
-    # For each block in local_result, do an Allreduce and add to propagator
-    for (key, local_block) in local_result.blocks
-        # Reduce this block across all ranks
-        global_block = MPI.Allreduce(local_block, MPI.SUM, comm)
-
-        # Add to propagator (create block if it doesn't exist)
-        if haskey(propagator.vals.blocks, key)
-            propagator.vals.blocks[key] .+= global_block
-        else
-            propagator.vals.blocks[key] = copy(global_block)
-        end
-    end
+    # MPI reduce and add to propagator using format-agnostic interface
+    mpi_reduce_and_add!(propagator, local_result, comm)
 end

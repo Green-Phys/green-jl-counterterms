@@ -176,45 +176,6 @@ function _multiplication_32_blockdense!(temp_buffer::BlockDensePropagator{T}, A:
 end
 
 """
-    _trace_3_blockdense(A::BlockDensePropagator{T}) where T<:Number
-
-Compute trace of each τ-slice: result[τ] = tr(A[τ,:,:]).
-
-For BlockDense arrays, the trace is the sum of traces of diagonal blocks:
-    tr(A[τ]) = Σ_sector tr(A[sector, sector](τ))
-
-# Arguments
-- `A::BlockDensePropagator{T}`: Time-dependent block-dense array
-
-# Returns
-- `Vector{TReal}`: Trace at each time point (always real even for complex matrices)
-
-# Note
-Only diagonal blocks contribute to the trace (quantum number conservation).
-"""
-function _trace_3_blockdense(A::BlockDensePropagator{T}) where T<:Number
-    # Get time dimension from any block
-    n_tau = size(first(values(A.blocks)), 1)
-
-    TReal = real(T)  # Trace is always real even for complex matrices
-    trace_vals = zeros(TReal, n_tau)
-
-    # Sum traces of diagonal blocks only
-    for ((target, source), block) in A.blocks
-        if target == source  # Diagonal block
-            dim = size(block, 2)
-            @assert size(block, 3) == dim "Diagonal blocks must be square"
-
-            @inbounds for k in 1:n_tau
-                trace_vals[k] += tr(block[k, :, :])
-            end
-        end
-    end
-
-    return trace_vals
-end
-
-"""
     _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDensePropagator{<:Number})
 
 In-place version: writes trace results to trace_buffer.
@@ -332,4 +293,100 @@ function _multiplication_33_blockdense!(temp_buffer::BlockDensePropagator{T}, A:
     end
 
     return temp_buffer
+end
+
+# ============================================================================
+# Interface Implementations
+# ============================================================================
+
+# Operator-propagator multiplication: result = op * prop
+multiply_op_prop!(result::BlockDensePropagator{T}, op::BlockDenseOperator, prop::BlockDensePropagator{T}) where T = _multiplication_23_blockdense!(result, op, prop)
+
+# Propagator-operator multiplication: result = prop * op
+multiply_prop_op!(result::BlockDensePropagator{T}, prop::BlockDensePropagator{T}, op::BlockDenseOperator) where T = _multiplication_32_blockdense!(result, prop, op)
+
+# Propagator-propagator multiplication: result = A * B
+multiply_prop_prop!(result::BlockDensePropagator{T}, A::BlockDensePropagator{T}, B::BlockDensePropagator{T}) where T = _multiplication_33_blockdense!(result, A, B)
+
+# Trace over spatial indices
+trace_prop!(result_buffer::Vector{<:Real}, prop::BlockDensePropagator) = _trace_3_blockdense!(result_buffer, prop)
+
+#=============================================================================
+# Product Buffer Allocation Helpers
+=============================================================================#
+
+"""
+    allocate_product_buffer(op::BlockDenseOperator, prop::BlockDensePropagator{T}, n_tau::Int) where T
+
+Allocate a buffer for the result of op * prop (operator × propagator multiplication).
+Determines which blocks exist based on quantum number conservation.
+"""
+function allocate_product_buffer(op::BlockDenseOperator, prop::BlockDensePropagator{T}, n_tau::Int) where T
+    basis = prop.basis
+    op_flux = OperatorFlux(combine_qn(op.flux.delta_qn, prop.flux.delta_qn))
+
+    result_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+    for ((tgt, mid), op_block) in op.blocks
+        for ((mid2, src), prop_block) in prop.blocks
+            if mid == mid2
+                key = (tgt, src)
+                if !haskey(result_blocks, key)
+                    dim_tgt = basis.sectors[tgt].dim
+                    dim_src = basis.sectors[src].dim
+                    result_blocks[key] = zeros(T, n_tau, dim_tgt, dim_src)
+                end
+            end
+        end
+    end
+    return BlockDensePropagator{T}(basis, op_flux, result_blocks)
+end
+
+"""
+    allocate_product_buffer(prop::BlockDensePropagator{T}, op::BlockDenseOperator, n_tau::Int) where T
+
+Allocate a buffer for the result of prop * op (propagator × operator multiplication).
+"""
+function allocate_product_buffer(prop::BlockDensePropagator{T}, op::BlockDenseOperator, n_tau::Int) where T
+    basis = prop.basis
+    op_flux = OperatorFlux(combine_qn(prop.flux.delta_qn, op.flux.delta_qn))
+
+    result_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+    for ((tgt, mid), prop_block) in prop.blocks
+        for ((mid2, src), op_block) in op.blocks
+            if mid == mid2
+                key = (tgt, src)
+                if !haskey(result_blocks, key)
+                    dim_tgt = basis.sectors[tgt].dim
+                    dim_src = basis.sectors[src].dim
+                    result_blocks[key] = zeros(T, n_tau, dim_tgt, dim_src)
+                end
+            end
+        end
+    end
+    return BlockDensePropagator{T}(basis, op_flux, result_blocks)
+end
+
+"""
+    allocate_product_buffer(A::BlockDensePropagator{T}, B::BlockDensePropagator{T}, n_tau::Int) where T
+
+Allocate a buffer for the result of A * B (propagator × propagator multiplication).
+"""
+function allocate_product_buffer(A::BlockDensePropagator{T}, B::BlockDensePropagator{T}, n_tau::Int) where T
+    basis = A.basis
+    result_flux = OperatorFlux(combine_qn(A.flux.delta_qn, B.flux.delta_qn))
+
+    result_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+    for ((tgt, mid), A_block) in A.blocks
+        for ((mid2, src), B_block) in B.blocks
+            if mid == mid2
+                key = (tgt, src)
+                if !haskey(result_blocks, key)
+                    dim_tgt = basis.sectors[tgt].dim
+                    dim_src = basis.sectors[src].dim
+                    result_blocks[key] = zeros(T, n_tau, dim_tgt, dim_src)
+                end
+            end
+        end
+    end
+    return BlockDensePropagator{T}(basis, result_flux, result_blocks)
 end

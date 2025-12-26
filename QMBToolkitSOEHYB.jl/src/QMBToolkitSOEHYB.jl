@@ -5,9 +5,12 @@ using MPI
 include("util/Params.jl")
 include("solver/HilbertSpaceFormat.jl")
 
+# Format interface - defines the abstract interface for format-agnostic operations
+include("format/interface.jl")
+
 # Propagator types - must be loaded before Data.jl and other files that use them
-include("dense/DensePropagator.jl")
-include("blockdense/BlockDensePropagator.jl")
+include("format/dense/DensePropagator.jl")
+include("format/blockdense/BlockDensePropagator.jl")
 
 include("solver/Data.jl")
 include("util/io.jl")
@@ -18,18 +21,18 @@ include("diagram/print_diagram.jl")
 include("diagram/gen_common.jl")
 
 # Dense operations
-include("dense/dlr.jl")
-include("dense/operator_ops.jl")
-include("dense/hybridization.jl")
-include("dense/convolution_eval.jl")
-include("dense/propagator.jl")
+include("format/dense/dlr.jl")
+include("format/dense/operator_ops.jl")
+include("format/dense/hybridization.jl")
+include("format/dense/convolution_eval.jl")
+include("format/dense/propagator.jl")
 
 # BlockDense operations
-include("blockdense/dlr.jl")
-include("blockdense/operator_ops.jl")
-include("blockdense/hybridization.jl")
-include("blockdense/propagator.jl")
-include("blockdense/convolution_eval.jl")
+include("format/blockdense/dlr.jl")
+include("format/blockdense/operator_ops.jl")
+include("format/blockdense/hybridization.jl")
+include("format/blockdense/propagator.jl")
+include("format/blockdense/convolution_eval.jl")
 
 include("diagram/eval_common.jl")
 include("diagram/gen_propagator.jl")

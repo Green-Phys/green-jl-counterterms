@@ -2,13 +2,13 @@
 Matrix multiplication operations for dense representation.
 
 These functions perform various matrix multiplications along the τ-dimension:
-- _multiplication_23: Operator-propagator multiplication (DenseOperator × DensePropagator)
-- _multiplication_32: Propagator-operator multiplication (DensePropagator × DenseOperator)
-- _multiplication_13: Vector-propagator multiplication (1D vector × DensePropagator, element-wise)
-- _multiplication_33: Propagator-propagator multiplication (DensePropagator × DensePropagator)
-- _trace_3: Trace operation over τ-slices of DensePropagator
+- _multiplication_23!: Operator-propagator multiplication (DenseOperator × DensePropagator)
+- _multiplication_32!: Propagator-operator multiplication (DensePropagator × DenseOperator)
+- _multiplication_13!: Vector-propagator multiplication (1D vector × DensePropagator, element-wise)
+- _multiplication_33!: Propagator-propagator multiplication (DensePropagator × DensePropagator)
+- _trace_3!: Trace operation over τ-slices of DensePropagator
 
-Each operation has both in-place (!) and allocating versions.
+All operations are in-place for efficiency.
 Works with both wrapper types (DenseOperator, DensePropagator) and raw arrays.
 """
 
@@ -34,22 +34,6 @@ function _multiplication_23!(temp_buffer::Array{T,3}, A::Array{T,2}, B::Array{T,
 end
 
 """
-    _multiplication_23(A::Array{T,2}, B::Array{T,3}) where T<:Number
-
-Allocating version: creates new array for result.
-"""
-function _multiplication_23(A::Array{T,2}, B::Array{T,3}) where T<:Number
-    n_tau = size(B, 1)
-    o1 = size(B, 2)
-    o2 = size(B, 3)
-    C = zeros(T, n_tau, o1, o2)
-    for k in 1:n_tau
-        C[k, :, :] = A * B[k, :, :]
-    end
-    return C
-end
-
-"""
     _multiplication_32!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,2}) where T<:Number
 
 In-place tensor-matrix multiplication: temp_buffer[τ,:,:] = A[τ,:,:] * B for all τ.
@@ -60,22 +44,6 @@ function _multiplication_32!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,
         mul!(view(temp_buffer, k, :, :), view(A, k, :, :), B)
     end
     return temp_buffer
-end
-
-"""
-    _multiplication_32(A::Array{T,3}, B::Array{T,2}) where T<:Number
-
-Allocating version.
-"""
-function _multiplication_32(A::Array{T,3}, B::Array{T,2}) where T<:Number
-    n_tau = size(A, 1)
-    o1 = size(A, 2)
-    o2 = size(A, 3)
-    C = zeros(T, n_tau, o1, o2)
-    for k in 1:n_tau
-        C[k, :, :] = A[k, :, :] * B
-    end
-    return C
 end
 
 """
@@ -92,22 +60,6 @@ function _multiplication_13!(temp_buffer::Array{T,3}, A::AbstractVector, B::Arra
 end
 
 """
-    _multiplication_13(A::Array{<:Number,1}, B::Array{T,3}) where T<:Number
-
-Allocating version.
-"""
-function _multiplication_13(A::Array{<:Number,1}, B::Array{T,3}) where T<:Number
-    n_tau = size(B, 1)
-    o1 = size(B, 2)
-    o2 = size(B, 3)
-    C = zeros(T, n_tau, o1, o2)
-    for k in 1:n_tau
-        C[k, :, :] = A[k] .* B[k, :, :]
-    end
-    return C
-end
-
-"""
     _multiplication_33!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,3}) where T<:Number
 
 In-place tensor-tensor multiplication: temp_buffer[τ,:,:] = A[τ,:,:] * B[τ,:,:].
@@ -120,43 +72,9 @@ function _multiplication_33!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,
     return temp_buffer
 end
 
-"""
-    _multiplication_33(A::Array{T,3}, B::Array{T,3}) where T<:Number
-
-Allocating version.
-"""
-function _multiplication_33(A::Array{T,3}, B::Array{T,3}) where T<:Number
-    n_tau = size(B, 1)
-    o1 = size(B, 2)
-    o2 = size(B, 3)
-    C = zeros(T, n_tau, o1, o2)
-    for k in 1:n_tau
-        C[k, :, :] = A[k, :, :] * B[k, :, :]
-    end
-    return C
-end
-
 # ============================================================================
 # Trace Operations
 # ============================================================================
-
-"""
-    _trace_3(A::Array{T,3}) where T<:Number
-
-Compute trace of each τ-slice: result[τ] = tr(A[τ,:,:]).
-"""
-function _trace_3(A::Array{T,3}) where T<:Number
-    n_tau = size(A, 1)
-    o1 = size(A, 2)
-    o2 = size(A, 3)
-    o1 == o2 || error("Matrix to be traced must be square: got dimensions $o1 x $o2")
-    TReal = real(T)  # Trace is always real even for complex matrices
-    trace_vals = zeros(TReal, n_tau)
-    for k in 1:n_tau
-        trace_vals[k] = tr(A[k, :, :])
-    end
-    return trace_vals
-end
 
 """
     _trace_3!(trace_buffer::Vector{<:Real}, A::Array{<:Number,3})
@@ -219,19 +137,58 @@ function _multiplication_33!(temp_buffer::DensePropagator{T}, A::DensePropagator
 end
 
 """
-    _trace_3(A::DensePropagator{T}) where T<:Number
-
-Compute trace of each τ-slice: result[τ] = tr(A[τ,:,:]).
-"""
-function _trace_3(A::DensePropagator{T}) where T<:Number
-    return _trace_3(A.data)
-end
-
-"""
     _trace_3!(trace_buffer::Vector{<:Real}, A::DensePropagator{<:Number})
 
 In-place version: writes trace results to trace_buffer.
 """
 function _trace_3!(trace_buffer::Vector{<:Real}, A::DensePropagator{<:Number})
     return _trace_3!(trace_buffer, A.data)
+end
+
+# ============================================================================
+# Interface Implementations
+# ============================================================================
+
+# Operator-propagator multiplication: result = op * prop
+multiply_op_prop!(result::DensePropagator{T}, op::DenseOperator, prop::DensePropagator{T}) where T = _multiplication_23!(result, op, prop)
+
+# Propagator-operator multiplication: result = prop * op
+multiply_prop_op!(result::DensePropagator{T}, prop::DensePropagator{T}, op::DenseOperator) where T = _multiplication_32!(result, prop, op)
+
+# Propagator-propagator multiplication: result = A * B
+multiply_prop_prop!(result::DensePropagator{T}, A::DensePropagator{T}, B::DensePropagator{T}) where T = _multiplication_33!(result, A, B)
+
+# Trace over spatial indices
+trace_prop!(result_buffer::Vector{<:Real}, prop::DensePropagator) = _trace_3!(result_buffer, prop)
+
+#=============================================================================
+# Product Buffer Allocation Helpers (Dense format - simple pre-allocation)
+=============================================================================#
+
+"""
+    allocate_product_buffer(op::DenseOperator, prop::DensePropagator{T}, n_tau::Int) where T
+
+Allocate a buffer for the result of op * prop.
+For dense format, just allocate a zero array of appropriate size.
+"""
+function allocate_product_buffer(op::DenseOperator, prop::DensePropagator{T}, n_tau::Int) where T
+    return zeros(DensePropagator{T}, n_tau, size(op.data, 1), size(prop.data, 3))
+end
+
+"""
+    allocate_product_buffer(prop::DensePropagator{T}, op::DenseOperator, n_tau::Int) where T
+
+Allocate a buffer for the result of prop * op.
+"""
+function allocate_product_buffer(prop::DensePropagator{T}, op::DenseOperator, n_tau::Int) where T
+    return zeros(DensePropagator{T}, n_tau, size(prop.data, 2), size(op.data, 2))
+end
+
+"""
+    allocate_product_buffer(A::DensePropagator{T}, B::DensePropagator{T}, n_tau::Int) where T
+
+Allocate a buffer for the result of A * B.
+"""
+function allocate_product_buffer(A::DensePropagator{T}, B::DensePropagator{T}, n_tau::Int) where T
+    return zeros(DensePropagator{T}, n_tau, size(A.data, 2), size(B.data, 3))
 end

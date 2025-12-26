@@ -63,49 +63,9 @@ depending on prior operator multiplications in the diagram evaluation.
     # For NoHyb, do nothing (target unchanged)
 end
 
-"""
-    apply_hybridization_blockdense(hyb, result, model_data; is_reverse=false)
+#=============================================================================
+# Interface Implementations
+=============================================================================#
 
-Allocating version: creates a new BlockDensePropagator for the result.
-
-# Arguments
-- `hyb::HybridizationState`: Hybridization state
-- `result::BlockDensePropagator{T}`: Input array
-- `model_data::ModelData{T, BlockDenseFormat}`: Model data containing K± values
-- `is_reverse::Bool=false`: When true, swaps KPlus ↔ KMinus
-
-# Returns
-- New BlockDensePropagator with hybridization applied, or original array if NoHyb
-"""
-@inline function apply_hybridization_blockdense(hyb::HybridizationState, result::BlockDensePropagator{T}, model_data::ModelData{T, BlockDenseFormat}; is_reverse::Bool=false) where {T<:Number}
-    index = hyb.index
-    if index != 0  # Not NoHyb
-        # XOR determines if we should use KPlus: (positive and not reverse) OR (negative and reverse)
-        use_kplus = (index > 0) ⊻ is_reverse
-        l = abs(index)
-        vec = use_kplus ? @view(model_data.hyb.KPlus_on_DLRtau[:, l]) :
-                          @view(model_data.hyb.KMinus_on_DLRtau[:, l])
-
-        # Create new blocks with hybridization applied
-        # Note: Hybridization is a scalar multiplication, so it applies to all blocks
-        new_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
-
-        for (block_key, result_block) in result.blocks
-            n_tau = size(result_block, 1)
-            dim_target = size(result_block, 2)
-            dim_source = size(result_block, 3)
-            new_block = zeros(T, n_tau, dim_target, dim_source)
-
-            # Element-wise multiplication: new_block[k, :, :] = vec[k] * result_block[k, :, :]
-            @inbounds for k in 1:n_tau
-                @views new_block[k, :, :] .= vec[k] .* result_block[k, :, :]
-            end
-
-            new_blocks[block_key] = new_block
-        end
-
-        return BlockDensePropagator{T}(result.basis, result.flux, new_blocks)
-    else
-        return result
-    end
-end
+# Hybridization application - interface version
+apply_hybridization_inplace!(temp_buffer::BlockDensePropagator{T}, target::BlockDensePropagator{T}, hyb::HybridizationState, model_data::ModelData{T, BlockDenseFormat}; is_reverse::Bool=false) where T = apply_hybridization_inplace_blockdense!(temp_buffer, target, hyb, model_data; is_reverse=is_reverse)

@@ -221,3 +221,71 @@ function BlockDenseDLRPropagator(::Nothing, coeffs::BlockDensePropagator{T}) whe
     return BlockDenseDLRPropagator{T}(vals, coeffs)
 end
 
+#=============================================================================
+# Interface Implementations
+=============================================================================#
+
+"""
+    zeros_like(template::BlockDensePropagator{T}) where T
+
+Create a zero-initialized BlockDensePropagator with the same structure as template.
+"""
+function zeros_like(template::BlockDensePropagator{T}) where T
+    new_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+    for (key, block) in template.blocks
+        new_blocks[key] = zeros(T, size(block)...)
+    end
+    return BlockDensePropagator{T}(template.basis, template.flux, new_blocks)
+end
+
+"""
+    get_data(prop::BlockDensePropagator)
+
+Get the underlying blocks dictionary.
+"""
+get_data(prop::BlockDensePropagator) = prop.blocks
+
+#=============================================================================
+# MPI Operations
+=============================================================================#
+
+"""
+    create_local_accumulator(::Type{BlockDensePropagator{T}}, template::BlockDensePropagator{T}) where T
+
+Create a zero-initialized local accumulator for MPI reduction.
+Returns a BlockDensePropagator with same structure as template.
+"""
+function create_local_accumulator(::Type{BlockDensePropagator{T}}, template::BlockDensePropagator{T}) where T
+    return zeros_like(template)
+end
+
+"""
+    accumulate_contribution!(accumulator::BlockDensePropagator{T}, prefactor, contribution::BlockDensePropagator{T}) where T
+
+Add scaled contribution to accumulator: accumulator += prefactor * contribution
+"""
+function accumulate_contribution!(accumulator::BlockDensePropagator{T}, prefactor, contribution::BlockDensePropagator{T}) where T
+    add_scaled!(accumulator, prefactor, contribution)
+    return accumulator
+end
+
+"""
+    mpi_reduce_and_add!(propagator::BlockDenseDLRPropagator{T}, local_result::BlockDensePropagator{T}, comm::MPI.Comm) where T
+
+Perform MPI Allreduce on local_result block-by-block and add to propagator.vals.
+"""
+function mpi_reduce_and_add!(propagator::BlockDenseDLRPropagator{T}, local_result::BlockDensePropagator{T}, comm::MPI.Comm) where T
+    for (key, local_block) in local_result.blocks
+        # Reduce this block across all ranks
+        global_block = MPI.Allreduce(local_block, MPI.SUM, comm)
+
+        # Add to propagator (create block if it doesn't exist)
+        if haskey(propagator.vals.blocks, key)
+            propagator.vals.blocks[key] .+= global_block
+        else
+            propagator.vals.blocks[key] = copy(global_block)
+        end
+    end
+    return propagator
+end
+

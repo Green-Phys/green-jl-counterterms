@@ -304,3 +304,16 @@ function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNod
 
     return result
 end
+
+#=============================================================================
+# Interface Implementations
+=============================================================================#
+
+# get_operator - interface alias
+get_operator(node::BackBoneNode, model_data::ModelData{T, BlockDenseFormat}) where T = get_operator_blockdense(node, model_data)
+
+# multiplication_convolution - interface aliases
+# Note: These dispatch on the propagator type (BlockDensePropagator)
+multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}, buffers::PropagatorConvolutionBuffersBlockDense{T}) where T = multiplication_convolution_blockdense(nodes, edges, dlr_grid, model_data, propagator, buffers)
+
+multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}, buffers::PropagatorConvolutionBuffersBlockDense{T}) where T = multiplication_convolution_reverse_blockdense(nodes, edges, dlr_grid, model_data, propagator, buffers)

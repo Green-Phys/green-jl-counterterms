@@ -44,30 +44,3 @@ The XOR logic `(index > 0) ⊻ is_reverse` determines which K to use:
     # For NoHyb, do nothing (target unchanged)
 end
 
-"""
-    apply_hybridization(hyb, result, model_data; is_reverse=false)
-
-Allocating version: creates a new propagator for the result.
-
-# Arguments
-- `hyb::HybridizationState`: Hybridization state
-- `result::DensePropagator{T}`: Input propagator
-- `model_data::ModelData{T}`: Model data containing K± values
-- `is_reverse::Bool=false`: When true, swaps KPlus ↔ KMinus
-
-# Returns
-- New DensePropagator with hybridization applied, or original propagator if NoHyb
-"""
-@inline function apply_hybridization(hyb::HybridizationState, result::DensePropagator{T}, model_data::ModelData{T}; is_reverse::Bool=false) where {T<:Number}
-    index = hyb.index
-    if index != 0  # Not NoHyb
-        # XOR determines if we should use KPlus: (positive and not reverse) OR (negative and reverse)
-        use_kplus = (index > 0) ⊻ is_reverse
-        l = abs(index)
-        data = use_kplus ? _multiplication_13(model_data.hyb.KPlus_on_DLRtau[:, l], result.data) :
-                           _multiplication_13(model_data.hyb.KMinus_on_DLRtau[:, l], result.data)
-        return DensePropagator{T}(data)
-    else
-        return result
-    end
-end

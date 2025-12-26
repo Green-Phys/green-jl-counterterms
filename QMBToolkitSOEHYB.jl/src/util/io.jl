@@ -172,9 +172,9 @@ function save_data(
         green_by_order_group = create_group(file, "green/by_order")
         for (i, green_at_order_dlr) in enumerate(calc_data.green_by_order)
             # Convert from DLR grid to DLR coefficients
-            green_coeffs = tau2dlr(model_data.dlr_grid, green_at_order_dlr.data, model_data.dlr_grid.tau)
+            green_coeffs = QMBToolkitDLR.tau2dlr(model_data.dlr_grid, green_at_order_dlr.data, model_data.dlr_grid.tau)
             # Interpolate to linear grid
-            green_at_order_linear = dlr2tau(model_data.dlr_grid, green_coeffs, calc_data.tau_linear_grid)
+            green_at_order_linear = QMBToolkitDLR.dlr2tau(model_data.dlr_grid, green_coeffs, calc_data.tau_linear_grid)
             green_by_order_group["green_order_$i"] = green_at_order_linear
         end
 
@@ -212,7 +212,7 @@ function save_results(solver_data::SolverData, solver_params::SolverParams, tota
     # Compute linear grid and store in CalculationData
     # IMPORTANT: This must be done BEFORE calling save_data since save_data uses the linear grid
     solver_data.calc.tau_linear_grid = collect(LinRange(0.0, solver_data.model.beta, solver_params.green.save_linear_size))
-    green_linear_data = dlr2tau(solver_data.model.dlr_grid, solver_data.calc.green.coeffs.data, solver_data.calc.tau_linear_grid)
+    green_linear_data = QMBToolkitDLR.dlr2tau(solver_data.model.dlr_grid, solver_data.calc.green.coeffs.data, solver_data.calc.tau_linear_grid)
     solver_data.calc.green_linear_grid = DensePropagator{eltype(green_linear_data)}(green_linear_data)
 
     # Print summary

@@ -142,26 +142,26 @@ get_data(prop::DensePropagator) = prop.data
 Create a zero-initialized local accumulator for MPI reduction.
 """
 function create_local_accumulator(::Type{DensePropagator{T}}, template::DensePropagator{T}) where T
-    return zeros(T, size(template.data))
+    return zeros_like(template)
 end
 
 """
-    accumulate_contribution!(accumulator::Array{T}, prefactor, contribution::DensePropagator{T}) where T
+    accumulate_contribution!(accumulator::DensePropagator{T}, prefactor, contribution::DensePropagator{T}) where T
 
-Add scaled contribution to accumulator: accumulator += prefactor * contribution.data
+Add scaled contribution to accumulator: accumulator += prefactor * contribution
 """
-function accumulate_contribution!(accumulator::Array{T}, prefactor, contribution::DensePropagator{T}) where T
-    accumulator .+= prefactor .* contribution.data
+function accumulate_contribution!(accumulator::DensePropagator{T}, prefactor, contribution::DensePropagator{T}) where T
+    accumulator.data .+= prefactor .* contribution.data
     return accumulator
 end
 
 """
-    mpi_reduce_and_add!(propagator::DenseDLRPropagator{T}, local_result::Array{T}, comm::MPI.Comm) where T
+    mpi_reduce_and_add!(propagator::DenseDLRPropagator{T}, local_result::DensePropagator{T}, comm::MPI.Comm) where T
 
 Perform MPI Allreduce on local_result and add to propagator.vals.
 """
-function mpi_reduce_and_add!(propagator::DenseDLRPropagator{T}, local_result::Array{T}, comm::MPI.Comm) where T
-    order_result = MPI.Allreduce(local_result, MPI.SUM, comm)
+function mpi_reduce_and_add!(propagator::DenseDLRPropagator{T}, local_result::DensePropagator{T}, comm::MPI.Comm) where T
+    order_result = MPI.Allreduce(local_result.data, MPI.SUM, comm)
     propagator.vals.data .+= order_result
     return propagator
 end

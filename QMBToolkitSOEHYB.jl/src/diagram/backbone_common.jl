@@ -25,19 +25,17 @@ Appropriate operator based on node type:
 - `:c` with bar_index≠-1: SOE-transformed annihilation operator
 """
 function get_operator(node::BackBoneNode, model_data::ModelData)
-    # Use interface accessors - they dispatch based on format
-    cre_opts = get_cre_opts(model_data)
-    ann_opts = get_ann_opts(model_data)
-    cre_opts_bar = get_cre_opts_bar(model_data)
-    ann_opts_bar = get_ann_opts_bar(model_data)
-
-    if node.opt_type == :cdag && node.bar_index == -1
-        return cre_opts[node.flavor]
-    elseif node.opt_type == :c && node.bar_index == -1
-        return ann_opts[node.flavor]
-    elseif node.opt_type == :cdag && node.bar_index != -1
-        return cre_opts_bar[node.flavor, node.bar_index]
-    elseif node.opt_type == :c && node.bar_index != -1
-        return ann_opts_bar[node.flavor, node.bar_index]
+    if node.opt_type == :cdag
+        if node.bar_index == -1
+            return get_cre_opts(model_data)[node.flavor]
+        else
+            return get_cre_opts_bar(model_data)[node.flavor, node.bar_index]
+        end
+    else  # node.opt_type == :c
+        if node.bar_index == -1
+            return get_ann_opts(model_data)[node.flavor]
+        else
+            return get_ann_opts_bar(model_data)[node.flavor, node.bar_index]
+        end
     end
 end

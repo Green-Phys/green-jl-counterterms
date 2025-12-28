@@ -2,44 +2,12 @@
 Convolution evaluation for BlockDense backbone diagrams.
 
 Block-aware implementation that only computes blocks allowed by quantum number conservation.
+
+Note: get_operator is defined in diagram/backbone_common.jl as a format-agnostic function.
 """
 
 using QMBToolkitED.BlockDense
 using QMBToolkitDLR
-
-"""
-    get_operator_blockdense(node::BackBoneNode, model_data::ModelData{T, BlockDenseFormat}) where T
-
-Get the BlockDenseOperator for a given node from model data.
-
-# Arguments
-- `node::BackBoneNode`: Node containing operator type and indices
-- `model_data::ModelData{T, BlockDenseFormat}`: Model data with BlockDense operator matrices
-
-# Returns
-Appropriate BlockDenseOperator based on node type:
-- `:cdag` with bar_index=-1: Creation operator from exact diagonalization
-- `:c` with bar_index=-1: Annihilation operator from exact diagonalization
-- `:cdag` with bar_index≠-1: SOE-transformed creation operator
-- `:c` with bar_index≠-1: SOE-transformed annihilation operator
-"""
-function get_operator_blockdense(node::BackBoneNode, model_data::ModelData{T, BlockDenseFormat}) where T
-    # Cache accessor results for efficiency
-    cre_opts = get_cre_opts(model_data)
-    ann_opts = get_ann_opts(model_data)
-    cre_opts_bar = get_cre_opts_bar(model_data)
-    ann_opts_bar = get_ann_opts_bar(model_data)
-
-    if node.opt_type == :cdag && node.bar_index == -1
-        return cre_opts[node.flavor]
-    elseif node.opt_type == :c && node.bar_index == -1
-        return ann_opts[node.flavor]
-    elseif node.opt_type == :cdag && node.bar_index != -1
-        return cre_opts_bar[node.flavor, node.bar_index]
-    elseif node.opt_type == :c && node.bar_index != -1
-        return ann_opts_bar[node.flavor, node.bar_index]
-    end
-end
 
 """
     multiplication_convolution_blockdense(nodes, edges, dlr_grid, model_data, propagator, buffers)
@@ -104,7 +72,7 @@ function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edge
         # Multiply with the next node operator
         node = nodes[i+1]
         if node.opt_type !== :empty
-            op_matrix = get_operator_blockdense(node, model_data)
+            op_matrix = get_operator(node, model_data)
 
             # Need to create temp buffer with correct flux for operator multiplication
             op_flux = OperatorFlux(combine_qn(op_matrix.flux.delta_qn, result.flux.delta_qn))
@@ -227,7 +195,7 @@ function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNod
 
         node = nodes[i]
         if node.opt_type !== :empty
-            op_matrix = get_operator_blockdense(node, model_data)
+            op_matrix = get_operator(node, model_data)
 
             # Need to create temp buffer with correct flux for operator multiplication
             op_flux = OperatorFlux(combine_qn(result.flux.delta_qn, op_matrix.flux.delta_qn))
@@ -308,9 +276,6 @@ end
 #=============================================================================
 # Interface Implementations
 =============================================================================#
-
-# get_operator - interface alias
-get_operator(node::BackBoneNode, model_data::ModelData{T, BlockDenseFormat}) where T = get_operator_blockdense(node, model_data)
 
 # multiplication_convolution - interface aliases
 # Note: These dispatch on the propagator type (BlockDensePropagator)

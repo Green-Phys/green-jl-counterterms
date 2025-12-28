@@ -16,18 +16,24 @@ Reused across diagrams to avoid allocations during convolution operations.
 - `operator_product_buffer`: General-purpose buffer for operator multiplications
 - `backbone_accumulator`: Accumulates the backbone result through multiplication and convolution
 - `convolution_operand_buffer`: Prepares the operand for convolution operations
+- `dlr_buffer_1`: Buffer for DLR coefficients (used in tau2dlr transformation)
+- `dlr_buffer_2`: Buffer for DLR coefficients (used in tau2dlr transformation)
 """
 struct PropagatorConvolutionBuffers{T<:Number}
     operator_product_buffer::DensePropagator{T}
     backbone_accumulator::DensePropagator{T}
     convolution_operand_buffer::DensePropagator{T}
+    dlr_buffer_1::DensePropagator{T}
+    dlr_buffer_2::DensePropagator{T}
 end
 
-function PropagatorConvolutionBuffers{T}(n_tau::Int, n_fock::Int) where T<:Number
+function PropagatorConvolutionBuffers{T}(n_tau::Int, n_fock::Int, n_dlr::Int) where T<:Number
     return PropagatorConvolutionBuffers{T}(
         zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
         zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
-        zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
+        zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
+        zeros(DensePropagator{T}, n_dlr, n_fock, n_fock),
+        zeros(DensePropagator{T}, n_dlr, n_fock, n_fock)
     )
 end
 
@@ -49,7 +55,8 @@ This is a format-specific function called by the format-independent
 function allocate_propagator_buffers(solver_data::SolverData{T, DenseFormat}) where {T<:Number}
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_fock = solver_data.model.n_fock
-    return PropagatorConvolutionBuffers{T}(n_tau, n_fock)
+    n_dlr = solver_data.model.dlr_grid.size  # Number of DLR basis functions
+    return PropagatorConvolutionBuffers{T}(n_tau, n_fock, n_dlr)
 end
 
 
@@ -79,8 +86,6 @@ function eval_propagator_backbone(diagram::BackBone, solver_data::SolverData{T, 
         diagram.nodes, diagram.edges,
         solver_data.model.dlr_grid, solver_data.model,
         bare_propagator.vals,
-        buffers.operator_product_buffer,
-        buffers.backbone_accumulator,
-        buffers.convolution_operand_buffer
+        buffers
     )
 end

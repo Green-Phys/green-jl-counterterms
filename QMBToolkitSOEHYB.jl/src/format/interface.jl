@@ -20,7 +20,6 @@ written once and work with any format.
 - `do_convolution_dlr2tau!(workspace, dlr_grid, cache, F_dlr, G_dlr)`: DLR convolution
 
 ## Operator Operations
-- `get_operator(node, model_data)`: Get operator from BackBoneNode specification
 - `multiply_op_prop!(result, op, prop)`: result = op * prop (2D operator × 3D propagator)
 - `multiply_prop_op!(result, prop, op)`: result = prop * op (3D propagator × 2D operator)
 - `multiply_prop_prop!(result, A, B)`: result = A * B (3D × 3D propagator multiplication)
@@ -69,8 +68,7 @@ function do_reflection_tau2tau end
 function extract_at_tau end
 function do_convolution_dlr2tau! end
 
-# Operator Operations
-function get_operator end
+# Operator Operations (get_operator is in diagram/backbone_common.jl)
 function multiply_op_prop! end
 function multiply_prop_op! end
 function multiply_prop_prop! end

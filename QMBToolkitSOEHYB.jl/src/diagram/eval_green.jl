@@ -27,14 +27,13 @@ Allocate evaluation buffers for dense format Green's function computation.
 function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where T
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_fock = solver_data.model.n_fock
+    n_dlr = solver_data.model.dlr_grid.size
 
-    # Pre-allocate all buffers for dense format
+    # Pre-allocate buffers for forward and reverse backbone evaluation
+    # Each uses a PropagatorConvolutionBuffers for the convolution operations
     conv_buffers = (
-        fwd_accumulator = zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
-        fwd_operand = zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
-        rev_accumulator = zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
-        rev_operand = zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
-        operator_buffer = zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
+        fwd_buffers = PropagatorConvolutionBuffers{T}(n_tau, n_fock, n_dlr),
+        rev_buffers = PropagatorConvolutionBuffers{T}(n_tau, n_fock, n_dlr),
         ann_product = zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
         final_product = zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
     )
@@ -193,9 +192,7 @@ function eval_forward_backbone(diagram::BackBone, split_point::Int, solver_data:
         solver_data.model.dlr_grid,
         solver_data.model,
         propagator,
-        buffers.convolution_buffers.operator_buffer,
-        buffers.convolution_buffers.fwd_accumulator,
-        buffers.convolution_buffers.fwd_operand
+        buffers.convolution_buffers.fwd_buffers
     )
 end
 
@@ -223,9 +220,7 @@ function eval_reverse_backbone(diagram::BackBone, split_point::Int, solver_data:
         solver_data.model.dlr_grid,
         solver_data.model,
         propagator,
-        buffers.convolution_buffers.operator_buffer,
-        buffers.convolution_buffers.rev_accumulator,
-        buffers.convolution_buffers.rev_operand
+        buffers.convolution_buffers.rev_buffers
     )
 end
 

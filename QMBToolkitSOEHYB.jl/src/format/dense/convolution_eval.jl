@@ -3,47 +3,15 @@ Backbone diagram convolution evaluation for dense representation.
 
 Functions for evaluating diagram contributions through multiplication and convolution operations.
 These implement the core diagram evaluation logic for propagator and Green's function expansions.
+
+Note: get_operator is defined in diagram/backbone_common.jl as a format-agnostic function.
 """
 
 using QMBToolkitDLR
 using QMBToolkitED.Dense: DenseOperator
 
 """
-    get_operator(node::BackBoneNode, model_data::ModelData)
-
-Get the DenseOperator for a given node from model data.
-
-# Arguments
-- `node::BackBoneNode`: Node containing operator type and indices
-- `model_data::ModelData`: Model data with operators
-
-# Returns
-Appropriate DenseOperator based on node type:
-- `:cdag` with bar_index=-1: Creation operator from exact diagonalization
-- `:c` with bar_index=-1: Annihilation operator from exact diagonalization
-- `:cdag` with bar_index≠-1: SOE-transformed creation operator
-- `:c` with bar_index≠-1: SOE-transformed annihilation operator
-"""
-function get_operator(node::BackBoneNode, model_data::ModelData)::DenseOperator
-    # Cache accessor results for efficiency
-    cre_opts = get_cre_opts(model_data)
-    ann_opts = get_ann_opts(model_data)
-    cre_opts_bar = get_cre_opts_bar(model_data)
-    ann_opts_bar = get_ann_opts_bar(model_data)
-
-    if node.opt_type == :cdag && node.bar_index == -1
-        return cre_opts[node.flavor]
-    elseif node.opt_type == :c && node.bar_index == -1
-        return ann_opts[node.flavor]
-    elseif node.opt_type == :cdag && node.bar_index != -1
-        return cre_opts_bar[node.flavor, node.bar_index]
-    elseif node.opt_type == :c && node.bar_index != -1
-        return ann_opts_bar[node.flavor, node.bar_index]
-    end
-end
-
-"""
-    multiplication_convolution(nodes, edges, dlr_grid, model_data, propagator, temp_buffer, result_buffer, convolution_buffer)
+    multiplication_convolution(nodes, edges, dlr_grid, model_data, propagator, buffers)
 
 Calculate backbone diagram contribution via multiplication and convolution from right to left.
 
@@ -65,57 +33,67 @@ Starting from the rightmost edge, accumulates:
 - `dlr_grid::DLRGrid`: DLR grid for τ-space operations
 - `model_data::ModelData{T}`: Model data with operators and hybridization
 - `propagator::DensePropagator{T}`: Propagator on DLR τ-grid
-- `temp_buffer::DensePropagator{T}`: Pre-allocated buffer for in-place matrix operations
-- `result_buffer::DensePropagator{T}`: Pre-allocated working buffer for accumulated result
-- `convolution_buffer::DensePropagator{T}`: Pre-allocated working buffer for convolution operands
+- `buffers::PropagatorConvolutionBuffers{T}`: Pre-allocated work buffers
 
 # Returns
-- `DensePropagator{T}`: Diagram contribution on DLR τ-grid
+- `DensePropagator{T}`: Diagram contribution on DLR τ-grid (returns reference to buffers.backbone_accumulator)
 
 # Notes
 Pre-allocated buffers are reused across all diagram evaluations for efficiency.
+All operations are in-place to minimize allocations.
 """
-function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T}, propagator::DensePropagator{T}, temp_buffer::DensePropagator{T}, result_buffer::DensePropagator{T}, convolution_buffer::DensePropagator{T}) where {T<:Number}
+function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T}, propagator::DensePropagator{T}, buffers::PropagatorConvolutionBuffers{T}) where {T<:Number}
     length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
+
+    # Extract buffers
+    temp_buffer = buffers.operator_product_buffer
+    result_buffer = buffers.backbone_accumulator
+    convolution_buffer = buffers.convolution_operand_buffer
+    dlr_buffer_1 = buffers.dlr_buffer_1
+    dlr_buffer_2 = buffers.dlr_buffer_2
+
     # calculate the multiplication and convolution from right to left ignoring the two boundary nodes
     # |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
     # nodes and edges are stored from 1 to M
     copyto!(result_buffer, propagator)
-    result = result_buffer
+
     for i in 1:length(edges)-1
         edge = edges[i]
         if i == 1
             for hyb in edge.attached_hybs
-                apply_hybridization_inplace!(temp_buffer, result, hyb, model_data, is_reverse=false)
+                apply_hybridization_inplace!(temp_buffer, result_buffer, hyb, model_data, is_reverse=false)
             end
         end
         # multiply with the next node operator
         node = nodes[i+1]
         if node.opt_type !== :empty
             op = get_operator(node, model_data)
-            _multiplication_23!(temp_buffer, op, result)
-            copyto!(result, temp_buffer)
+            _multiplication_23!(temp_buffer, op, result_buffer)
+            copyto!(result_buffer, temp_buffer)
         end
 
         # Apply hybridization attached to the node
-        apply_hybridization_inplace!(temp_buffer, result, node.attached_hyb, model_data, is_reverse=false)
+        apply_hybridization_inplace!(temp_buffer, result_buffer, node.attached_hyb, model_data, is_reverse=false)
 
         # calculate the convolution with the next edge
         edge_plus1 = edges[i+1]
         copyto!(convolution_buffer, propagator)
-        to_be_convoluted = convolution_buffer
         for hyb in edge_plus1.attached_hybs
-            apply_hybridization_inplace!(temp_buffer, to_be_convoluted, hyb, model_data, is_reverse=false)
+            apply_hybridization_inplace!(temp_buffer, convolution_buffer, hyb, model_data, is_reverse=false)
         end
 
-        result = do_convolution_dlr2tau_dense!(model_data.convolution_workspace, dlr_grid, model_data.kernel_cache, tau2dlr_dense(dlr_grid, to_be_convoluted, dlr_grid.tau), tau2dlr_dense(dlr_grid, result, dlr_grid.tau))
+        # Transform to DLR (in-place) and perform convolution (result written to temp_buffer, then copied back)
+        tau2dlr_dense!(dlr_buffer_1, dlr_grid, convolution_buffer, dlr_grid.tau)
+        tau2dlr_dense!(dlr_buffer_2, dlr_grid, result_buffer, dlr_grid.tau)
+        do_convolution_dlr2tau_dense!(result_buffer, model_data.convolution_workspace, dlr_grid, model_data.kernel_cache, dlr_buffer_1, dlr_buffer_2)
     end
-    return result
+
+    return result_buffer
 end
 
 
 """
-    multiplication_convolution_reverse(nodes, edges, dlr_grid, model_data, propagator, temp_buffer, result_buffer, convolution_buffer)
+    multiplication_convolution_reverse(nodes, edges, dlr_grid, model_data, propagator, buffers)
 
 Calculate backbone diagram contribution via multiplication and convolution from left to right.
 
@@ -131,42 +109,54 @@ Similar to `multiplication_convolution` but traverses in reverse direction with 
 Same as `multiplication_convolution`.
 
 # Returns
-- `DensePropagator{T}`: Diagram contribution on DLR τ-grid
+- `DensePropagator{T}`: Diagram contribution on DLR τ-grid (returns reference to buffers.backbone_accumulator)
 """
-function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T}, propagator::DensePropagator{T}, temp_buffer::DensePropagator{T}, result_buffer::DensePropagator{T}, convolution_buffer::DensePropagator{T}) where {T<:Number}
+function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T}, propagator::DensePropagator{T}, buffers::PropagatorConvolutionBuffers{T}) where {T<:Number}
     length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
+
+    # Extract buffers
+    temp_buffer = buffers.operator_product_buffer
+    result_buffer = buffers.backbone_accumulator
+    convolution_buffer = buffers.convolution_operand_buffer
+    dlr_buffer_1 = buffers.dlr_buffer_1
+    dlr_buffer_2 = buffers.dlr_buffer_2
+
     # calculate the multiplication and convolution from left to right ignoring the two boundary nodes (the matrix multiplications is done in the original order)
     # |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
     # nodes and edges are stored from 1 to M
     copyto!(result_buffer, propagator)
-    result = result_buffer
+
     for i in length(edges):-1:2
         edge = edges[i]
         if i == length(edges)
             for hyb in edge.attached_hybs
-                apply_hybridization_inplace!(temp_buffer, result, hyb, model_data, is_reverse=false)
+                apply_hybridization_inplace!(temp_buffer, result_buffer, hyb, model_data, is_reverse=false)
             end
         end
         node = nodes[i]
         if node.opt_type !== :empty
             op = get_operator(node, model_data)
-            _multiplication_32!(temp_buffer, result, op)
-            copyto!(result, temp_buffer)
+            _multiplication_32!(temp_buffer, result_buffer, op)
+            copyto!(result_buffer, temp_buffer)
         end
 
         # Apply hybridization with is_reverse=true (swaps K+ ↔ K-)
-        apply_hybridization_inplace!(temp_buffer, result, node.attached_hyb, model_data, is_reverse=true)
+        apply_hybridization_inplace!(temp_buffer, result_buffer, node.attached_hyb, model_data, is_reverse=true)
 
         # calculate the convolution with the next edge
         edge_minus1 = edges[i-1]
         copyto!(convolution_buffer, propagator)
-        to_be_convoluted = convolution_buffer
         for hyb in edge_minus1.attached_hybs
-            apply_hybridization_inplace!(temp_buffer, to_be_convoluted, hyb, model_data, is_reverse=false)
+            apply_hybridization_inplace!(temp_buffer, convolution_buffer, hyb, model_data, is_reverse=false)
         end
 
-        result = do_convolution_dlr2tau_dense!(model_data.convolution_workspace, dlr_grid, model_data.kernel_cache, tau2dlr_dense(dlr_grid, result, dlr_grid.tau), tau2dlr_dense(dlr_grid, to_be_convoluted, dlr_grid.tau))
+        # Transform to DLR (in-place) and perform convolution
+        # Note: order is reversed compared to forward direction
+        tau2dlr_dense!(dlr_buffer_1, dlr_grid, result_buffer, dlr_grid.tau)
+        tau2dlr_dense!(dlr_buffer_2, dlr_grid, convolution_buffer, dlr_grid.tau)
+        do_convolution_dlr2tau_dense!(result_buffer, model_data.convolution_workspace, dlr_grid, model_data.kernel_cache, dlr_buffer_1, dlr_buffer_2)
     end
-    return result
+
+    return result_buffer
 end
 

@@ -61,42 +61,6 @@ end
 =============================================================================#
 
 """
-    Base.:+(A::BlockDensePropagator{T}, B::BlockDensePropagator{T}) where T
-
-Add two BlockDensePropagator with the same flux.
-"""
-function Base.:+(A::BlockDensePropagator{T}, B::BlockDensePropagator{T}) where T
-    @assert A.basis === B.basis "Arrays must have same basis"
-    @assert A.flux.delta_qn == B.flux.delta_qn "Arrays must have same flux to be added"
-
-    # Start with copy of A's blocks
-    result_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
-    for (key, A_block) in A.blocks
-        result_blocks[key] = copy(A_block)
-    end
-
-    # Add B's blocks
-    for (key, B_block) in B.blocks
-        if haskey(result_blocks, key)
-            result_blocks[key] .+= B_block
-        else
-            result_blocks[key] = copy(B_block)
-        end
-    end
-
-    return BlockDensePropagator{T}(A.basis, A.flux, result_blocks)
-end
-
-"""
-    Base.:-(A::BlockDensePropagator{T}, B::BlockDensePropagator{T}) where T
-
-Subtract two BlockDensePropagator with the same flux.
-"""
-function Base.:-(A::BlockDensePropagator{T}, B::BlockDensePropagator{T}) where T
-    return A + (-1) * B
-end
-
-"""
     Base.:*(alpha::Number, A::BlockDensePropagator{T}) where T
 
 Multiply BlockDensePropagator by scalar.
@@ -117,8 +81,6 @@ function Base.:*(alpha::Number, A::BlockDensePropagator{T}) where T
 end
 
 Base.:*(A::BlockDensePropagator{T}, alpha::Number) where T = alpha * A
-Base.:/(A::BlockDensePropagator{T}, alpha::Number) where T = (1/alpha) * A
-Base.:-(A::BlockDensePropagator{T}) where T = (-1) * A
 
 """
     Base.copyto!(dest::BlockDensePropagator{T}, src::BlockDensePropagator{T}) where T
@@ -202,22 +164,6 @@ end
 function BlockDenseDLRPropagator{T}(basis::BlockDenseBasis, flux::OperatorFlux, r::Int) where T
     vals = zeros(BlockDensePropagator{T}, basis, flux, r)
     coeffs = zeros(BlockDensePropagator{T}, basis, flux, r)
-    return BlockDenseDLRPropagator{T}(vals, coeffs)
-end
-
-function BlockDenseDLRPropagator(vals::BlockDensePropagator{T}, ::Nothing) where T
-    # Get the first block to determine r dimension
-    first_block = first(values(vals.blocks))
-    r = size(first_block, 1)
-    coeffs = zeros(BlockDensePropagator{T}, vals.basis, vals.flux, r)
-    return BlockDenseDLRPropagator{T}(vals, coeffs)
-end
-
-function BlockDenseDLRPropagator(::Nothing, coeffs::BlockDensePropagator{T}) where T
-    # Get the first block to determine r dimension
-    first_block = first(values(coeffs.blocks))
-    r = size(first_block, 1)
-    vals = zeros(BlockDensePropagator{T}, coeffs.basis, coeffs.flux, r)
     return BlockDenseDLRPropagator{T}(vals, coeffs)
 end
 

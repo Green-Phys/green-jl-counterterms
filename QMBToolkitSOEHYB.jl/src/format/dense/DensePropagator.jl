@@ -32,22 +32,12 @@ Base.getindex(p::DensePropagator, args...) = getindex(p.data, args...)
 Base.setindex!(p::DensePropagator, val, args...) = setindex!(p.data, val, args...)
 Base.view(p::DensePropagator, args...) = view(p.data, args...)
 
-# Arithmetic
-function Base.:+(A::DensePropagator{T}, B::DensePropagator{T}) where T
-    return DensePropagator{T}(A.data .+ B.data)
-end
-
-function Base.:-(A::DensePropagator{T}, B::DensePropagator{T}) where T
-    return DensePropagator{T}(A.data .- B.data)
-end
-
+# Arithmetic - only scalar multiplication is used
 function Base.:*(alpha::Number, A::DensePropagator{T}) where T
     return DensePropagator{T}(alpha .* A.data)
 end
 
 Base.:*(A::DensePropagator{T}, alpha::Number) where T = alpha * A
-Base.:/(A::DensePropagator{T}, alpha::Number) where T = (1/alpha) * A
-Base.:-(A::DensePropagator{T}) where T = (-1) * A
 
 function Base.copyto!(dest::DensePropagator{T}, src::DensePropagator{T}) where T
     copyto!(dest.data, src.data)
@@ -88,16 +78,6 @@ end
 function DenseDLRPropagator{T}(r::Int, dim1::Int, dim2::Int) where T
     vals = zeros(DensePropagator{T}, r, dim1, dim2)
     coeffs = zeros(DensePropagator{T}, r, dim1, dim2)
-    return DenseDLRPropagator{T}(vals, coeffs)
-end
-
-function DenseDLRPropagator(vals::DensePropagator{T}, ::Nothing) where T
-    coeffs = zeros(DensePropagator{T}, size(vals)...)
-    return DenseDLRPropagator{T}(vals, coeffs)
-end
-
-function DenseDLRPropagator(::Nothing, coeffs::DensePropagator{T}) where T
-    vals = zeros(DensePropagator{T}, size(coeffs)...)
     return DenseDLRPropagator{T}(vals, coeffs)
 end
 

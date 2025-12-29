@@ -10,7 +10,7 @@ using QMBToolkitED.BlockDense
 using QMBToolkitDLR
 
 """
-    multiplication_convolution_blockdense(nodes, edges, dlr_grid, model_data, propagator, buffers)
+    multiplication_convolution_blockdense(nodes, edges, dlr_grid, model_data, propagator)
 
 Calculate backbone diagram contribution via multiplication and convolution from right to left.
 
@@ -34,12 +34,16 @@ Starting from the rightmost edge, accumulates:
 - `dlr_grid::DLRGrid`: DLR grid
 - `model_data::ModelData{T, BlockDenseFormat}`: Model data
 - `propagator::BlockDensePropagator{T}`: Propagator (bare or bold)
-- `buffers::PropagatorConvolutionBuffersBlockDense{T}`: Pre-allocated buffers
 
 # Returns
 - `BlockDensePropagator{T}`: Backbone contribution on tau grid
+
+# Note
+BlockDense mode allocates buffers dynamically because the flux (and thus block structure)
+changes after each operator multiplication. Pre-allocated buffers cannot be used since
+we don't know the flux of intermediate results ahead of time.
 """
-function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}, buffers::PropagatorConvolutionBuffersBlockDense{T}) where {T<:Number}
+function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}) where {T<:Number}
     length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
     # Get basis and flux
@@ -151,7 +155,7 @@ function multiplication_convolution_blockdense(nodes::Vector{BackBoneNode}, edge
 end
 
 """
-    multiplication_convolution_reverse_blockdense(nodes, edges, dlr_grid, model_data, propagator, buffers)
+    multiplication_convolution_reverse_blockdense(nodes, edges, dlr_grid, model_data, propagator)
 
 Calculate backbone diagram contribution via multiplication and convolution from left to right.
 
@@ -162,8 +166,11 @@ BlockDense version with swapped K± hybridizations.
 - Uses `is_reverse=true` for node-attached hybridizations (swaps K+ ↔ K-)
 - Uses `_multiplication_32_blockdense!` instead of `_multiplication_23_blockdense!`
 - Convolution operand order is reversed: result first, then to_be_convoluted
+
+# Note
+See `multiplication_convolution_blockdense` for why buffers are allocated dynamically.
 """
-function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}, buffers::PropagatorConvolutionBuffersBlockDense{T}) where {T<:Number}
+function multiplication_convolution_reverse_blockdense(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}) where {T<:Number}
     length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
     # Get basis and flux
@@ -278,7 +285,7 @@ end
 =============================================================================#
 
 # multiplication_convolution - interface aliases
-# Note: These dispatch on the propagator type (BlockDensePropagator)
-multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}, buffers::PropagatorConvolutionBuffersBlockDense{T}) where T = multiplication_convolution_blockdense(nodes, edges, dlr_grid, model_data, propagator, buffers)
+# Note: BlockDense versions don't take buffers parameter (allocates dynamically)
+multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}) where T = multiplication_convolution_blockdense(nodes, edges, dlr_grid, model_data, propagator)
 
-multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}, buffers::PropagatorConvolutionBuffersBlockDense{T}) where T = multiplication_convolution_reverse_blockdense(nodes, edges, dlr_grid, model_data, propagator, buffers)
+multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}) where T = multiplication_convolution_reverse_blockdense(nodes, edges, dlr_grid, model_data, propagator)

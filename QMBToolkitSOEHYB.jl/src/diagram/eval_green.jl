@@ -48,22 +48,16 @@ end
     allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) where T
 
 Allocate evaluation buffers for blockdense format Green's function computation.
-BlockDense uses lazy allocation within convolution functions.
+BlockDense allocates convolution buffers dynamically due to flux changes.
+Only the trace buffer is pre-allocated.
 """
 function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) where T
     n_tau = length(solver_data.model.dlr_grid.tau)
-    propagator = get_bare_propagator(solver_data.model).vals
-    basis = propagator.basis
 
-    # BlockDense uses lazy buffer allocation
-    conv_buffers = PropagatorConvolutionBuffersBlockDense{T}(
-        basis,
-        Dict{Tuple{Int,Int}, Tuple{Array{T,3}, Array{T,3}, Array{T,3}}}()
-    )
-
+    # BlockDense: only trace buffer is pre-allocated, convolution buffers are dynamic
     return GreenEvaluationBuffers{T, BlockDensePropagator{T}}(
         zeros(Float64, n_tau),
-        conv_buffers
+        nothing  # No convolution buffers for BlockDense
     )
 end
 
@@ -197,13 +191,13 @@ function eval_forward_backbone(diagram::BackBone, split_point::Int, solver_data:
 end
 
 function eval_forward_backbone(diagram::BackBone, split_point::Int, solver_data::SolverData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}, buffers::GreenEvaluationBuffers{T, BlockDensePropagator{T}}) where T
+    # BlockDense: no buffers passed, allocates dynamically
     return multiplication_convolution_blockdense(
         diagram.nodes[1:split_point],
         diagram.edges[1:split_point-1],
         solver_data.model.dlr_grid,
         solver_data.model,
-        propagator,
-        buffers.convolution_buffers
+        propagator
     )
 end
 
@@ -225,12 +219,12 @@ function eval_reverse_backbone(diagram::BackBone, split_point::Int, solver_data:
 end
 
 function eval_reverse_backbone(diagram::BackBone, split_point::Int, solver_data::SolverData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}, buffers::GreenEvaluationBuffers{T, BlockDensePropagator{T}}) where T
+    # BlockDense: no buffers passed, allocates dynamically
     return multiplication_convolution_reverse_blockdense(
         diagram.nodes[split_point:end],
         diagram.edges[split_point:end],
         solver_data.model.dlr_grid,
         solver_data.model,
-        propagator,
-        buffers.convolution_buffers
+        propagator
     )
 end

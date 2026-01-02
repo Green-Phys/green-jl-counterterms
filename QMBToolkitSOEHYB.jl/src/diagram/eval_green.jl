@@ -30,12 +30,10 @@ function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where T
     n_dlr = solver_data.model.dlr_grid.size
 
     # Pre-allocate buffers for forward and reverse backbone evaluation
-    # Each uses a PropagatorConvolutionBuffers for the convolution operations
+    # Each uses a DenseBackboneBuffers for the backbone operations
     conv_buffers = (
-        fwd_buffers = PropagatorConvolutionBuffers{T}(n_tau, n_fock, n_dlr),
-        rev_buffers = PropagatorConvolutionBuffers{T}(n_tau, n_fock, n_dlr),
-        ann_product = zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
-        final_product = zeros(DensePropagator{T}, n_tau, n_fock, n_fock),
+        fwd_buffers = DenseBackboneBuffers{T}(n_tau, n_fock, n_dlr),
+        rev_buffers = DenseBackboneBuffers{T}(n_tau, n_fock, n_dlr),
     )
 
     return GreenEvaluationBuffers{T, DensePropagator{T}}(
@@ -48,16 +46,24 @@ end
     allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) where T
 
 Allocate evaluation buffers for blockdense format Green's function computation.
-BlockDense allocates convolution buffers dynamically due to flux changes.
-Only the trace buffer is pre-allocated.
 """
 function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) where T
     n_tau = length(solver_data.model.dlr_grid.tau)
+    n_dlr = solver_data.model.dlr_grid.size
+    basis = get_bare_propagator(solver_data.model).vals.basis
 
-    # BlockDense: only trace buffer is pre-allocated, convolution buffers are dynamic
+    # Use a reasonable max order for buffer pre-allocation
+    max_order = 10  # Conservative estimate, can be tuned
+
+    # Pre-allocate buffers for forward and reverse backbone evaluation
+    conv_buffers = (
+        fwd_buffers = BlockDenseBackboneBuffers{T}(basis, max_order, n_tau, n_dlr),
+        rev_buffers = BlockDenseBackboneBuffers{T}(basis, max_order, n_tau, n_dlr),
+    )
+
     return GreenEvaluationBuffers{T, BlockDensePropagator{T}}(
         zeros(Float64, n_tau),
-        nothing  # No convolution buffers for BlockDense
+        conv_buffers
     )
 end
 
@@ -191,13 +197,13 @@ function eval_forward_backbone(diagram::BackBone, split_point::Int, solver_data:
 end
 
 function eval_forward_backbone(diagram::BackBone, split_point::Int, solver_data::SolverData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}, buffers::GreenEvaluationBuffers{T, BlockDensePropagator{T}}) where T
-    # BlockDense: no buffers passed, allocates dynamically
-    return multiplication_convolution_blockdense(
+    return multiplication_convolution(
         diagram.nodes[1:split_point],
         diagram.edges[1:split_point-1],
         solver_data.model.dlr_grid,
         solver_data.model,
-        propagator
+        propagator,
+        buffers.convolution_buffers.fwd_buffers
     )
 end
 
@@ -219,12 +225,12 @@ function eval_reverse_backbone(diagram::BackBone, split_point::Int, solver_data:
 end
 
 function eval_reverse_backbone(diagram::BackBone, split_point::Int, solver_data::SolverData{T, BlockDenseFormat}, propagator::BlockDensePropagator{T}, buffers::GreenEvaluationBuffers{T, BlockDensePropagator{T}}) where T
-    # BlockDense: no buffers passed, allocates dynamically
-    return multiplication_convolution_reverse_blockdense(
+    return multiplication_convolution_reverse(
         diagram.nodes[split_point:end],
         diagram.edges[split_point:end],
         solver_data.model.dlr_grid,
         solver_data.model,
-        propagator
+        propagator,
+        buffers.convolution_buffers.rev_buffers
     )
 end

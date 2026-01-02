@@ -33,6 +33,26 @@ function tau2dlr_blockdense(dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, ta
 end
 
 """
+    tau2dlr_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T
+
+In-place transform block-dense propagator from tau space to DLR representation.
+Writes result to dest, which must have the same block structure as prop.
+"""
+function tau2dlr_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T
+    @assert dest.basis === prop.basis "Destination and source must have same basis"
+    @assert dest.flux.delta_qn == prop.flux.delta_qn "Destination and source must have same flux"
+
+    for ((target, source), block_tau) in prop.blocks
+        @assert haskey(dest.blocks, (target, source)) "Destination missing block ($target, $source)"
+        # Transform this block: (n_tau, n_row, n_col) -> (r, n_row, n_col)
+        block_dlr = QMBToolkitDLR.tau2dlr(dlr_grid, block_tau, tau_grid)
+        copyto!(dest.blocks[(target, source)], block_dlr)
+    end
+
+    return dest
+end
+
+"""
     dlr2tau_blockdense(dlr_grid::DLRGrid, prop_dlr::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T
 
 Transform block-dense propagator from DLR representation to tau space.
@@ -84,6 +104,7 @@ end
     do_convolution_dlr2tau_blockdense!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T
 
 Compute convolution H = F * G for block-dense propagators using pre-allocated workspace.
+Allocates and returns a new BlockDensePropagator.
 
 Uses a single ConvolutionWorkspace with `do_view=true` to handle all block sizes.
 The result flux is computed as flux_F + flux_G. Only blocks that have non-zero contributions
@@ -135,6 +156,59 @@ function do_convolution_dlr2tau_blockdense!(workspace::ConvolutionWorkspace{T}, 
     end
 
     return BlockDensePropagator{T}(basis, flux_result, H_tau_blocks)
+end
+
+"""
+    do_convolution_dlr2tau_blockdense!(dest::BlockDensePropagator{T}, workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T
+
+Compute convolution H = F * G for block-dense propagators, writing result to dest.
+In-place version that reuses pre-allocated destination buffer.
+
+The destination must have the correct flux (flux_F + flux_G) and matching block structure.
+"""
+function do_convolution_dlr2tau_blockdense!(dest::BlockDensePropagator{T}, workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T<:Number
+    # Get basis from F_dlr (both should have the same basis)
+    basis = F_dlr.basis
+
+    # Compute expected result flux
+    flux_result = OperatorFlux(combine_qn(F_dlr.flux.delta_qn, G_dlr.flux.delta_qn))
+    @assert dest.flux.delta_qn == flux_result.delta_qn "Destination has wrong flux"
+
+    # Zero out destination blocks
+    fill!(dest, zero(T))
+
+    # Compute each output block
+    for (target_idx, target_sector) in enumerate(basis.sectors)
+        for (source_idx, source_sector) in enumerate(basis.sectors)
+            # Check if this output block can exist given the result flux
+            if target_sector.qn != combine_qn(source_sector.qn, flux_result.delta_qn)
+                continue
+            end
+
+            dest_key = (target_idx, source_idx)
+            if !haskey(dest.blocks, dest_key)
+                continue  # Skip if destination doesn't have this block
+            end
+
+            # Sum over all intermediate sectors
+            for (intermediate_idx, intermediate_sector) in enumerate(basis.sectors)
+                F_key = (target_idx, intermediate_idx)
+                G_key = (intermediate_idx, source_idx)
+
+                if haskey(F_dlr.blocks, F_key) && haskey(G_dlr.blocks, G_key)
+                    F_block = F_dlr.blocks[F_key]
+                    G_block = G_dlr.blocks[G_key]
+
+                    # Use dense convolution with do_view=true since workspace is max-sized
+                    block_contrib = QMBToolkitDLR.do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, F_block, G_block, do_view=true)
+
+                    dest.blocks[dest_key] .+= block_contrib
+                end
+            end
+        end
+    end
+
+    return dest
 end
 
 #=============================================================================

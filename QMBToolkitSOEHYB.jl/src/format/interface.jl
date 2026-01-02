@@ -63,6 +63,7 @@ function get_data end
 
 # DLR Operations
 function tau2dlr end
+function tau2dlr! end  # In-place version for buffer reuse
 function dlr2tau end
 function do_reflection_tau2tau end
 function extract_at_tau end
@@ -96,3 +97,8 @@ function add_scaled! end
 
 # Product buffer allocation
 function allocate_product_buffer end
+
+# Flux handling
+function get_flux end
+function compute_new_flux end
+function compute_new_flux_reverse end

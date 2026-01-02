@@ -19,21 +19,21 @@ include("solver/solve.jl")
 include("diagram/DiagramStructure.jl")
 include("diagram/print_diagram.jl")
 include("diagram/gen_common.jl")
-include("diagram/backbone_common.jl")
 
-# Dense operations
+# Dense format operations
 include("format/dense/dlr.jl")
 include("format/dense/operator_ops.jl")
 include("format/dense/hybridization.jl")
-include("format/dense/propagator.jl")  # Must be before convolution_eval.jl (defines PropagatorConvolutionBuffers)
-include("format/dense/convolution_eval.jl")
+include("format/dense/propagator.jl")
 
-# BlockDense operations
+# BlockDense format operations
 include("format/blockdense/dlr.jl")
 include("format/blockdense/operator_ops.jl")
 include("format/blockdense/hybridization.jl")
-include("format/blockdense/propagator.jl")  # Must be before convolution_eval.jl
-include("format/blockdense/convolution_eval.jl")
+include("format/blockdense/propagator.jl")
+
+# Unified backbone evaluation (uses interface functions for format dispatch)
+include("diagram/backbone_eval.jl")
 
 include("diagram/eval_common.jl")
 include("diagram/gen_propagator.jl")

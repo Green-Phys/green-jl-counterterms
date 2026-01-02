@@ -177,6 +177,31 @@ function BlockDenseBackboneBuffers{T}(basis::BlockDenseBasis, max_order::Int, n_
 end
 
 #=============================================================================
+# Flux Handling
+=============================================================================#
+
+"""
+    get_flux(prop::BlockDensePropagator)
+
+Get the flux of a BlockDense propagator.
+"""
+get_flux(prop::BlockDensePropagator) = prop.flux
+
+"""
+    compute_new_flux(current_flux::OperatorFlux, op::BlockDenseOperator)
+
+Compute the new flux after operator multiplication for BlockDense mode (forward: op * prop).
+"""
+compute_new_flux(current_flux::OperatorFlux, op::BlockDenseOperator) = OperatorFlux(combine_qn(op.flux.delta_qn, current_flux.delta_qn))
+
+"""
+    compute_new_flux_reverse(current_flux::OperatorFlux, op::BlockDenseOperator)
+
+Compute the new flux after operator multiplication for BlockDense mode (reverse: prop * op).
+"""
+compute_new_flux_reverse(current_flux::OperatorFlux, op::BlockDenseOperator) = OperatorFlux(combine_qn(current_flux.delta_qn, op.flux.delta_qn))
+
+#=============================================================================
 # Buffer Accessors
 =============================================================================#
 
@@ -254,44 +279,6 @@ function allocate_propagator_buffers(solver_data::SolverData{T, BlockDenseFormat
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_dlr = solver_data.model.dlr_grid.size
     basis = get_bare_propagator(solver_data.model).vals.basis
-
-    # Use a reasonable max order for buffer pre-allocation
-    # This should be at least the maximum expansion order used
-    max_order = 10  # Conservative estimate, can be tuned
-
+    max_order = 10  # Conservative estimate for buffer pre-allocation
     return BlockDenseBackboneBuffers{T}(basis, max_order, n_tau, n_dlr)
-end
-
-#=============================================================================
-# Propagator Backbone Evaluation
-=============================================================================#
-
-"""
-    eval_propagator_backbone(diagram::BackBone, solver_data::SolverData{T, BlockDenseFormat}, buffers::BlockDenseBackboneBuffers{T}) where T
-
-Evaluate a single propagator diagram using BlockDense representation with pre-allocated buffers.
-
-This is the BlockDense-specific implementation called by the format-independent
-`eval_propagator_given_order!` wrapper.
-
-# Arguments
-- `diagram::BackBone`: The diagram to evaluate
-- `solver_data::SolverData{T, BlockDenseFormat}`: Solver data
-- `buffers::BlockDenseBackboneBuffers{T}`: Pre-allocated work buffers
-
-# Returns
-- `BlockDensePropagator{T}`: Diagram contribution in imaginary time
-
-# Algorithm
-Uses `multiplication_convolution_blockdense` to evaluate the backbone diagram via
-block-aware convolution in DLR space.
-"""
-function eval_propagator_backbone(diagram::BackBone, solver_data::SolverData{T, BlockDenseFormat}, buffers::BlockDenseBackboneBuffers{T}) where {T<:Number}
-    bare_propagator = get_bare_propagator(solver_data.model)
-    return multiplication_convolution_blockdense(
-        diagram.nodes, diagram.edges,
-        solver_data.model.dlr_grid, solver_data.model,
-        bare_propagator.vals,
-        buffers
-    )
 end

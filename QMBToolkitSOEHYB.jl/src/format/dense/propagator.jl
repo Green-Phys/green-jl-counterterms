@@ -50,7 +50,89 @@ function DenseBackboneBuffers{T}(n_tau::Int, n_fock::Int, n_dlr::Int) where T<:N
     )
 end
 
+#=============================================================================
+# Flux Handling (Dense mode doesn't track flux - these are no-ops)
+=============================================================================#
 
+"""
+    get_flux(prop::DensePropagator)
+
+Get the flux of a Dense propagator. Returns `nothing` since Dense mode doesn't track flux.
+"""
+get_flux(prop::DensePropagator) = nothing
+
+"""
+    compute_new_flux(current_flux::Nothing, op::DenseOperator)
+
+Compute the new flux after operator multiplication for Dense mode.
+Returns `nothing` since Dense mode doesn't track flux.
+"""
+compute_new_flux(current_flux::Nothing, op::DenseOperator) = nothing
+
+"""
+    compute_new_flux_reverse(current_flux::Nothing, op::DenseOperator)
+
+Compute the new flux after operator multiplication (reverse direction) for Dense mode.
+Returns `nothing` since Dense mode doesn't track flux.
+"""
+compute_new_flux_reverse(current_flux::Nothing, op::DenseOperator) = nothing
+
+#=============================================================================
+# Buffer Accessors (unified interface matching BlockDense)
+=============================================================================#
+
+"""
+    get_result(buffers::DenseBackboneBuffers{T}, flux) where T
+
+Get the result buffer. Flux parameter is ignored for Dense mode.
+"""
+get_result(buffers::DenseBackboneBuffers{T}, flux) where T = buffers.result
+
+"""
+    get_hyb_temp(buffers::DenseBackboneBuffers{T}, flux) where T
+
+Get the hybridization temp buffer. Flux parameter is ignored for Dense mode.
+"""
+get_hyb_temp(buffers::DenseBackboneBuffers{T}, flux) where T = buffers.hyb_temp
+
+"""
+    get_op_product(buffers::DenseBackboneBuffers{T}, flux) where T
+
+Get the operator product buffer. Flux parameter is ignored for Dense mode.
+"""
+get_op_product(buffers::DenseBackboneBuffers{T}, flux) where T = buffers.op_product
+
+"""
+    get_result_dlr(buffers::DenseBackboneBuffers{T}, flux) where T
+
+Get the result DLR buffer. Flux parameter is ignored for Dense mode.
+"""
+get_result_dlr(buffers::DenseBackboneBuffers{T}, flux) where T = buffers.result_dlr
+
+"""
+    get_conv_operand(buffers::DenseBackboneBuffers)
+
+Get the convolution operand buffer.
+"""
+get_conv_operand(buffers::DenseBackboneBuffers) = buffers.conv_operand
+
+"""
+    get_conv_hyb_temp(buffers::DenseBackboneBuffers)
+
+Get the convolution hybridization temp buffer.
+"""
+get_conv_hyb_temp(buffers::DenseBackboneBuffers) = buffers.conv_hyb_temp
+
+"""
+    get_conv_dlr(buffers::DenseBackboneBuffers)
+
+Get the convolution DLR buffer.
+"""
+get_conv_dlr(buffers::DenseBackboneBuffers) = buffers.conv_dlr
+
+#=============================================================================
+# Buffer Allocation for Solver
+=============================================================================#
 
 """
     allocate_propagator_buffers(solver_data)
@@ -69,37 +151,6 @@ This is a format-specific function called by the format-independent
 function allocate_propagator_buffers(solver_data::SolverData{T, DenseFormat}) where {T<:Number}
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_fock = solver_data.model.n_fock
-    n_dlr = solver_data.model.dlr_grid.size  # Number of DLR basis functions
+    n_dlr = solver_data.model.dlr_grid.size
     return DenseBackboneBuffers{T}(n_tau, n_fock, n_dlr)
-end
-
-
-"""
-    eval_propagator_backbone(diagram, solver_data, buffers)
-
-Evaluate a single propagator diagram using dense representation.
-
-This is a format-specific function called by the format-independent
-`eval_propagator_given_order!` wrapper.
-
-# Arguments
-- `diagram::BackBone`: The diagram to evaluate
-- `solver_data::SolverData{T, DenseFormat}`: Solver data containing model information
-- `buffers::DenseBackboneBuffers{T}`: Pre-allocated work buffers
-
-# Returns
-- `DensePropagator{T}`: Diagram contribution in imaginary time (n_tau × n_fock × n_fock)
-
-# Algorithm
-Uses `multiplication_convolution` to evaluate the backbone diagram via
-convolution in DLR space, which is the core dense-format operation.
-"""
-function eval_propagator_backbone(diagram::BackBone, solver_data::SolverData{T, DenseFormat}, buffers::DenseBackboneBuffers{T}) where {T<:Number}
-    bare_propagator = get_bare_propagator(solver_data.model)
-    return multiplication_convolution(
-        diagram.nodes, diagram.edges,
-        solver_data.model.dlr_grid, solver_data.model,
-        bare_propagator.vals,
-        buffers
-    )
 end

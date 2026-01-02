@@ -265,6 +265,7 @@ end
 
 # DLR transformations - interface versions
 tau2dlr(dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T = tau2dlr_blockdense(dlr_grid, prop, tau_grid)
+tau2dlr!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T = tau2dlr_blockdense!(dest, dlr_grid, prop, tau_grid)
 dlr2tau(dlr_grid::DLRGrid, prop_dlr::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T = dlr2tau_blockdense(dlr_grid, prop_dlr, tau_grid)
 
 # Reflection
@@ -275,3 +276,4 @@ extract_at_tau(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRG
 
 # Convolution
 do_convolution_dlr2tau!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T = do_convolution_dlr2tau_blockdense!(workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)
+do_convolution_dlr2tau!(dest::BlockDensePropagator{T}, workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T = do_convolution_dlr2tau_blockdense!(dest, workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)

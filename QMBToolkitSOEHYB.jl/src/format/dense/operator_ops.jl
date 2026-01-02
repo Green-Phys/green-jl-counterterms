@@ -2,11 +2,11 @@
 Matrix multiplication operations for dense representation.
 
 These functions perform various matrix multiplications along the τ-dimension:
-- _multiplication_23!: Operator-propagator multiplication (DenseOperator × DensePropagator)
-- _multiplication_32!: Propagator-operator multiplication (DensePropagator × DenseOperator)
-- _multiplication_13!: Vector-propagator multiplication (1D vector × DensePropagator, element-wise)
-- _multiplication_33!: Propagator-propagator multiplication (DensePropagator × DensePropagator)
-- _trace_3!: Trace operation over τ-slices of DensePropagator
+- _multiplication_23_dense!: Operator-propagator multiplication (DenseOperator × DensePropagator)
+- _multiplication_32_dense!: Propagator-operator multiplication (DensePropagator × DenseOperator)
+- _multiplication_13_dense!: Vector-propagator multiplication (1D vector × DensePropagator, element-wise)
+- _multiplication_33_dense!: Propagator-propagator multiplication (DensePropagator × DensePropagator)
+- _trace_3_dense!: Trace operation over τ-slices of DensePropagator
 
 All operations are in-place for efficiency.
 Works with both wrapper types (DenseOperator, DensePropagator) and raw arrays.
@@ -20,12 +20,12 @@ using QMBToolkitED.Dense: DenseOperator
 # ============================================================================
 
 """
-    _multiplication_23!(temp_buffer::Array{T,3}, A::Array{T,2}, B::Array{T,3}) where T<:Number
+    _multiplication_23_dense!(temp_buffer::Array{T,3}, A::Array{T,2}, B::Array{T,3}) where T<:Number
 
 In-place matrix-tensor multiplication: temp_buffer[τ,:,:] = A * B[τ,:,:] for all τ.
 Writes result to temp_buffer. Caller should copy back to input if needed.
 """
-function _multiplication_23!(temp_buffer::Array{T,3}, A::Array{T,2}, B::Array{T,3}) where T<:Number
+function _multiplication_23_dense!(temp_buffer::Array{T,3}, A::Array{T,2}, B::Array{T,3}) where T<:Number
     n_tau = size(B, 1)
     @inbounds for k in 1:n_tau
         mul!(view(temp_buffer, k, :, :), A, view(B, k, :, :))
@@ -34,11 +34,11 @@ function _multiplication_23!(temp_buffer::Array{T,3}, A::Array{T,2}, B::Array{T,
 end
 
 """
-    _multiplication_32!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,2}) where T<:Number
+    _multiplication_32_dense!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,2}) where T<:Number
 
 In-place tensor-matrix multiplication: temp_buffer[τ,:,:] = A[τ,:,:] * B for all τ.
 """
-function _multiplication_32!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,2}) where T<:Number
+function _multiplication_32_dense!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,2}) where T<:Number
     n_tau = size(A, 1)
     @inbounds for k in 1:n_tau
         mul!(view(temp_buffer, k, :, :), view(A, k, :, :), B)
@@ -47,11 +47,11 @@ function _multiplication_32!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,
 end
 
 """
-    _multiplication_13!(temp_buffer::Array{T,3}, A::AbstractVector, B::Array{T,3}) where T<:Number
+    _multiplication_13_dense!(temp_buffer::Array{T,3}, A::AbstractVector, B::Array{T,3}) where T<:Number
 
 In-place vector-tensor element-wise multiplication: temp_buffer[τ,:,:] = A[τ] * B[τ,:,:].
 """
-function _multiplication_13!(temp_buffer::Array{T,3}, A::AbstractVector, B::Array{T,3}) where T<:Number
+function _multiplication_13_dense!(temp_buffer::Array{T,3}, A::AbstractVector, B::Array{T,3}) where T<:Number
     n_tau = size(B, 1)
     @inbounds for k in 1:n_tau
         @views temp_buffer[k, :, :] .= A[k] .* B[k, :, :]
@@ -60,11 +60,11 @@ function _multiplication_13!(temp_buffer::Array{T,3}, A::AbstractVector, B::Arra
 end
 
 """
-    _multiplication_33!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,3}) where T<:Number
+    _multiplication_33_dense!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,3}) where T<:Number
 
 In-place tensor-tensor multiplication: temp_buffer[τ,:,:] = A[τ,:,:] * B[τ,:,:].
 """
-function _multiplication_33!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,3}) where T<:Number
+function _multiplication_33_dense!(temp_buffer::Array{T,3}, A::Array{T,3}, B::Array{T,3}) where T<:Number
     n_tau = size(A, 1)
     @inbounds for k in 1:n_tau
         mul!(view(temp_buffer, k, :, :), view(A, k, :, :), view(B, k, :, :))
@@ -77,11 +77,11 @@ end
 # ============================================================================
 
 """
-    _trace_3!(trace_buffer::Vector{<:Real}, A::Array{<:Number,3})
+    _trace_3_dense!(trace_buffer::Vector{<:Real}, A::Array{<:Number,3})
 
 In-place version: writes trace results to trace_buffer.
 """
-function _trace_3!(trace_buffer::Vector{<:Real}, A::Array{<:Number,3})
+function _trace_3_dense!(trace_buffer::Vector{<:Real}, A::Array{<:Number,3})
     n_tau = size(A, 1)
     o1 = size(A, 2)
     o2 = size(A, 3)
@@ -97,52 +97,52 @@ end
 # ============================================================================
 
 """
-    _multiplication_23!(temp_buffer::DensePropagator{T}, A::DenseOperator, B::DensePropagator{T}) where T<:Number
+    _multiplication_23_dense!(temp_buffer::DensePropagator{T}, A::DenseOperator, B::DensePropagator{T}) where T<:Number
 
 In-place operator-propagator multiplication: temp_buffer[τ,:,:] = A * B[τ,:,:] for all τ.
 """
-function _multiplication_23!(temp_buffer::DensePropagator{T}, A::DenseOperator, B::DensePropagator{T}) where T<:Number
-    _multiplication_23!(temp_buffer.data, A.data, B.data)
+function _multiplication_23_dense!(temp_buffer::DensePropagator{T}, A::DenseOperator, B::DensePropagator{T}) where T<:Number
+    _multiplication_23_dense!(temp_buffer.data, A.data, B.data)
     return temp_buffer
 end
 
 """
-    _multiplication_32!(temp_buffer::DensePropagator{T}, A::DensePropagator{T}, B::DenseOperator) where T<:Number
+    _multiplication_32_dense!(temp_buffer::DensePropagator{T}, A::DensePropagator{T}, B::DenseOperator) where T<:Number
 
 In-place propagator-operator multiplication: temp_buffer[τ,:,:] = A[τ,:,:] * B for all τ.
 """
-function _multiplication_32!(temp_buffer::DensePropagator{T}, A::DensePropagator{T}, B::DenseOperator) where T<:Number
-    _multiplication_32!(temp_buffer.data, A.data, B.data)
+function _multiplication_32_dense!(temp_buffer::DensePropagator{T}, A::DensePropagator{T}, B::DenseOperator) where T<:Number
+    _multiplication_32_dense!(temp_buffer.data, A.data, B.data)
     return temp_buffer
 end
 
 """
-    _multiplication_13!(temp_buffer::DensePropagator{T}, A::AbstractVector, B::DensePropagator{T}) where T<:Number
+    _multiplication_13_dense!(temp_buffer::DensePropagator{T}, A::AbstractVector, B::DensePropagator{T}) where T<:Number
 
 In-place vector-propagator element-wise multiplication: temp_buffer[τ,:,:] = A[τ] * B[τ,:,:].
 """
-function _multiplication_13!(temp_buffer::DensePropagator{T}, A::AbstractVector, B::DensePropagator{T}) where T<:Number
-    _multiplication_13!(temp_buffer.data, A, B.data)
+function _multiplication_13_dense!(temp_buffer::DensePropagator{T}, A::AbstractVector, B::DensePropagator{T}) where T<:Number
+    _multiplication_13_dense!(temp_buffer.data, A, B.data)
     return temp_buffer
 end
 
 """
-    _multiplication_33!(temp_buffer::DensePropagator{T}, A::DensePropagator{T}, B::DensePropagator{T}) where T<:Number
+    _multiplication_33_dense!(temp_buffer::DensePropagator{T}, A::DensePropagator{T}, B::DensePropagator{T}) where T<:Number
 
 In-place propagator-propagator multiplication: temp_buffer[τ,:,:] = A[τ,:,:] * B[τ,:,:].
 """
-function _multiplication_33!(temp_buffer::DensePropagator{T}, A::DensePropagator{T}, B::DensePropagator{T}) where T<:Number
-    _multiplication_33!(temp_buffer.data, A.data, B.data)
+function _multiplication_33_dense!(temp_buffer::DensePropagator{T}, A::DensePropagator{T}, B::DensePropagator{T}) where T<:Number
+    _multiplication_33_dense!(temp_buffer.data, A.data, B.data)
     return temp_buffer
 end
 
 """
-    _trace_3!(trace_buffer::Vector{<:Real}, A::DensePropagator{<:Number})
+    _trace_3_dense!(trace_buffer::Vector{<:Real}, A::DensePropagator{<:Number})
 
 In-place version: writes trace results to trace_buffer.
 """
-function _trace_3!(trace_buffer::Vector{<:Real}, A::DensePropagator{<:Number})
-    return _trace_3!(trace_buffer, A.data)
+function _trace_3_dense!(trace_buffer::Vector{<:Real}, A::DensePropagator{<:Number})
+    return _trace_3_dense!(trace_buffer, A.data)
 end
 
 # ============================================================================
@@ -150,16 +150,16 @@ end
 # ============================================================================
 
 # Operator-propagator multiplication: result = op * prop
-multiply_op_prop!(result::DensePropagator{T}, op::DenseOperator, prop::DensePropagator{T}) where T = _multiplication_23!(result, op, prop)
+multiply_op_prop!(result::DensePropagator{T}, op::DenseOperator, prop::DensePropagator{T}) where T = _multiplication_23_dense!(result, op, prop)
 
 # Propagator-operator multiplication: result = prop * op
-multiply_prop_op!(result::DensePropagator{T}, prop::DensePropagator{T}, op::DenseOperator) where T = _multiplication_32!(result, prop, op)
+multiply_prop_op!(result::DensePropagator{T}, prop::DensePropagator{T}, op::DenseOperator) where T = _multiplication_32_dense!(result, prop, op)
 
 # Propagator-propagator multiplication: result = A * B
-multiply_prop_prop!(result::DensePropagator{T}, A::DensePropagator{T}, B::DensePropagator{T}) where T = _multiplication_33!(result, A, B)
+multiply_prop_prop!(result::DensePropagator{T}, A::DensePropagator{T}, B::DensePropagator{T}) where T = _multiplication_33_dense!(result, A, B)
 
 # Trace over spatial indices
-trace_prop!(result_buffer::Vector{<:Real}, prop::DensePropagator) = _trace_3!(result_buffer, prop)
+trace_prop!(result_buffer::Vector{<:Real}, prop::DensePropagator) = _trace_3_dense!(result_buffer, prop)
 
 #=============================================================================
 # Product Buffer Allocation Helpers (Dense format - simple pre-allocation)

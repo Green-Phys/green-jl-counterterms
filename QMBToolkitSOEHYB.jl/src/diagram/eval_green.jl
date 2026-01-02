@@ -2,70 +2,9 @@
 using MPI
 using QMBToolkitDLR
 
-"""
-    GreenEvaluationBuffers{T, PropT}
-
-Container for buffers used in Green's function evaluation.
-Format-agnostic: works with both Dense and BlockDense propagators.
-
-# Type Parameters
-- `T`: Numeric element type
-- `PropT`: Propagator type (DensePropagator{T} or BlockDensePropagator{T})
-"""
-struct GreenEvaluationBuffers{T<:Number, PropT}
-    trace_result_buffer::Vector{Float64}
-    # For dense: includes pre-allocated convolution and operator buffers
-    # For blockdense: buffers are allocated dynamically based on block structure
-    convolution_buffers::Any  # Format-specific buffer container
-end
-
-"""
-    allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where T
-
-Allocate evaluation buffers for dense format Green's function computation.
-"""
-function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where T
-    n_tau = length(solver_data.model.dlr_grid.tau)
-    n_fock = solver_data.model.n_fock
-    n_dlr = solver_data.model.dlr_grid.size
-
-    # Pre-allocate buffers for forward and reverse backbone evaluation
-    # Each uses a DenseBackboneBuffers for the backbone operations
-    conv_buffers = (
-        fwd_buffers = DenseBackboneBuffers{T}(n_tau, n_fock, n_dlr),
-        rev_buffers = DenseBackboneBuffers{T}(n_tau, n_fock, n_dlr),
-    )
-
-    return GreenEvaluationBuffers{T, DensePropagator{T}}(
-        zeros(Float64, n_tau),
-        conv_buffers
-    )
-end
-
-"""
-    allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) where T
-
-Allocate evaluation buffers for blockdense format Green's function computation.
-"""
-function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) where T
-    n_tau = length(solver_data.model.dlr_grid.tau)
-    n_dlr = solver_data.model.dlr_grid.size
-    basis = get_bare_propagator(solver_data.model).vals.basis
-
-    # Use a reasonable max order for buffer pre-allocation
-    max_order = 10  # Conservative estimate, can be tuned
-
-    # Pre-allocate buffers for forward and reverse backbone evaluation
-    conv_buffers = (
-        fwd_buffers = BlockDenseBackboneBuffers{T}(basis, max_order, n_tau, n_dlr),
-        rev_buffers = BlockDenseBackboneBuffers{T}(basis, max_order, n_tau, n_dlr),
-    )
-
-    return GreenEvaluationBuffers{T, BlockDensePropagator{T}}(
-        zeros(Float64, n_tau),
-        conv_buffers
-    )
-end
+# allocate_green_buffers is defined in format-specific files:
+# - src/format/dense/propagator.jl
+# - src/format/blockdense/propagator.jl
 
 """
     eval_green_given_order!(solver_data, diagrams, is_bold, comm)

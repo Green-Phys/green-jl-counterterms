@@ -1,9 +1,11 @@
 """
-Propagator diagram evaluation for BlockDense representation.
+Backbone buffers and buffer accessors for BlockDense representation.
 
-This file contains format-specific evaluation code for BlockDense propagators.
-Format-independent diagram generation and evaluation wrapper are in
-src/diagram/gen_eval_propagator.jl.
+This file contains:
+- BlockDenseBackboneBuffers: Flux-indexed buffer pools for backbone diagram evaluation
+- Flux handling functions (track quantum number changes through operator multiplications)
+- Buffer accessor functions (unified interface matching Dense)
+- Buffer allocation for propagator and Green's function evaluation
 
 BlockDense mode uses flux-indexed buffer pools because the block structure
 depends on the quantum number flux. Each operator multiplication changes the flux,
@@ -281,4 +283,29 @@ function allocate_propagator_buffers(solver_data::SolverData{T, BlockDenseFormat
     basis = get_bare_propagator(solver_data.model).vals.basis
     max_order = 10  # Conservative estimate for buffer pre-allocation
     return BlockDenseBackboneBuffers{T}(basis, max_order, n_tau, n_dlr)
+end
+
+"""
+    allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) where T
+
+Allocate evaluation buffers for blockdense format Green's function computation.
+"""
+function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) where T
+    n_tau = length(solver_data.model.dlr_grid.tau)
+    n_dlr = solver_data.model.dlr_grid.size
+    basis = get_bare_propagator(solver_data.model).vals.basis
+
+    # Use a reasonable max order for buffer pre-allocation
+    max_order = 10  # Conservative estimate, can be tuned
+
+    # Pre-allocate buffers for forward and reverse backbone evaluation
+    conv_buffers = (
+        fwd_buffers = BlockDenseBackboneBuffers{T}(basis, max_order, n_tau, n_dlr),
+        rev_buffers = BlockDenseBackboneBuffers{T}(basis, max_order, n_tau, n_dlr),
+    )
+
+    return (
+        trace_result_buffer = zeros(Float64, n_tau),
+        convolution_buffers = conv_buffers
+    )
 end

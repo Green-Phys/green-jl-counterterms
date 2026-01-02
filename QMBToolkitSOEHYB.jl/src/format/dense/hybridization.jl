@@ -6,7 +6,7 @@ Works with DensePropagator wrapper types.
 """
 
 """
-    apply_hybridization_inplace!(temp_buffer, target, hyb, model_data; is_reverse=false)
+    apply_hybridization_inplace_dense!(temp_buffer, target, hyb, model_data; is_reverse=false)
 
 Apply hybridization function to target propagator in-place, updating target with the result.
 Uses pre-allocated temp_buffer to avoid allocations.
@@ -30,7 +30,7 @@ The XOR logic `(index > 0) ⊻ is_reverse` determines which K to use:
 - Positive index, reverse → KMinus
 - Negative index, reverse → KPlus
 """
-@inline function apply_hybridization_inplace!(temp_buffer::DensePropagator{T}, target::DensePropagator{T}, hyb::HybridizationState, model_data::ModelData{T}; is_reverse::Bool=false) where {T<:Number}
+@inline function apply_hybridization_inplace_dense!(temp_buffer::DensePropagator{T}, target::DensePropagator{T}, hyb::HybridizationState, model_data::ModelData{T}; is_reverse::Bool=false) where {T<:Number}
     index = hyb.index
     if index != 0  # Not NoHyb
         # XOR determines if we should use KPlus: (positive and not reverse) OR (negative and reverse)
@@ -38,9 +38,16 @@ The XOR logic `(index > 0) ⊻ is_reverse` determines which K to use:
         l = abs(index)
         vec = use_kplus ? @view(model_data.hyb.KPlus_on_DLRtau[:, l]) :
                           @view(model_data.hyb.KMinus_on_DLRtau[:, l])
-        _multiplication_13!(temp_buffer, vec, target)
+        _multiplication_13_dense!(temp_buffer, vec, target)
         copyto!(target, temp_buffer)
     end
     # For NoHyb, do nothing (target unchanged)
 end
+
+#=============================================================================
+# Interface Implementations
+=============================================================================#
+
+# Hybridization application - interface version
+apply_hybridization_inplace!(temp_buffer::DensePropagator{T}, target::DensePropagator{T}, hyb::HybridizationState, model_data::ModelData{T}; is_reverse::Bool=false) where T = apply_hybridization_inplace_dense!(temp_buffer, target, hyb, model_data; is_reverse=is_reverse)
 

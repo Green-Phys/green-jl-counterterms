@@ -1,9 +1,11 @@
 """
-Propagator diagram evaluation for dense representation.
+Backbone buffers and buffer accessors for dense representation.
 
-This file contains format-specific evaluation code for dense propagators.
-Format-independent diagram generation and evaluation wrapper are in
-src/diagram/gen_eval_propagator.jl.
+This file contains:
+- DenseBackboneBuffers: Pre-allocated buffers for backbone diagram evaluation
+- Flux handling functions (no-ops for dense mode)
+- Buffer accessor functions (unified interface matching BlockDense)
+- Buffer allocation for propagator and Green's function evaluation
 """
 
 """
@@ -153,4 +155,26 @@ function allocate_propagator_buffers(solver_data::SolverData{T, DenseFormat}) wh
     n_fock = solver_data.model.n_fock
     n_dlr = solver_data.model.dlr_grid.size
     return DenseBackboneBuffers{T}(n_tau, n_fock, n_dlr)
+end
+
+"""
+    allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where T
+
+Allocate evaluation buffers for dense format Green's function computation.
+"""
+function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where T
+    n_tau = length(solver_data.model.dlr_grid.tau)
+    n_fock = solver_data.model.n_fock
+    n_dlr = solver_data.model.dlr_grid.size
+
+    # Pre-allocate buffers for forward and reverse backbone evaluation
+    conv_buffers = (
+        fwd_buffers = DenseBackboneBuffers{T}(n_tau, n_fock, n_dlr),
+        rev_buffers = DenseBackboneBuffers{T}(n_tau, n_fock, n_dlr),
+    )
+
+    return (
+        trace_result_buffer = zeros(Float64, n_tau),
+        convolution_buffers = conv_buffers
+    )
 end

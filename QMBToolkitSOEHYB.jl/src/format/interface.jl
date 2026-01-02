@@ -69,7 +69,7 @@ function do_reflection_tau2tau end
 function extract_at_tau end
 function do_convolution_dlr2tau! end
 
-# Operator Operations (get_operator is in diagram/backbone_common.jl)
+# Operator Operations
 function multiply_op_prop! end
 function multiply_prop_op! end
 function multiply_prop_prop! end
@@ -102,3 +102,12 @@ function allocate_product_buffer end
 function get_flux end
 function compute_new_flux end
 function compute_new_flux_reverse end
+
+# Buffer accessors (used in backbone evaluation)
+function get_result end
+function get_hyb_temp end
+function get_op_product end
+function get_result_dlr end
+function get_conv_operand end
+function get_conv_hyb_temp end
+function get_conv_dlr end

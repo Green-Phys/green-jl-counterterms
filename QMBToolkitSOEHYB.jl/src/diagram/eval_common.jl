@@ -67,8 +67,8 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
 
         # Update final Green's function
         copyto!(solver_data.calc.green.vals, solver_data.calc.green_by_order[end])
-        # Green's function coefficients use dense DLR transform
-        solver_data.calc.green.coeffs = tau2dlr_dense(solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)
+        # Green's function coefficients (Green's function is always stored as DensePropagator)
+        solver_data.calc.green.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)
     else
         error("Unknown diagram type: $diagram_type. Supported types are: :propagator_diagram, :green_diagram, :selfenergy_diagram")
     end

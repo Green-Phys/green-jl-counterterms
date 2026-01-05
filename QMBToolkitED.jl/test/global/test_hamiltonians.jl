@@ -133,7 +133,7 @@ end
 
         beta = 10.0
         Z = get_Z(evals, beta, shift_energy=true)
-        @test Z ≈ 3.87936702286 atol=1e-6
+        @test Z ≈ 3.87936702286 atol=1e-9
     end
 
     run_hamiltonian_test("Anderson Impurity",

@@ -32,7 +32,10 @@ Hybridization is applied as element-wise scalar multiplication, so it applies to
 in the target (both diagonal and off-diagonal). The target may have any flux structure
 depending on prior operator multiplications in the diagram evaluation.
 """
-@inline function apply_hybridization_inplace_blockdense!(temp_buffer::BlockDensePropagator{T}, target::BlockDensePropagator{T}, hyb::HybridizationState, model_data::ModelData{T, BlockDenseFormat}; is_reverse::Bool=false) where {T<:Number}
+@inline function apply_hybridization_inplace_blockdense!(
+        temp_buffer::BlockDensePropagator{T}, target::BlockDensePropagator{T},
+        hyb::HybridizationState, model_data::ModelData{T, BlockDenseFormat};
+        is_reverse::Bool = false,) where {T <: Number}
     @assert temp_buffer.basis === target.basis "Buffer and target must use same basis"
     @assert temp_buffer.flux.delta_qn == target.flux.delta_qn "Buffer and target must have same flux"
 
@@ -42,7 +45,7 @@ depending on prior operator multiplications in the diagram evaluation.
         use_kplus = (index > 0) ⊻ is_reverse
         l = abs(index)
         vec = use_kplus ? @view(model_data.hyb.KPlus_on_DLRtau[:, l]) :
-                          @view(model_data.hyb.KMinus_on_DLRtau[:, l])
+              @view(model_data.hyb.KMinus_on_DLRtau[:, l])
 
         # Apply element-wise multiplication to each block
         # Note: Hybridization is a scalar multiplication, so it applies to all blocks
@@ -68,4 +71,10 @@ end
 =============================================================================#
 
 # Hybridization application - interface version
-apply_hybridization_inplace!(temp_buffer::BlockDensePropagator{T}, target::BlockDensePropagator{T}, hyb::HybridizationState, model_data::ModelData{T, BlockDenseFormat}; is_reverse::Bool=false) where T = apply_hybridization_inplace_blockdense!(temp_buffer, target, hyb, model_data; is_reverse=is_reverse)
+function apply_hybridization_inplace!(
+        temp_buffer::BlockDensePropagator{T}, target::BlockDensePropagator{T},
+        hyb::HybridizationState, model_data::ModelData{T, BlockDenseFormat};
+        is_reverse::Bool = false,) where {T}
+    apply_hybridization_inplace_blockdense!(
+        temp_buffer, target, hyb, model_data; is_reverse = is_reverse,)
+end

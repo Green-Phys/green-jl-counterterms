@@ -1,10 +1,10 @@
-function format_node(node::BackBoneNode, is_external_opt::Bool=false, is_external_ann::Bool=false)
+function format_node(node::BackBoneNode, is_external_opt::Bool = false, is_external_ann::Bool = false)
     # Determine operator string
     op = ""
     if is_external_opt
         if is_external_ann
             op = "c"
-        else 
+        else
             op = "c⁺"
         end
     else
@@ -41,7 +41,7 @@ function format_node(node::BackBoneNode, is_external_opt::Bool=false, is_externa
     elseif is_kminus(node.attached_hyb)
         hyb_part = "K⁻_{$(get_kminus_index(node.attached_hyb))}"
     end
-    
+
     return (op_part * hyb_part, op_part, hyb_part)
 end
 
@@ -55,7 +55,6 @@ function format_hyb(hyb::HybridizationState)
     end
 end
 
-
 """
     calculate_node_positions(node_widths::Vector{Int})
 
@@ -68,8 +67,8 @@ function calculate_node_positions(node_widths::Vector{Int})
     # Determine constant edge length
     max_half_width_sum = 0
     if M > 1
-        for i in 1:M-1
-            half_sum = (node_widths[i] ÷ 2) + (node_widths[i+1] ÷ 2)
+        for i in 1:(M - 1)
+            half_sum = (node_widths[i] ÷ 2) + (node_widths[i + 1] ÷ 2)
             if half_sum > max_half_width_sum
                 max_half_width_sum = half_sum
             end
@@ -92,7 +91,6 @@ function calculate_node_positions(node_widths::Vector{Int})
 
     return (node_center_pos, edge_len)
 end
-
 
 """
     calculate_total_width(node_center_pos::Vector{Int}, node_infos)
@@ -140,15 +138,14 @@ function calculate_total_width(node_center_pos::Vector{Int}, node_infos)
     return (node_center_pos, total_width, min_overall_coord)
 end
 
-
 """
     draw_nodes!(line2, line3, node_center_pos, node_infos, node_strs, min_overall_coord)
 
 Draw nodes and their markers on the diagram lines.
 """
 function draw_nodes!(line2::Vector{Char}, line3::Vector{Char},
-                     node_center_pos::Vector{Int}, node_infos,
-                     node_strs::Vector{String}, min_overall_coord::Int)
+        node_center_pos::Vector{Int}, node_infos,
+        node_strs::Vector{String}, min_overall_coord::Int,)
     M = length(node_center_pos)
     for i in 1:M
         center_unshifed = node_center_pos[i]
@@ -157,7 +154,7 @@ function draw_nodes!(line2::Vector{Char}, line3::Vector{Char},
 
         node_s = node_strs[i]
         tot_part, opt_part, hyb_part = node_infos[i]
-        align_pos = (length(tot_part) + 1) ÷ 2 -1
+        align_pos = (length(tot_part) + 1) ÷ 2 - 1
         if hyb_part == ""
             # change align_post to the underscore position in opt_part
             underscore_pos = findfirst(isequal('c'), collect(opt_part))
@@ -174,19 +171,18 @@ function draw_nodes!(line2::Vector{Char}, line3::Vector{Char},
     end
 end
 
-
 """
     draw_edges!(line3, line4, node_center_pos, min_overall_coord, diagram_type)
 
 Draw edges and R markers on the diagram lines.
 """
 function draw_edges!(line3::Vector{Char}, line4::Vector{Char},
-                     node_center_pos::Vector{Int}, min_overall_coord::Int,
-                     diagram_type::Symbol)
+        node_center_pos::Vector{Int}, min_overall_coord::Int,
+        diagram_type::Symbol,)
     M = length(node_center_pos)
-    for i in 1:M-1
+    for i in 1:(M - 1)
         start_unshifed = node_center_pos[i] + 1
-        stop_unshifed = node_center_pos[i+1] - 1
+        stop_unshifed = node_center_pos[i + 1] - 1
 
         start_on_line = start_unshifed - min_overall_coord + 1
         stop_on_line = stop_unshifed - min_overall_coord + 1
@@ -196,7 +192,7 @@ function draw_edges!(line3::Vector{Char}, line4::Vector{Char},
 
             mid_on_line = (start_on_line + stop_on_line) ÷ 2
             if diagram_type == :propagator_diagram
-                line4[mid_on_line:mid_on_line+1] = collect("R0")
+                line4[mid_on_line:(mid_on_line + 1)] = collect("R0")
             else
                 line4[mid_on_line] = 'R'
             end
@@ -204,26 +200,25 @@ function draw_edges!(line3::Vector{Char}, line4::Vector{Char},
     end
 end
 
-
 """
     draw_hybridizations!(hyb_lines, edges, node_center_pos, min_overall_coord, total_width)
 
 Draw hybridization labels on the diagram lines.
 """
 function draw_hybridizations!(hyb_lines::Vector{Vector{Char}}, edges::Vector{BackBoneEdge},
-                              node_center_pos::Vector{Int}, min_overall_coord::Int,
-                              total_width::Int)
+        node_center_pos::Vector{Int}, min_overall_coord::Int,
+        total_width::Int,)
     max_hybs = length(hyb_lines)
     M = length(node_center_pos)
 
     for k in 1:max_hybs
-        for i in 1:M-1
+        for i in 1:(M - 1)
             if k <= length(edges[i].attached_hybs)
                 hyb = edges[i].attached_hybs[k]
                 hyb_str = format_hyb(hyb)
 
                 edge_start_unshifed = node_center_pos[i] + 1
-                edge_stop_unshifed = node_center_pos[i+1] - 1
+                edge_stop_unshifed = node_center_pos[i + 1] - 1
 
                 if edge_start_unshifed <= edge_stop_unshifed
                     edge_mid_unshifed = (edge_start_unshifed + edge_stop_unshifed) ÷ 2
@@ -246,7 +241,6 @@ function draw_hybridizations!(hyb_lines::Vector{Vector{Char}}, edges::Vector{Bac
     end
 end
 
-
 function print_diagram(backbone::BackBone)
     println("Diagram type: ", backbone.diagram_type)
     println("Sign: ", backbone.sign)
@@ -261,20 +255,20 @@ function print_diagram(backbone::BackBone)
         return
     end
 
-    external_opts_loc = isempty(backbone.external_opts_loc) ? Int[] : [M-i+1 for i in backbone.external_opts_loc]
-    node_infos = [
-        format_node(
-            nodes[i],
-            !isempty(external_opts_loc) && i in external_opts_loc,
-            !isempty(external_opts_loc) && i == external_opts_loc[2]
-        ) for i in 1:M
-    ]
+    external_opts_loc = isempty(backbone.external_opts_loc) ? Int[] :
+                        [M-i+1 for i in backbone.external_opts_loc]
+    node_infos = [format_node(
+                      nodes[i],
+                      !isempty(external_opts_loc) && i in external_opts_loc,
+                      !isempty(external_opts_loc) && i == external_opts_loc[2],
+                  ) for i in 1:M]
     node_strs = [info[1] for info in node_infos]
     node_widths = [max(1, length(s)) for s in node_strs]
 
     # Calculate layout
     node_center_pos, _ = calculate_node_positions(node_widths)
-    node_center_pos, total_width, min_overall_coord = calculate_total_width(node_center_pos, node_infos)
+    node_center_pos, total_width,
+    min_overall_coord = calculate_total_width(node_center_pos, node_infos)
 
     # Determine maximum hybridizations per edge
     max_hybs = 0

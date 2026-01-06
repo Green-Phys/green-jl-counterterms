@@ -47,7 +47,7 @@ buffers for all possible flux values encountered during diagram evaluation.
 - `conv_hyb_temp`: Scratch buffer for hybridization on conv operand (always zero flux)
 - `conv_dlr`: DLR transform of convolution operand (always zero flux)
 """
-struct BlockDenseBackboneBuffers{T<:Number, QN<:QuantumNumber}
+struct BlockDenseBackboneBuffers{T <: Number, QN <: QuantumNumber}
     basis::BlockDenseBasis
     n_tau::Int
     n_dlr::Int
@@ -72,7 +72,7 @@ Enumerate all possible flux values for QN_N (particle number only).
 For expansion order N, flux can range from -N to +N.
 """
 function enumerate_possible_flux(::Type{QN_N}, max_order::Int)
-    return [QN_N(n) for n in -max_order:max_order]
+    return [QN_N(n) for n in (-max_order):max_order]
 end
 
 """
@@ -84,8 +84,8 @@ but only combinations where |sz| <= |n| and (n + sz) is even are valid.
 """
 function enumerate_possible_flux(::Type{QN_NSz}, max_order::Int)
     fluxes = QN_NSz[]
-    for delta_n in -max_order:max_order
-        for delta_sz in -max_order:max_order
+    for delta_n in (-max_order):max_order
+        for delta_sz in (-max_order):max_order
             # Valid only if |delta_sz| <= |delta_n| and same parity
             if abs(delta_sz) <= abs(delta_n) && (delta_n + delta_sz) % 2 == 0
                 push!(fluxes, QN_NSz(delta_n, delta_sz))
@@ -101,8 +101,8 @@ end
 Determine which blocks exist for a given flux.
 Block (tgt, src) exists if target_qn = source_qn + delta_qn.
 """
-function compute_blocks_for_flux(basis::BlockDenseBasis, delta_qn::QN) where QN<:QuantumNumber
-    blocks = Vector{Tuple{Int,Int}}()
+function compute_blocks_for_flux(basis::BlockDenseBasis, delta_qn::QN) where {QN <: QuantumNumber}
+    blocks = Vector{Tuple{Int, Int}}()
     for (tgt_idx, tgt_sector) in enumerate(basis.sectors)
         for (src_idx, src_sector) in enumerate(basis.sectors)
             # Block exists if target_qn = source_qn + delta_qn
@@ -119,8 +119,9 @@ end
 
 Allocate a BlockDensePropagator with the correct block structure for a given flux.
 """
-function allocate_buffer_for_flux(basis::BlockDenseBasis, delta_qn::QN, n_time::Int, ::Type{T}) where {T<:Number, QN<:QuantumNumber}
-    blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+function allocate_buffer_for_flux(basis::BlockDenseBasis, delta_qn::QN, n_time::Int,
+        ::Type{T},) where {T <: Number, QN <: QuantumNumber}
+    blocks = Dict{Tuple{Int, Int}, Array{T, 3}}()
     block_indices = compute_blocks_for_flux(basis, delta_qn)
 
     for (tgt_idx, src_idx) in block_indices
@@ -144,7 +145,8 @@ Construct BlockDenseBackboneBuffers with pre-allocated pools for all possible fl
 - `n_tau::Int`: Number of tau grid points
 - `n_dlr::Int`: Number of DLR basis functions
 """
-function BlockDenseBackboneBuffers{T}(basis::BlockDenseBasis, max_order::Int, n_tau::Int, n_dlr::Int) where T<:Number
+function BlockDenseBackboneBuffers{T}(
+        basis::BlockDenseBasis, max_order::Int, n_tau::Int, n_dlr::Int,) where {T <: Number}
     # Determine quantum number type from basis
     QN = typeof(basis.sectors[1].qn)
 
@@ -174,7 +176,7 @@ function BlockDenseBackboneBuffers{T}(basis::BlockDenseBasis, max_order::Int, n_
     return BlockDenseBackboneBuffers{T, QN}(
         basis, n_tau, n_dlr,
         result_pool, hyb_temp_pool, op_product_pool, result_dlr_pool,
-        zero_flux, conv_operand, conv_hyb_temp, conv_dlr
+        zero_flux, conv_operand, conv_hyb_temp, conv_dlr,
     )
 end
 
@@ -194,14 +196,18 @@ get_flux(prop::BlockDensePropagator) = prop.flux
 
 Compute the new flux after operator multiplication for BlockDense mode (forward: op * prop).
 """
-compute_new_flux(current_flux::OperatorFlux, op::BlockDenseOperator) = OperatorFlux(combine_qn(op.flux.delta_qn, current_flux.delta_qn))
+function compute_new_flux(current_flux::OperatorFlux, op::BlockDenseOperator)
+    OperatorFlux(combine_qn(op.flux.delta_qn, current_flux.delta_qn))
+end
 
 """
     compute_new_flux_reverse(current_flux::OperatorFlux, op::BlockDenseOperator)
 
 Compute the new flux after operator multiplication for BlockDense mode (reverse: prop * op).
 """
-compute_new_flux_reverse(current_flux::OperatorFlux, op::BlockDenseOperator) = OperatorFlux(combine_qn(current_flux.delta_qn, op.flux.delta_qn))
+function compute_new_flux_reverse(current_flux::OperatorFlux, op::BlockDenseOperator)
+    OperatorFlux(combine_qn(current_flux.delta_qn, op.flux.delta_qn))
+end
 
 #=============================================================================
 # Buffer Accessors
@@ -212,7 +218,7 @@ compute_new_flux_reverse(current_flux::OperatorFlux, op::BlockDenseOperator) = O
 
 Get the result buffer for the given flux.
 """
-function get_result(buffers::BlockDenseBackboneBuffers{T,QN}, flux::OperatorFlux) where {T,QN}
+function get_result(buffers::BlockDenseBackboneBuffers{T, QN}, flux::OperatorFlux) where {T, QN}
     qn = flux.delta_qn::QN
     return buffers.result_pool[qn]
 end
@@ -222,7 +228,7 @@ end
 
 Get the hybridization temp buffer for the given flux.
 """
-function get_hyb_temp(buffers::BlockDenseBackboneBuffers{T,QN}, flux::OperatorFlux) where {T,QN}
+function get_hyb_temp(buffers::BlockDenseBackboneBuffers{T, QN}, flux::OperatorFlux) where {T, QN}
     qn = flux.delta_qn::QN
     return buffers.hyb_temp_pool[qn]
 end
@@ -232,7 +238,7 @@ end
 
 Get the operator product buffer for the given flux.
 """
-function get_op_product(buffers::BlockDenseBackboneBuffers{T,QN}, flux::OperatorFlux) where {T,QN}
+function get_op_product(buffers::BlockDenseBackboneBuffers{T, QN}, flux::OperatorFlux) where {T, QN}
     qn = flux.delta_qn::QN
     return buffers.op_product_pool[qn]
 end
@@ -242,7 +248,7 @@ end
 
 Get the result DLR buffer for the given flux.
 """
-function get_result_dlr(buffers::BlockDenseBackboneBuffers{T,QN}, flux::OperatorFlux) where {T,QN}
+function get_result_dlr(buffers::BlockDenseBackboneBuffers{T, QN}, flux::OperatorFlux) where {T, QN}
     qn = flux.delta_qn::QN
     return buffers.result_dlr_pool[qn]
 end
@@ -277,7 +283,8 @@ get_conv_dlr(buffers::BlockDenseBackboneBuffers) = buffers.conv_dlr
 
 Allocate buffers for BlockDense propagator evaluation.
 """
-function allocate_propagator_buffers(solver_data::SolverData{T, BlockDenseFormat}) where {T<:Number}
+function allocate_propagator_buffers(solver_data::SolverData{
+        T, BlockDenseFormat,}) where {T <: Number}
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_dlr = solver_data.model.dlr_grid.size
     basis = get_bare_propagator(solver_data.model).vals.basis
@@ -290,7 +297,7 @@ end
 
 Allocate evaluation buffers for blockdense format Green's function computation.
 """
-function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) where T
+function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) where {T}
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_dlr = solver_data.model.dlr_grid.size
     basis = get_bare_propagator(solver_data.model).vals.basis
@@ -306,6 +313,6 @@ function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) wh
 
     return (
         trace_result_buffer = zeros(Float64, n_tau),
-        convolution_buffers = conv_buffers
+        convolution_buffers = conv_buffers,
     )
 end

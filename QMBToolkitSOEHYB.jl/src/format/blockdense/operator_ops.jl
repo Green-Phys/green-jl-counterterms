@@ -35,7 +35,9 @@ For each block (target, source) in the result:
 - Sum over intermediate sectors: result[tgt, src](τ) = Σ_mid A[tgt, mid] * B[mid, src](τ)
 - Uses native BlockDenseOperator multiplication at each time point
 """
-function _multiplication_23_blockdense!(temp_buffer::BlockDensePropagator{T}, A::BlockDenseOperator, B::BlockDensePropagator{T}) where T<:Number
+function _multiplication_23_blockdense!(
+        temp_buffer::BlockDensePropagator{T}, A::BlockDenseOperator,
+        B::BlockDensePropagator{T},) where {T <: Number}
     @assert A.basis === B.basis "Operator and array must use same basis"
     @assert temp_buffer.basis === B.basis "Buffer must use same basis as input"
 
@@ -57,10 +59,10 @@ function _multiplication_23_blockdense!(temp_buffer::BlockDensePropagator{T}, A:
     @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
 
     # Index B blocks by their target (mid) sector for efficient lookup
-    B_by_mid = Dict{Int, Vector{Tuple{Int, Array{T,3}}}}()
+    B_by_mid = Dict{Int, Vector{Tuple{Int, Array{T, 3}}}}()
     for ((mid, src), B_block) in B.blocks
         if !haskey(B_by_mid, mid)
-            B_by_mid[mid] = Tuple{Int, Array{T,3}}[]
+            B_by_mid[mid] = Tuple{Int, Array{T, 3}}[]
         end
         push!(B_by_mid[mid], (src, B_block))
     end
@@ -86,7 +88,7 @@ function _multiplication_23_blockdense!(temp_buffer::BlockDensePropagator{T}, A:
 
                     # For each time point: result[tgt, src](τ) += A[tgt, mid] * B[mid, src](τ)
                     @inbounds for k in 1:n_tau
-                        mul!(view(result_block, k, :, :), A_block, view(B_block, k, :, :), 1.0, 1.0)
+                        mul!(view(result_block,k,:,:), A_block, view(B_block,k,:,:), 1.0, 1.0)
                     end
                 end
             end
@@ -116,7 +118,9 @@ quantum number conservation are computed.
 For each block (target, source) in the result:
 - Sum over intermediate sectors: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src]
 """
-function _multiplication_32_blockdense!(temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T}, B::BlockDenseOperator) where T<:Number
+function _multiplication_32_blockdense!(
+        temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T},
+        B::BlockDenseOperator,) where {T <: Number}
     @assert A.basis === B.basis "Array and operator must use same basis"
     @assert temp_buffer.basis === A.basis "Buffer must use same basis as input"
 
@@ -136,10 +140,10 @@ function _multiplication_32_blockdense!(temp_buffer::BlockDensePropagator{T}, A:
     @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
 
     # Index A blocks by their source (mid) sector for efficient lookup
-    A_by_mid = Dict{Int, Vector{Tuple{Int, Array{T,3}}}}()
+    A_by_mid = Dict{Int, Vector{Tuple{Int, Array{T, 3}}}}()
     for ((tgt, mid), A_block) in A.blocks
         if !haskey(A_by_mid, mid)
-            A_by_mid[mid] = Tuple{Int, Array{T,3}}[]
+            A_by_mid[mid] = Tuple{Int, Array{T, 3}}[]
         end
         push!(A_by_mid[mid], (tgt, A_block))
     end
@@ -165,7 +169,7 @@ function _multiplication_32_blockdense!(temp_buffer::BlockDensePropagator{T}, A:
 
                     # For each time point: result[tgt, src](τ) += A[tgt, mid](τ) * B[mid, src]
                     @inbounds for k in 1:n_tau
-                        mul!(view(result_block, k, :, :), view(A_block, k, :, :), B_block, 1.0, 1.0)
+                        mul!(view(result_block,k,:,:), view(A_block,k,:,:), B_block, 1.0, 1.0)
                     end
                 end
             end
@@ -208,7 +212,7 @@ function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDensePropaga
             @assert size(block, 3) == dim "Diagonal blocks must be square"
 
             @inbounds for k in 1:n_tau
-                trace_buffer[k] += tr(block[k, :, :])
+                trace_buffer[k] += tr(@view block[k, :, :])
             end
         end
     end
@@ -236,7 +240,9 @@ quantum number conservation are computed.
 For each block (target, source) in the result:
 - Sum over intermediate sectors: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src](τ)
 """
-function _multiplication_33_blockdense!(temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T}, B::BlockDensePropagator{T}) where T<:Number
+function _multiplication_33_blockdense!(
+        temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T},
+        B::BlockDensePropagator{T},) where {T <: Number}
     @assert A.basis === B.basis "Both arrays must use same basis"
     @assert temp_buffer.basis === A.basis "Buffer must use same basis as inputs"
 
@@ -256,10 +262,10 @@ function _multiplication_33_blockdense!(temp_buffer::BlockDensePropagator{T}, A:
     @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
 
     # Index B blocks by their target (mid) sector for efficient lookup
-    B_by_mid = Dict{Int, Vector{Tuple{Int, Array{T,3}}}}()
+    B_by_mid = Dict{Int, Vector{Tuple{Int, Array{T, 3}}}}()
     for ((mid, src), B_block) in B.blocks
         if !haskey(B_by_mid, mid)
-            B_by_mid[mid] = Tuple{Int, Array{T,3}}[]
+            B_by_mid[mid] = Tuple{Int, Array{T, 3}}[]
         end
         push!(B_by_mid[mid], (src, B_block))
     end
@@ -285,7 +291,8 @@ function _multiplication_33_blockdense!(temp_buffer::BlockDensePropagator{T}, A:
 
                     # For each time point: result[tgt, src](τ) += A[tgt, mid](τ) * B[mid, src](τ)
                     @inbounds for k in 1:n_tau
-                        mul!(view(result_block, k, :, :), view(A_block, k, :, :), view(B_block, k, :, :), 1.0, 1.0)
+                        mul!(view(result_block,k,:,:), view(A_block,k,:,:),
+                            view(B_block,k,:,:), 1.0, 1.0,)
                     end
                 end
             end
@@ -300,16 +307,27 @@ end
 # ============================================================================
 
 # Operator-propagator multiplication: result = op * prop
-multiply_op_prop!(result::BlockDensePropagator{T}, op::BlockDenseOperator, prop::BlockDensePropagator{T}) where T = _multiplication_23_blockdense!(result, op, prop)
+function multiply_op_prop!(result::BlockDensePropagator{T}, op::BlockDenseOperator,
+        prop::BlockDensePropagator{T},) where {T}
+    _multiplication_23_blockdense!(result, op, prop)
+end
 
 # Propagator-operator multiplication: result = prop * op
-multiply_prop_op!(result::BlockDensePropagator{T}, prop::BlockDensePropagator{T}, op::BlockDenseOperator) where T = _multiplication_32_blockdense!(result, prop, op)
+function multiply_prop_op!(result::BlockDensePropagator{T}, prop::BlockDensePropagator{T},
+        op::BlockDenseOperator,) where {T}
+    _multiplication_32_blockdense!(result, prop, op)
+end
 
 # Propagator-propagator multiplication: result = A * B
-multiply_prop_prop!(result::BlockDensePropagator{T}, A::BlockDensePropagator{T}, B::BlockDensePropagator{T}) where T = _multiplication_33_blockdense!(result, A, B)
+function multiply_prop_prop!(result::BlockDensePropagator{T}, A::BlockDensePropagator{T},
+        B::BlockDensePropagator{T},) where {T}
+    _multiplication_33_blockdense!(result, A, B)
+end
 
 # Trace over spatial indices
-trace_prop!(result_buffer::Vector{<:Real}, prop::BlockDensePropagator) = _trace_3_blockdense!(result_buffer, prop)
+function trace_prop!(result_buffer::Vector{<:Real}, prop::BlockDensePropagator)
+    _trace_3_blockdense!(result_buffer, prop)
+end
 
 #=============================================================================
 # Product Buffer Allocation Helpers
@@ -321,11 +339,11 @@ trace_prop!(result_buffer::Vector{<:Real}, prop::BlockDensePropagator) = _trace_
 Allocate a buffer for the result of op * prop (operator × propagator multiplication).
 Determines which blocks exist based on quantum number conservation.
 """
-function allocate_product_buffer(op::BlockDenseOperator, prop::BlockDensePropagator{T}, n_tau::Int) where T
+function allocate_product_buffer(op::BlockDenseOperator, prop::BlockDensePropagator{T}, n_tau::Int) where {T}
     basis = prop.basis
     op_flux = OperatorFlux(combine_qn(op.flux.delta_qn, prop.flux.delta_qn))
 
-    result_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+    result_blocks = Dict{Tuple{Int, Int}, Array{T, 3}}()
     for ((tgt, mid), op_block) in op.blocks
         for ((mid2, src), prop_block) in prop.blocks
             if mid == mid2
@@ -346,11 +364,11 @@ end
 
 Allocate a buffer for the result of prop * op (propagator × operator multiplication).
 """
-function allocate_product_buffer(prop::BlockDensePropagator{T}, op::BlockDenseOperator, n_tau::Int) where T
+function allocate_product_buffer(prop::BlockDensePropagator{T}, op::BlockDenseOperator, n_tau::Int) where {T}
     basis = prop.basis
     op_flux = OperatorFlux(combine_qn(prop.flux.delta_qn, op.flux.delta_qn))
 
-    result_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+    result_blocks = Dict{Tuple{Int, Int}, Array{T, 3}}()
     for ((tgt, mid), prop_block) in prop.blocks
         for ((mid2, src), op_block) in op.blocks
             if mid == mid2
@@ -371,11 +389,11 @@ end
 
 Allocate a buffer for the result of A * B (propagator × propagator multiplication).
 """
-function allocate_product_buffer(A::BlockDensePropagator{T}, B::BlockDensePropagator{T}, n_tau::Int) where T
+function allocate_product_buffer(A::BlockDensePropagator{T}, B::BlockDensePropagator{T}, n_tau::Int) where {T}
     basis = A.basis
     result_flux = OperatorFlux(combine_qn(A.flux.delta_qn, B.flux.delta_qn))
 
-    result_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+    result_blocks = Dict{Tuple{Int, Int}, Array{T, 3}}()
     for ((tgt, mid), A_block) in A.blocks
         for ((mid2, src), B_block) in B.blocks
             if mid == mid2

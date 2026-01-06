@@ -21,7 +21,9 @@ Format-agnostic implementation using interface functions.
 Updates `solver_data.calc.green.vals` by accumulating contributions from all diagrams.
 Uses MPI parallelization to distribute diagram evaluation across ranks.
 """
-function eval_green_given_order!(solver_data::SolverData{T, Format}, diagrams::Array{BackBone,4}, is_bold::Bool, comm::MPI.Comm) where {T<:Number, Format<:HilbertSpaceFormat}
+function eval_green_given_order!(
+        solver_data::SolverData{T, Format}, diagrams::Array{BackBone, 4}, is_bold::Bool,
+        comm::MPI.Comm,) where {T <: Number, Format <: HilbertSpaceFormat}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 
@@ -31,7 +33,8 @@ function eval_green_given_order!(solver_data::SolverData{T, Format}, diagrams::A
     n_hyb_exponents = size(diagrams, 4)
 
     # Get propagator (format-agnostic accessor)
-    propagator = is_bold ? get_propagator(solver_data.calc).vals : get_bare_propagator(solver_data.model).vals
+    propagator = is_bold ? get_propagator(solver_data.calc).vals :
+                 get_bare_propagator(solver_data.model).vals
 
     # Get operators (format-agnostic accessors)
     ann_opts = get_ann_opts(solver_data.model)
@@ -45,7 +48,7 @@ function eval_green_given_order!(solver_data::SolverData{T, Format}, diagrams::A
     n_tau = length(solver_data.model.dlr_grid.tau)
 
     # Distribute topology loop across ranks
-    my_topologies = rank+1:nprocs:n_topology
+    my_topologies = (rank + 1):nprocs:n_topology
 
     for i in my_topologies
         for j in 1:n_directions
@@ -55,7 +58,9 @@ function eval_green_given_order!(solver_data::SolverData{T, Format}, diagrams::A
             # Initialize backbone accumulators (will accumulate contributions for each ann_index)
             # Use Union type to allow both nothing and propagator
             PropT = typeof(propagator)
-            backbone_0_to_beta_with_ann = Vector{Union{Nothing, PropT}}([nothing for _ in 1:solver_data.model.n_flavors_physical])
+            backbone_0_to_beta_with_ann = Vector{Union{Nothing, PropT}}([nothing
+                                                                         for _ in
+                                                                             1:solver_data.model.n_flavors_physical])
 
             for k in 1:n_line_flavors
                 for l in 1:n_hyb_exponents
@@ -64,10 +69,10 @@ function eval_green_given_order!(solver_data::SolverData{T, Format}, diagrams::A
 
                     # Compute forward and reverse contributions using format-agnostic interface
                     contrib_0_to_tau = eval_forward_backbone(
-                        diagram, external_opts_loc[2], solver_data, propagator, buffers
+                        diagram, external_opts_loc[2], solver_data, propagator, buffers,
                     )
                     contrib_tau_to_beta = eval_reverse_backbone(
-                        diagram, external_opts_loc[2], solver_data, propagator, buffers
+                        diagram, external_opts_loc[2], solver_data, propagator, buffers,
                     )
 
                     # Reflection: tau -> beta - tau

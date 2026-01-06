@@ -1,6 +1,7 @@
 using QMBToolkitDLR
 using QMBToolkitED.Dense: DenseOperator, DenseBasis, DenseDiagonalOperator
-using QMBToolkitED.BlockDense: BlockDenseOperator, BlockDenseBasis, BlockDenseDiagonalOperator, OperatorFlux
+using QMBToolkitED.BlockDense: BlockDenseOperator, BlockDenseBasis, BlockDenseDiagonalOperator,
+                               OperatorFlux
 
 #=============================================================================
 # SOE Data (shared by both formats)
@@ -14,10 +15,10 @@ The value is recovered by sum_{i} coeffs[i] * K(tau, exponents[i]).
 Different matrix elements share the same exponents.
 """
 mutable struct SOEData
-    coeffs::Array{Float64,3}         # SOE coefficients, shape: (p, o1, o2)
+    coeffs::Array{Float64, 3}         # SOE coefficients, shape: (p, o1, o2)
     exponents::Vector{Float64}       # SOE exponents, shape: (p,)
-    KPlus_on_DLRtau::Array{Float64,2}  # K(tau_k, exponent_i) on the DLR tau grid
-    KMinus_on_DLRtau::Array{Float64,2} # K(tau_k, -exponent_i) on the DLR tau grid
+    KPlus_on_DLRtau::Array{Float64, 2}  # K(tau_k, exponent_i) on the DLR tau grid
+    KMinus_on_DLRtau::Array{Float64, 2} # K(tau_k, -exponent_i) on the DLR tau grid
 end
 
 #=============================================================================
@@ -113,7 +114,7 @@ Dense or BlockDense representation, eliminating the need for Union{..., Nothing}
 - `Format<:HilbertSpaceFormat`: Either DenseFormat or BlockDenseFormat
 - `Storage<:ModelDataStorage{T}`: Format-specific storage type
 """
-struct ModelData{T<:Number, Format<:HilbertSpaceFormat, Storage<:ModelDataStorage{T}}
+struct ModelData{T <: Number, Format <: HilbertSpaceFormat, Storage <: ModelDataStorage{T}}
     # Model properties
     beta::Float64
     n_flavors::Int
@@ -156,7 +157,8 @@ in small orbital space).
 - `Format<:HilbertSpaceFormat`: Either DenseFormat or BlockDenseFormat
 - `Storage<:CalculationDataStorage{T}`: Format-specific storage type
 """
-mutable struct CalculationData{T<:Number, Format<:HilbertSpaceFormat, Storage<:CalculationDataStorage{T}}
+mutable struct CalculationData{
+    T <: Number, Format <: HilbertSpaceFormat, Storage <: CalculationDataStorage{T},}
     # Format-specific storage
     format_data::Storage
 
@@ -179,13 +181,14 @@ end
 Holds all the data required for the solver calculation.
 Combines model data and calculation data, both parametrized by the same Format.
 """
-struct SolverData{T<:Number, Format<:HilbertSpaceFormat}
+struct SolverData{T <: Number, Format <: HilbertSpaceFormat}
     model::ModelData{T, Format}
     calc::CalculationData{T, Format}
 end
 
 # Allow SolverData to infer Storage types from its components
-function SolverData(model::ModelData{T, Format, MS}, calc::CalculationData{T, Format, CS}) where {T, Format, MS, CS}
+function SolverData(model::ModelData{T, Format, MS}, calc::CalculationData{
+        T, Format, CS,}) where {T, Format, MS, CS}
     SolverData{T, Format}(model, calc)
 end
 

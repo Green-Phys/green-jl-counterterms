@@ -25,7 +25,9 @@ Uses format-agnostic interface functions for:
 - Results are summed across all ranks using MPI.Allreduce
 - The global sum is added to the existing propagator values
 """
-function eval_propagator_given_order!(solver_data::SolverData{T, Format}, diagrams::Array{BackBone,4}, comm::MPI.Comm) where {T<:Number, Format<:HilbertSpaceFormat}
+function eval_propagator_given_order!(
+        solver_data::SolverData{T, Format}, diagrams::Array{BackBone, 4},
+        comm::MPI.Comm,) where {T <: Number, Format <: HilbertSpaceFormat}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 
@@ -42,7 +44,7 @@ function eval_propagator_given_order!(solver_data::SolverData{T, Format}, diagra
     buffers = allocate_propagator_buffers(solver_data)
 
     # Distribute diagrams across ranks
-    my_diagrams = rank+1:nprocs:n_diagrams
+    my_diagrams = (rank + 1):nprocs:n_diagrams
 
     for i in my_diagrams
         diagram = diagrams_flat[i]

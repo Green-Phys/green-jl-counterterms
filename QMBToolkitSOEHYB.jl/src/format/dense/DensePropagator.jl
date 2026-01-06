@@ -14,14 +14,14 @@ Time-dependent dense propagator. A wrapper around Array{T,3} where:
 
 This is a trivial wrapper that provides consistent interface with BlockDensePropagator.
 """
-struct DensePropagator{T<:Number}
-    data::Array{T,3}
+struct DensePropagator{T <: Number}
+    data::Array{T, 3}
 end
 
 # Constructors
-DensePropagator(data::Array{T,3}) where T = DensePropagator{T}(data)
+DensePropagator(data::Array{T, 3}) where {T} = DensePropagator{T}(data)
 
-function Base.zeros(::Type{DensePropagator{T}}, n_tau::Int, dim1::Int, dim2::Int) where T
+function Base.zeros(::Type{DensePropagator{T}}, n_tau::Int, dim1::Int, dim2::Int) where {T}
     return DensePropagator{T}(zeros(T, n_tau, dim1, dim2))
 end
 
@@ -33,18 +33,18 @@ Base.setindex!(p::DensePropagator, val, args...) = setindex!(p.data, val, args..
 Base.view(p::DensePropagator, args...) = view(p.data, args...)
 
 # Arithmetic - only scalar multiplication is used
-function Base.:*(alpha::Number, A::DensePropagator{T}) where T
+function Base.:*(alpha::Number, A::DensePropagator{T}) where {T}
     return DensePropagator{T}(alpha .* A.data)
 end
 
-Base.:*(A::DensePropagator{T}, alpha::Number) where T = alpha * A
+Base.:*(A::DensePropagator{T}, alpha::Number) where {T} = alpha * A
 
-function Base.copyto!(dest::DensePropagator{T}, src::DensePropagator{T}) where T
+function Base.copyto!(dest::DensePropagator{T}, src::DensePropagator{T}) where {T}
     copyto!(dest.data, src.data)
     return dest
 end
 
-function Base.fill!(A::DensePropagator{T}, value) where T
+function Base.fill!(A::DensePropagator{T}, value) where {T}
     fill!(A.data, value)
     return A
 end
@@ -65,17 +65,17 @@ Fields:
 - `vals::DensePropagator{T}`: Values on the DLR tau grid
 - `coeffs::DensePropagator{T}`: DLR expansion coefficients
 """
-mutable struct DenseDLRPropagator{T<:Number}
+mutable struct DenseDLRPropagator{T <: Number}
     vals::DensePropagator{T}
     coeffs::DensePropagator{T}
 end
 
 # Constructors
-function DenseDLRPropagator(vals::DensePropagator{T}, coeffs::DensePropagator{T}) where T
+function DenseDLRPropagator(vals::DensePropagator{T}, coeffs::DensePropagator{T}) where {T}
     return DenseDLRPropagator{T}(vals, coeffs)
 end
 
-function DenseDLRPropagator{T}(r::Int, dim1::Int, dim2::Int) where T
+function DenseDLRPropagator{T}(r::Int, dim1::Int, dim2::Int) where {T}
     vals = zeros(DensePropagator{T}, r, dim1, dim2)
     coeffs = zeros(DensePropagator{T}, r, dim1, dim2)
     return DenseDLRPropagator{T}(vals, coeffs)
@@ -93,14 +93,14 @@ DenseDLRPropagator(r::Int, dim1::Int, dim2::Int) = DenseDLRPropagator{Float64}(r
 
 Create a zero-initialized DensePropagator with the same shape as template.
 """
-zeros_like(template::DensePropagator{T}) where T = zeros(DensePropagator{T}, size(template)...)
+zeros_like(template::DensePropagator{T}) where {T} = zeros(DensePropagator{T}, size(template)...)
 
 """
     add_scaled!(dest::DensePropagator{T}, scale, src::DensePropagator{T}) where T
 
 Add scaled contribution: dest += scale * src
 """
-function add_scaled!(dest::DensePropagator{T}, scale, src::DensePropagator{T}) where T
+function add_scaled!(dest::DensePropagator{T}, scale, src::DensePropagator{T}) where {T}
     dest.data .+= scale .* src.data
     return dest
 end
@@ -121,7 +121,7 @@ get_data(prop::DensePropagator) = prop.data
 
 Create a zero-initialized local accumulator for MPI reduction.
 """
-function create_local_accumulator(::Type{DensePropagator{T}}, template::DensePropagator{T}) where T
+function create_local_accumulator(::Type{DensePropagator{T}}, template::DensePropagator{T}) where {T}
     return zeros_like(template)
 end
 
@@ -130,7 +130,8 @@ end
 
 Add scaled contribution to accumulator: accumulator += prefactor * contribution
 """
-function accumulate_contribution!(accumulator::DensePropagator{T}, prefactor, contribution::DensePropagator{T}) where T
+function accumulate_contribution!(
+        accumulator::DensePropagator{T}, prefactor, contribution::DensePropagator{T},) where {T}
     accumulator.data .+= prefactor .* contribution.data
     return accumulator
 end
@@ -140,7 +141,8 @@ end
 
 Perform MPI Allreduce on local_result and add to propagator.vals.
 """
-function mpi_reduce_and_add!(propagator::DenseDLRPropagator{T}, local_result::DensePropagator{T}, comm::MPI.Comm) where T
+function mpi_reduce_and_add!(propagator::DenseDLRPropagator{T},
+        local_result::DensePropagator{T}, comm::MPI.Comm,) where {T}
     order_result = MPI.Allreduce(local_result.data, MPI.SUM, comm)
     propagator.vals.data .+= order_result
     return propagator

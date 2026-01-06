@@ -20,8 +20,8 @@ using QMBToolkitED.BlockDense
 Transform block-dense propagator from tau space to DLR representation.
 Each block is transformed independently using standard tau2dlr.
 """
-function tau2dlr_blockdense(dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T
-    blocks_dlr = Dict{Tuple{Int,Int}, Array{T,3}}()
+function tau2dlr_blockdense(dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T}
+    blocks_dlr = Dict{Tuple{Int, Int}, Array{T, 3}}()
 
     for ((target, source), block_tau) in prop.blocks
         # Transform this block: (n_tau, n_row, n_col) -> (r, n_row, n_col)
@@ -38,7 +38,8 @@ end
 In-place transform block-dense propagator from tau space to DLR representation.
 Writes result to dest, which must have the same block structure as prop.
 """
-function tau2dlr_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T
+function tau2dlr_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
+        prop::BlockDensePropagator{T}, tau_grid::Vector{Float64},) where {T}
     @assert dest.basis === prop.basis "Destination and source must have same basis"
     @assert dest.flux.delta_qn == prop.flux.delta_qn "Destination and source must have same flux"
 
@@ -58,8 +59,8 @@ end
 Transform block-dense propagator from DLR representation to tau space.
 Each block is transformed independently using standard dlr2tau.
 """
-function dlr2tau_blockdense(dlr_grid::DLRGrid, prop_dlr::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T
-    blocks_tau = Dict{Tuple{Int,Int}, Array{T,3}}()
+function dlr2tau_blockdense(dlr_grid::DLRGrid, prop_dlr::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T}
+    blocks_tau = Dict{Tuple{Int, Int}, Array{T, 3}}()
 
     for ((target, source), block_dlr) in prop_dlr.blocks
         # Transform this block: (r, n_row, n_col) -> (n_tau, n_row, n_col)
@@ -80,13 +81,13 @@ end
 Perform reflection operation on tau-space BlockDense data: F(tau) = H(beta - tau).
 First transforms to DLR, then applies reflection to get values at beta - tau.
 """
-function do_reflection_tau2tau_blockdense(dlr_grid::DLRGrid, prop_tau::BlockDensePropagator{T}) where T
+function do_reflection_tau2tau_blockdense(dlr_grid::DLRGrid, prop_tau::BlockDensePropagator{T}) where {T}
     # Transform to DLR
     prop_dlr = tau2dlr_blockdense(dlr_grid, prop_tau, dlr_grid.tau)
 
     # Evaluate at reflected tau points (beta - tau)
     tau_grid_reflected = dlr_grid.beta .- dlr_grid.tau
-    blocks_tau = Dict{Tuple{Int,Int}, Array{T,3}}()
+    blocks_tau = Dict{Tuple{Int, Int}, Array{T, 3}}()
 
     for ((target, source), block_dlr) in prop_dlr.blocks
         block_tau = QMBToolkitDLR.dlr2tau(dlr_grid, block_dlr, tau_grid_reflected)
@@ -110,8 +111,10 @@ Uses a single ConvolutionWorkspace with `do_view=true` to handle all block sizes
 The result flux is computed as flux_F + flux_G. Only blocks that have non-zero contributions
 (i.e., where matching F and G blocks exist) are included in the output.
 """
-function do_convolution_dlr2tau_blockdense!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T<:Number
-    H_tau_blocks = Dict{Tuple{Int,Int}, Array{T,3}}()
+function do_convolution_dlr2tau_blockdense!(
+        workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache,
+        F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T},) where {T <: Number}
+    H_tau_blocks = Dict{Tuple{Int, Int}, Array{T, 3}}()
 
     # Get basis from F_dlr (both should have the same basis)
     basis = F_dlr.basis
@@ -139,7 +142,8 @@ function do_convolution_dlr2tau_blockdense!(workspace::ConvolutionWorkspace{T}, 
                     G_block = G_dlr.blocks[G_key]
 
                     # Use dense convolution with do_view=true since workspace is max-sized
-                    block_contrib = QMBToolkitDLR.do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, F_block, G_block, do_view=true)
+                    block_contrib = QMBToolkitDLR.do_convolution_dlr2tau!(
+                        workspace, dlr_grid, kernel_cache, F_block, G_block, do_view = true,)
 
                     if H_block_tau === nothing
                         H_block_tau = copy(block_contrib)
@@ -166,7 +170,10 @@ In-place version that reuses pre-allocated destination buffer.
 
 The destination must have the correct flux (flux_F + flux_G) and matching block structure.
 """
-function do_convolution_dlr2tau_blockdense!(dest::BlockDensePropagator{T}, workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T<:Number
+function do_convolution_dlr2tau_blockdense!(
+        dest::BlockDensePropagator{T}, workspace::ConvolutionWorkspace{T},
+        dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T},
+        G_dlr::BlockDensePropagator{T},) where {T <: Number}
     # Get basis from F_dlr (both should have the same basis)
     basis = F_dlr.basis
 
@@ -200,7 +207,8 @@ function do_convolution_dlr2tau_blockdense!(dest::BlockDensePropagator{T}, works
                     G_block = G_dlr.blocks[G_key]
 
                     # Use dense convolution with do_view=true since workspace is max-sized
-                    block_contrib = QMBToolkitDLR.do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, F_block, G_block, do_view=true)
+                    block_contrib = QMBToolkitDLR.do_convolution_dlr2tau!(
+                        workspace, dlr_grid, kernel_cache, F_block, G_block, do_view = true,)
 
                     dest.blocks[dest_key] .+= block_contrib
                 end
@@ -220,7 +228,7 @@ end
 
 Extract propagator value at specific tau by DLR interpolation, return as dense matrix.
 """
-function extract_at_tau_blockdense(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where T
+function extract_at_tau_blockdense(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where {T}
     # Convert to DLR coefficients
     prop_dlr = tau2dlr_blockdense(dlr_grid, propagator, dlr_grid.tau)
 
@@ -236,7 +244,7 @@ end
 
 Convert a BlockDensePropagator with single time slice (n_tau=1) to a dense matrix.
 """
-function blockdense_to_dense_single_tau(bda::BlockDensePropagator{T}) where T
+function blockdense_to_dense_single_tau(bda::BlockDensePropagator{T}) where {T}
     # Determine total dimension from basis
     n_total = sum(sector.dim for sector in bda.basis.sectors)
     result = zeros(T, n_total, n_total)
@@ -248,12 +256,12 @@ function blockdense_to_dense_single_tau(bda::BlockDensePropagator{T}) where T
         dim_j = bda.basis.sectors[j].dim
 
         # Get row and column offsets
-        row_offset = sum(bda.basis.sectors[k].dim for k in 1:i-1; init=0)
-        col_offset = sum(bda.basis.sectors[k].dim for k in 1:j-1; init=0)
+        row_offset = sum(bda.basis.sectors[k].dim for k in 1:(i - 1); init = 0)
+        col_offset = sum(bda.basis.sectors[k].dim for k in 1:(j - 1); init = 0)
 
         # Extract single time slice (should be at index 1)
         @assert size(block, 1) == 1 "Expected single time slice"
-        result[row_offset+1:row_offset+dim_i, col_offset+1:col_offset+dim_j] = block[1, :, :]
+        result[(row_offset + 1):(row_offset + dim_i), (col_offset + 1):(col_offset + dim_j)] = block[1, :, :]
     end
 
     return result
@@ -264,16 +272,35 @@ end
 =============================================================================#
 
 # DLR transformations - interface versions
-tau2dlr(dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T = tau2dlr_blockdense(dlr_grid, prop, tau_grid)
-tau2dlr!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T = tau2dlr_blockdense!(dest, dlr_grid, prop, tau_grid)
-dlr2tau(dlr_grid::DLRGrid, prop_dlr::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T = dlr2tau_blockdense(dlr_grid, prop_dlr, tau_grid)
+function tau2dlr(dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T}
+    tau2dlr_blockdense(dlr_grid, prop, tau_grid)
+end
+function tau2dlr!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
+        prop::BlockDensePropagator{T}, tau_grid::Vector{Float64},) where {T}
+    tau2dlr_blockdense!(dest, dlr_grid, prop, tau_grid)
+end
+function dlr2tau(dlr_grid::DLRGrid, prop_dlr::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T}
+    dlr2tau_blockdense(dlr_grid, prop_dlr, tau_grid)
+end
 
 # Reflection
-do_reflection_tau2tau(dlr_grid::DLRGrid, prop_tau::BlockDensePropagator{T}) where T = do_reflection_tau2tau_blockdense(dlr_grid, prop_tau)
+function do_reflection_tau2tau(dlr_grid::DLRGrid, prop_tau::BlockDensePropagator{T}) where {T}
+    do_reflection_tau2tau_blockdense(dlr_grid, prop_tau)
+end
 
 # Extract at tau
-extract_at_tau(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where T = extract_at_tau_blockdense(propagator, tau, dlr_grid)
+function extract_at_tau(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where {T}
+    extract_at_tau_blockdense(propagator, tau, dlr_grid)
+end
 
 # Convolution
-do_convolution_dlr2tau!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T = do_convolution_dlr2tau_blockdense!(workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)
-do_convolution_dlr2tau!(dest::BlockDensePropagator{T}, workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where T = do_convolution_dlr2tau_blockdense!(dest, workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)
+function do_convolution_dlr2tau!(
+        workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache,
+        F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T},) where {T}
+    do_convolution_dlr2tau_blockdense!(workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)
+end
+function do_convolution_dlr2tau!(dest::BlockDensePropagator{T}, workspace::ConvolutionWorkspace{T},
+        dlr_grid::DLRGrid, kernel_cache::KernelCache,
+        F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T},) where {T}
+    do_convolution_dlr2tau_blockdense!(dest, workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)
+end

@@ -7,7 +7,8 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
     nprocs = MPI.Comm_size(comm)
 
     # Validation
-    if (solver_params.propagator.is_bold && solver_params.green.is_bold) || (!solver_params.propagator.is_bold && !solver_params.green.is_bold)
+    if (solver_params.propagator.is_bold && solver_params.green.is_bold) ||
+       (!solver_params.propagator.is_bold && !solver_params.green.is_bold)
         if rank == 0
             println()
             println("========================================")
@@ -93,7 +94,7 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
         print_timing_summary(
             nprocs,
             t_gen_prop_wall, t_eval_prop_wall, t_eval_prop_total,
-            t_gen_green_wall, t_eval_green_wall, t_eval_green_total
+            t_gen_green_wall, t_eval_green_wall, t_eval_green_total,
         )
     end
 end

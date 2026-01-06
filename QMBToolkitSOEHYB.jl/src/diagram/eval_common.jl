@@ -19,12 +19,14 @@ Format-agnostic implementation using interface functions.
 For propagator diagrams, updates propagator and partition_function.
 For Green's function diagrams, updates green.
 """
-function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::SolverParams, diagram_type::Symbol, diagrams::Vector{Array{BackBone,4}}, comm::MPI.Comm) where {T, Format<:HilbertSpaceFormat}
+function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::SolverParams,
+        diagram_type::Symbol, diagrams::Vector{Array{BackBone, 4}},
+        comm::MPI.Comm,) where {T, Format <: HilbertSpaceFormat}
     rank = MPI.Comm_rank(comm)
     propagator = get_propagator(solver_data.calc)  # Cache accessor result
 
     if diagram_type == :propagator_diagram &&
-           !solver_params.propagator.is_bold
+       !solver_params.propagator.is_bold
         # Clear partition function by order tracking
         empty!(solver_data.calc.partition_function_by_order)
 
@@ -32,7 +34,7 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
             if rank == 0
                 println("Evaluating propagator diagrams at order ", order)
             end
-            eval_propagator_given_order!(solver_data, diagrams[order+1], comm)
+            eval_propagator_given_order!(solver_data, diagrams[order + 1], comm)
 
             # Calculate and store partition function after this order
             # extract_at_tau is format-agnostic (returns dense matrix for both formats)
@@ -54,21 +56,24 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
 
             # Store Green's function numerator after this order
             # Green's function is always stored as DensePropagator
-            push!(solver_data.calc.green_numerator_by_order, DensePropagator{T}(copy(solver_data.calc.green.vals.data)))
+            push!(solver_data.calc.green_numerator_by_order,
+                DensePropagator{T}(copy(solver_data.calc.green.vals.data)),)
         end
 
         # Compute Green's function by order (numerator / Z)
         # Green's function order i uses partition function from propagator order i-1
         for order in 1:solver_params.green.expansion_order
             propagator_order = order  # Green order 1 uses Z[1] (propagator order 0), etc.
-            green_at_order_data = solver_data.calc.green_numerator_by_order[order].data ./ solver_data.calc.partition_function_by_order[propagator_order]
+            green_at_order_data = solver_data.calc.green_numerator_by_order[order].data ./
+                                  solver_data.calc.partition_function_by_order[propagator_order]
             push!(solver_data.calc.green_by_order, DensePropagator{T}(green_at_order_data))
         end
 
         # Update final Green's function
         copyto!(solver_data.calc.green.vals, solver_data.calc.green_by_order[end])
         # Green's function coefficients (Green's function is always stored as DensePropagator)
-        solver_data.calc.green.coeffs = tau2dlr(solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)
+        solver_data.calc.green.coeffs = tau2dlr(
+            solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau,)
     else
         error("Unknown diagram type: $diagram_type. Supported types are: :propagator_diagram, :green_diagram, :selfenergy_diagram")
     end

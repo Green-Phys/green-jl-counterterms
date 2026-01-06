@@ -16,6 +16,7 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 [compat]
 DelimitedFiles = "1.9.1"
 HDF5 = "0.17.2"
+JuliaFormatter = "2"
 LinearAlgebra = "1.12.0"
 MPI = "0.20.23"
 Printf = "1.11.0"
@@ -23,7 +24,9 @@ TOML = "1.0.3"
 julia = "1.6.7"
 
 [extras]
+JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["Test"]
+format = ["JuliaFormatter"]

@@ -43,7 +43,6 @@ include("diagram/eval_green.jl")
 include("diagram/gen_selfenergy.jl")
 include("diagram/eval_selfenergy.jl")
 
-
 export run
 
 """

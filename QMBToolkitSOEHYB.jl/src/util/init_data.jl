@@ -1,6 +1,7 @@
 using QMBToolkitED: make_basis, build_hamiltonian, solve_hamiltonian
 using QMBToolkitED.Dense: DenseBasis, DenseOperator, DenseDiagonalOperator
-using QMBToolkitED.BlockDense: BlockDenseBasis, BlockDenseOperator, BlockDenseDiagonalOperator, OperatorFlux, QN_N, zero_qn
+using QMBToolkitED.BlockDense: BlockDenseBasis, BlockDenseOperator, BlockDenseDiagonalOperator,
+                               OperatorFlux, QN_N, zero_qn
 using DelimitedFiles
 using QMBToolkitDLR
 using LinearAlgebra
@@ -25,13 +26,15 @@ Initialize a `ModelData` object from input parameters.
 # Returns
 - `ModelData{T, format}`: Initialized model data with appropriate format-specific storage
 """
-function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Type{Format}) where {Format<:HilbertSpaceFormat}
+function init_model_data(model_params::ModelParams, dlr_params::DLRParams,
+        ::Type{Format},) where {Format <: HilbertSpaceFormat}
     # Load Hamiltonian paths and build basis
     hopping_path, interaction_path = _load_hamiltonian_paths(model_params)
     basis = _build_basis(hopping_path, Format)
 
     # Build and solve Hamiltonian
-    H, ann_opts_raw = build_hamiltonian(hopping_path, interaction_path; method=ed_method(Format), basis=basis)
+    H,
+    ann_opts_raw = build_hamiltonian(hopping_path, interaction_path; method = ed_method(Format), basis = basis)
     result = solve_hamiltonian(H)
 
     eigenvalues = result.eigenvalues
@@ -76,9 +79,10 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
     bare_propagator_wrapped = _wrap_bare_propagator(bare_propagator_tau, bare_propagator_dlr)
 
     # Create format-specific storage (BlockDense also creates global convolution workspace)
-    format_data = _create_model_storage(Format, T, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid)
+    format_data = _create_model_storage(Format, T, eigenvalues, eigenvectors, ann_opts, cre_opts,
+        ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid,)
 
-    return ModelData{T,Format,typeof(format_data)}(
+    return ModelData{T, Format, typeof(format_data)}(
         # Model properties
         model_params.beta,
         n_flavors,
@@ -95,7 +99,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams, ::Typ
         kernel_cache,
         convolution_workspace,
         # Format-specific storage
-        format_data
+        format_data,
     )
 end
 
@@ -105,7 +109,8 @@ end
 Initialize a `SolverData` object from the `ModelData`.
 Dispatches based on the format type to create appropriate storage.
 """
-function init_solver_data(model_data::ModelData{T,Format,Storage}) where {T<:Number,Format<:HilbertSpaceFormat,Storage<:ModelDataStorage{T}}
+function init_solver_data(model_data::ModelData{T, Format,
+        Storage,}) where {T <: Number, Format <: HilbertSpaceFormat, Storage <: ModelDataStorage{T}}
     r = model_data.dlr_grid.size
     n_phys = model_data.n_flavors_physical
 
@@ -113,14 +118,14 @@ function init_solver_data(model_data::ModelData{T,Format,Storage}) where {T<:Num
     format_data = _create_calculation_storage(model_data, T, Format)
 
     # Create CalculationData with common fields
-    calculation_data = CalculationData{T,Format,typeof(format_data)}(
+    calculation_data = CalculationData{T, Format, typeof(format_data)}(
         format_data,
         DenseDLRPropagator{T}(r, n_phys, n_phys),  # green (always dense)
         Float64[],  # partition function by order
         Vector{DensePropagator{T}}(),  # green numerator by order
         Vector{DensePropagator{T}}(),  # green by order
         zeros(DensePropagator{T}, 0, n_phys, n_phys),  # green_linear_grid
-        Float64[]  # tau_linear_grid
+        Float64[],  # tau_linear_grid
     )
     return SolverData(model_data, calculation_data)
 end
@@ -130,12 +135,12 @@ end
 
 Create DenseCalculationDataStorage for Dense format.
 """
-function _create_calculation_storage(model_data::ModelData, ::Type{T}, ::Type{DenseFormat}) where T
+function _create_calculation_storage(model_data::ModelData, ::Type{T}, ::Type{DenseFormat}) where {T}
     r = model_data.dlr_grid.size
     n_fock = model_data.n_fock
     return DenseCalculationDataStorage{T}(
         DenseDLRPropagator{T}(r, n_fock, n_fock),  # propagator
-        DenseDLRPropagator{T}(r, n_fock, n_fock)   # selfenergy
+        DenseDLRPropagator{T}(r, n_fock, n_fock),   # selfenergy
     )
 end
 
@@ -144,14 +149,14 @@ end
 
 Create BlockDenseCalculationDataStorage for BlockDense format.
 """
-function _create_calculation_storage(model_data::ModelData, ::Type{T}, ::Type{BlockDenseFormat}) where T
+function _create_calculation_storage(model_data::ModelData, ::Type{T}, ::Type{BlockDenseFormat}) where {T}
     bare_prop = get_bare_propagator(model_data)
     basis = bare_prop.vals.basis
     flux = bare_prop.vals.flux
     r = model_data.dlr_grid.size
     return BlockDenseCalculationDataStorage{T}(
         BlockDenseDLRPropagator{T}(basis, flux, r),  # propagator
-        BlockDenseDLRPropagator{T}(basis, flux, r)   # selfenergy
+        BlockDenseDLRPropagator{T}(basis, flux, r),   # selfenergy
     )
 end
 
@@ -237,15 +242,18 @@ function _load_hybridization_data(model_params::ModelParams, n_flavors::Int, dlr
 
     hyb_poles = vec(readdlm(hyb_poles_path))
     hyb_weights_orig = readdlm(hyb_weights_path)
-    size(hyb_weights_orig, 2) == HYB_WEIGHTS_EXPECTED_COLS || error("Hybridization weights file must have $(HYB_WEIGHTS_EXPECTED_COLS) columns (ind_poles, orb_1, orb_2, weights), got $(size(hyb_weights_orig, 2))")
+    size(hyb_weights_orig, 2) == HYB_WEIGHTS_EXPECTED_COLS ||
+        error("Hybridization weights file must have $(HYB_WEIGHTS_EXPECTED_COLS) columns (ind_poles, orb_1, orb_2, weights), got $(size(hyb_weights_orig, 2))")
 
     n_poles = Int(maximum(hyb_weights_orig[:, 1])) + 1
     n_flavors_physical = Int(maximum(hyb_weights_orig[:, 2:3])) + 1
     expected_rows = n_poles * n_flavors_physical * n_flavors_physical
-    size(hyb_weights_orig, 1) == expected_rows || error("Hybridization weights file has incorrect number of rows: expected $expected_rows, got $(size(hyb_weights_orig, 1))")
+    size(hyb_weights_orig, 1) == expected_rows ||
+        error("Hybridization weights file has incorrect number of rows: expected $expected_rows, got $(size(hyb_weights_orig, 1))")
 
     hyb_weights_flat = hyb_weights_orig[:, 4]
-    hyb_weights_permuted = reshape(hyb_weights_flat, (n_flavors_physical, n_flavors_physical, n_poles))
+    hyb_weights_permuted = reshape(hyb_weights_flat, (
+        n_flavors_physical, n_flavors_physical, n_poles,))
     hyb_weights_physical = permutedims(hyb_weights_permuted, (3, 2, 1))
 
     # hyb_weights contains both weights for physical orbitals and those for counterterms (which are trivially zeros)
@@ -294,7 +302,8 @@ Build dense bare propagator on tau grid from eigenvalues.
 The propagator is diagonal in the eigenbasis.
 Returns a DensePropagator{T}.
 """
-function _build_bare_propagator(::Type{T}, eigenvalues::DenseDiagonalOperator, tau_grid::Vector{Float64}, E_shift::Float64) where T
+function _build_bare_propagator(::Type{T}, eigenvalues::DenseDiagonalOperator,
+        tau_grid::Vector{Float64}, E_shift::Float64,) where {T}
     evals = eigenvalues.diag
     evals_shifted = evals .- E_shift
     n_fock = length(evals)
@@ -317,14 +326,15 @@ The propagator is diagonal in the eigenbasis:
 
 No eigenvector transformation is needed since we work in the eigenbasis.
 """
-function _build_bare_propagator(::Type{T}, eigenvalues::BlockDenseDiagonalOperator, tau_grid::Vector{Float64}, E_shift::Float64) where T
+function _build_bare_propagator(::Type{T}, eigenvalues::BlockDenseDiagonalOperator,
+        tau_grid::Vector{Float64}, E_shift::Float64,) where {T}
     basis = eigenvalues.basis
     n_tau = length(tau_grid)
 
     # The propagator has flux = 0 (diagonal in sector space)
     flux = OperatorFlux(zero_qn(typeof(basis.sectors[1].qn)))
 
-    blocks = Dict{Tuple{Int,Int},Array{T,3}}()
+    blocks = Dict{Tuple{Int, Int}, Array{T, 3}}()
 
     # Build diagonal blocks only (propagator conserves quantum numbers)
     for (sector_idx, sector) in enumerate(basis.sectors)
@@ -390,7 +400,8 @@ end
 Compute the maximum DLR reconstruction error for BlockDense format.
 Performs round-trip: tau → dlr → tau, then measures max absolute difference across all blocks.
 """
-function _compute_dlr_error(dlr_grid, bare_propagator_tau::BlockDensePropagator, bare_propagator_dlr::BlockDensePropagator)
+function _compute_dlr_error(dlr_grid, bare_propagator_tau::BlockDensePropagator,
+        bare_propagator_dlr::BlockDensePropagator,)
     bare_propagator_reconstructed = dlr2tau_blockdense(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
 
     max_err = 0.0
@@ -408,7 +419,7 @@ end
 Create ConvolutionWorkspace for Dense format with full Fock space dimensions.
 Infers dimensions from the propagator shape (n_tau, n_fock, n_fock).
 """
-function _create_convolution_workspace(::Type{T}, dlr_grid, prop::DensePropagator) where T
+function _create_convolution_workspace(::Type{T}, dlr_grid, prop::DensePropagator) where {T}
     r = length(dlr_grid.omega)
     n_tau = length(dlr_grid.tau)
     n_fock = size(prop, 2)
@@ -421,7 +432,7 @@ end
 Create ConvolutionWorkspace for BlockDense format sized for maximum sector dimension.
 This workspace is reused for all block convolutions using `do_view=true` mode.
 """
-function _create_convolution_workspace(::Type{T}, dlr_grid, prop::BlockDensePropagator) where T
+function _create_convolution_workspace(::Type{T}, dlr_grid, prop::BlockDensePropagator) where {T}
     r = length(dlr_grid.omega)
     n_tau = length(dlr_grid.tau)
     # Size workspace for maximum sector dimension
@@ -450,7 +461,8 @@ function _gen_K0_inverse(exponents::Vector{Float64}, beta::Float64)
         end
     end
     # Validate: all values should be between 1 and 2
-    (all(K0_inverse .>= 1.0) && all(K0_inverse .<= 2.0)) || error("K0_inverse values must be between 1 and 2, got range [$(minimum(K0_inverse)), $(maximum(K0_inverse))]")
+    (all(K0_inverse .>= 1.0) && all(K0_inverse .<= 2.0)) ||
+        error("K0_inverse values must be between 1 and 2, got range [$(minimum(K0_inverse)), $(maximum(K0_inverse))]")
     return K0_inverse
 end
 
@@ -474,7 +486,8 @@ end
 
 Wrap Dense bare propagators into DenseDLRPropagator.
 """
-function _wrap_bare_propagator(bare_propagator_tau::DensePropagator{T}, bare_propagator_dlr::DensePropagator{T}) where T
+function _wrap_bare_propagator(
+        bare_propagator_tau::DensePropagator{T}, bare_propagator_dlr::DensePropagator{T},) where {T}
     return DenseDLRPropagator(bare_propagator_tau, bare_propagator_dlr)
 end
 
@@ -483,7 +496,8 @@ end
 
 Wrap BlockDense bare propagators into BlockDenseDLRPropagator.
 """
-function _wrap_bare_propagator(bare_propagator_tau::BlockDensePropagator{T}, bare_propagator_dlr::BlockDensePropagator{T}) where T
+function _wrap_bare_propagator(bare_propagator_tau::BlockDensePropagator{T},
+        bare_propagator_dlr::BlockDensePropagator{T},) where {T}
     return BlockDenseDLRPropagator(bare_propagator_tau, bare_propagator_dlr)
 end
 
@@ -493,7 +507,9 @@ end
 Create DenseModelDataStorage from components.
 Note: dlr_grid is unused for Dense format but included for consistent interface.
 """
-function _create_model_storage(::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
+function _create_model_storage(
+        ::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts,
+        ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid,) where {T}
     return DenseModelDataStorage{T}(
         eigenvalues,
         eigenvectors,
@@ -501,7 +517,7 @@ function _create_model_storage(::Type{DenseFormat}, ::Type{T}, eigenvalues, eige
         cre_opts,
         ann_opts_bar,
         cre_opts_bar,
-        bare_propagator_wrapped
+        bare_propagator_wrapped,
     )
 end
 
@@ -510,8 +526,9 @@ end
 
 Create BlockDenseModelDataStorage from components, including the pre-allocated convolution workspace.
 """
-function _create_model_storage(::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where T
-
+function _create_model_storage(
+        ::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts,
+        cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid,) where {T}
     return BlockDenseModelDataStorage{T}(
         eigenvalues,
         eigenvectors,
@@ -541,13 +558,16 @@ coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihi
 - `coeffs`: SOE coefficients array
 - `opt_type`: Either `:creation` or `:annihilation`
 """
-function _gen_opts_bar(opts::Vector{DenseOperator}, coeffs::Array{Float64,3}, opt_type::Symbol)
-    opt_type in (:creation, :annihilation) || error("opt_type must be :creation or :annihilation, got $opt_type")
+function _gen_opts_bar(opts::Vector{DenseOperator}, coeffs::Array{Float64, 3}, opt_type::Symbol)
+    opt_type in (:creation, :annihilation) ||
+        error("opt_type must be :creation or :annihilation, got $opt_type")
     basis = opts[1].basis
     n_flavors = length(opts)
     p = size(coeffs, 1)
-    size(coeffs, 2) == n_flavors || error("Size mismatch between coeffs dimension 2 and number of flavors: expected $n_flavors, got $(size(coeffs, 2))")
-    size(coeffs, 3) == n_flavors || error("Size mismatch between coeffs dimension 3 and number of flavors: expected $n_flavors, got $(size(coeffs, 3))")
+    size(coeffs, 2) == n_flavors ||
+        error("Size mismatch between coeffs dimension 2 and number of flavors: expected $n_flavors, got $(size(coeffs, 2))")
+    size(coeffs, 3) == n_flavors ||
+        error("Size mismatch between coeffs dimension 3 and number of flavors: expected $n_flavors, got $(size(coeffs, 3))")
 
     opts_bar = Matrix{DenseOperator}(undef, n_flavors, p)
     for o in 1:n_flavors
@@ -582,12 +602,15 @@ coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihi
 - `coeffs`: SOE coefficients array
 - `opt_type`: Either `:creation` or `:annihilation`
 """
-function _gen_opts_bar(opts::Vector{BlockDenseOperator}, coeffs::Array{Float64,3}, opt_type::Symbol)
-    opt_type in (:creation, :annihilation) || error("opt_type must be :creation or :annihilation, got $opt_type")
+function _gen_opts_bar(opts::Vector{BlockDenseOperator}, coeffs::Array{Float64, 3}, opt_type::Symbol)
+    opt_type in (:creation, :annihilation) ||
+        error("opt_type must be :creation or :annihilation, got $opt_type")
     n_flavors = length(opts)
     p = size(coeffs, 1)
-    size(coeffs, 2) == n_flavors || error("Size mismatch between coeffs dimension 2 and number of flavors: expected $n_flavors, got $(size(coeffs, 2))")
-    size(coeffs, 3) == n_flavors || error("Size mismatch between coeffs dimension 3 and number of flavors: expected $n_flavors, got $(size(coeffs, 3))")
+    size(coeffs, 2) == n_flavors ||
+        error("Size mismatch between coeffs dimension 2 and number of flavors: expected $n_flavors, got $(size(coeffs, 2))")
+    size(coeffs, 3) == n_flavors ||
+        error("Size mismatch between coeffs dimension 3 and number of flavors: expected $n_flavors, got $(size(coeffs, 3))")
 
     opts_bar = Matrix{BlockDenseOperator}(undef, n_flavors, p)
     for o in 1:n_flavors
@@ -663,7 +686,7 @@ function _transform_to_eigenbasis(ops::Vector{BlockDenseOperator}, evecs::BlockD
     for (i, op) in enumerate(ops)
         # Transform each block: for block (tgt, src), we need U_tgt' * block * U_src
         T = eltype(first(values(op.blocks)))
-        new_blocks = Dict{Tuple{Int,Int},Matrix{T}}()
+        new_blocks = Dict{Tuple{Int, Int}, Matrix{T}}()
 
         for ((tgt, src), block) in op.blocks
             # Get eigenvector matrices for source and target sectors
@@ -722,7 +745,8 @@ function _calculate_Z_counterterms(model_params::ModelParams, n_flavors::Int, n_
     end
 
     # Verify it's diagonal
-    isdiag(unphysical_hopping) || error("Unphysical part of hopping matrix must be diagonal, but found off-diagonal elements")
+    isdiag(unphysical_hopping) ||
+        error("Unphysical part of hopping matrix must be diagonal, but found off-diagonal elements")
 
     # The diagonal elements are the energies of the unphysical sites
     unphysical_energies = real(diag(unphysical_hopping))

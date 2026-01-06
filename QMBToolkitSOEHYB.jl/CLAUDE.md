@@ -98,7 +98,21 @@ Diagrams are linear chains of M nodes and M-1 edges:
 1. `gen_diagrams` (`src/diagram/gen_common.jl`) - Top-level dispatcher
 2. `gen_propagator_given_order` / `gen_green_given_order` - Generate topologies and flavor/SOE combinations
 3. `eval_diagrams!` (`src/diagram/eval_common.jl`) - Format dispatch wrapper
-4. `multiplication_convolution` (`src/dense/convolution_eval.jl` or `src/blockdense/convolution_eval.jl`) - Core evaluation
+4. `eval_backbone` (`src/diagram/backbone_eval.jl`) - Unified backbone evaluation using interface
+5. `multiplication_convolution` (`src/format/*/propagator.jl`) - Format-specific core evaluation
+
+### Format Interface Pattern
+
+The codebase uses a format-agnostic interface pattern (`src/format/interface.jl`) that allows diagram evaluation code to work with both Dense and BlockDense formats. Key interface functions:
+
+- **Propagator Operations**: `zeros_like`, `add_scaled!`, `get_data`
+- **DLR Operations**: `tau2dlr`, `dlr2tau`, `do_reflection_tau2tau`, `extract_at_tau`, `do_convolution_dlr2tau!`
+- **Operator Operations**: `multiply_op_prop!`, `multiply_prop_op!`, `multiply_prop_prop!`, `trace_prop!`
+- **Convolution**: `multiplication_convolution`, `multiplication_convolution_reverse`
+- **Buffer Management**: `allocate_propagator_buffers`, `allocate_green_buffers`, `get_result`, `get_hyb_temp`, etc.
+- **MPI**: `create_local_accumulator`, `accumulate_contribution!`, `mpi_reduce_and_add!`
+
+Each format (Dense/BlockDense) implements these interfaces in its respective subdirectory under `src/format/`.
 
 ### Key Architectural Points
 
@@ -123,40 +137,46 @@ where K⁺(τ,ω) = exp(-ωτ)/(1+exp(-βω)) and K⁻(τ,-ω) for the adjoint.
 
 ```
 src/
-├── QMBToolkitSOEHYB.jl     # Main module, run() entry point
+├── QMBToolkitSOEHYB.jl       # Main module, run() entry point
 ├── solver/
-│   ├── Data.jl             # ModelData, CalculationData, SolverData
-│   ├── Representation.jl   # DenseFormat, BlockDenseFormat traits
-│   └── solve.jl            # Main control loop
+│   ├── Data.jl               # ModelData, CalculationData, SolverData
+│   ├── HilbertSpaceFormat.jl # DenseFormat, BlockDenseFormat type traits
+│   └── solve.jl              # Main control loop
 ├── util/
-│   ├── io.jl               # TOML parsing, HDF5 output
-│   ├── Params.jl           # Parameter structs
-│   ├── init_data.jl        # Model/solver initialization
-│   └── others.jl           # Helper functions
+│   ├── io.jl                 # TOML parsing, HDF5 output
+│   ├── Params.jl             # Parameter structs
+│   └── init_data.jl          # Model/solver initialization
 ├── diagram/
-│   ├── DiagramStructure.jl # BackBone, BackBoneNode, BackBoneEdge
-│   ├── gen_common.jl       # Common generation infrastructure
-│   ├── gen_eval_propagator.jl
-│   ├── gen_eval_green.jl
-│   ├── gen_eval_selfenergy.jl  # Stub (not implemented)
-│   ├── eval_common.jl      # Format-independent evaluation
-│   └── print_diagram.jl    # Visualization
-├── dense/                  # Dense matrix operations
-│   ├── operator_ops.jl     # _multiplication_23!, _multiplication_32!, etc.
-│   ├── hybridization.jl    # apply_hybridization_inplace!
-│   ├── propagator.jl       # eval_propagator_backbone
-│   └── convolution_eval.jl # multiplication_convolution
-└── blockdense/             # Block-sparse operations
-    ├── algebra.jl          # BlockDenseArray arithmetic
-    ├── operator_ops.jl     # Block-aware multiplications
-    ├── hybridization.jl    # Block-aware hybridization
-    ├── propagator.jl       # Block-aware propagator evaluation
-    └── convolution_eval.jl # multiplication_convolution_blockdense
+│   ├── DiagramStructure.jl   # BackBone, BackBoneNode, BackBoneEdge
+│   ├── gen_common.jl         # Common generation infrastructure
+│   ├── gen_propagator.jl     # Propagator diagram generation
+│   ├── gen_green.jl          # Green's function diagram generation
+│   ├── gen_selfenergy.jl     # Stub (not implemented)
+│   ├── eval_common.jl        # Format-independent evaluation
+│   ├── eval_propagator.jl    # Propagator evaluation
+│   ├── eval_green.jl         # Green's function evaluation
+│   ├── eval_selfenergy.jl    # Stub (not implemented)
+│   ├── backbone_eval.jl      # Unified backbone evaluation (uses interface)
+│   └── print_diagram.jl      # Visualization
+└── format/                   # Format-specific implementations
+    ├── interface.jl          # Abstract interface for format-agnostic operations
+    ├── dense/                # Dense matrix operations
+    │   ├── DensePropagator.jl    # DensePropagator type
+    │   ├── dlr.jl                # DLR transformations (tau2dlr, dlr2tau, etc.)
+    │   ├── operator_ops.jl       # multiply_op_prop!, multiply_prop_op!, etc.
+    │   ├── hybridization.jl      # apply_hybridization_inplace!
+    │   └── propagator.jl         # multiplication_convolution, buffer allocation
+    └── blockdense/           # Block-sparse operations
+        ├── BlockDensePropagator.jl  # BlockDensePropagator type
+        ├── dlr.jl                   # Block-aware DLR transformations
+        ├── operator_ops.jl          # Block-aware multiplications
+        ├── hybridization.jl         # Block-aware hybridization
+        └── propagator.jl            # Block-aware convolution, buffer allocation
 ```
 
 ### Representation Formats
 
-Two formats (`src/solver/Representation.jl`):
+Two formats (`src/solver/HilbertSpaceFormat.jl`):
 - **DenseFormat**: Full dense matrices in Fock space (default)
 - **BlockDenseFormat**: Block-sparse exploiting particle number conservation
 
@@ -241,7 +261,7 @@ Saved to `<output_path>/sim.h5`:
 
 **Not Yet Implemented**:
 - Bold propagator calculation (error at `solve.jl:37`)
-- Self-energy diagram evaluation (`gen_eval_selfenergy.jl` is stub)
+- Self-energy diagram evaluation (`gen_selfenergy.jl` and `eval_selfenergy.jl` are stubs)
 
 ## Dependencies
 

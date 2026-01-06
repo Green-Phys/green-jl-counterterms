@@ -28,10 +28,14 @@ function read_input(file_path::String)
 
     # Validate input parameters
     dict["model"]["beta"] > 0 || error("beta must be positive, got $(dict["model"]["beta"])")
-    dict["solver"]["propagator"]["expansion_order"] >= 0 || error("propagator expansion_order must be non-negative, got $(dict["solver"]["propagator"]["expansion_order"])")
-    dict["solver"]["green"]["expansion_order"] >= 1 || error("green expansion_order must be at least 1, got $(dict["solver"]["green"]["expansion_order"])")
-    dict["solver"]["dlr"]["rtol"] > 0 || error("dlr rtol must be positive, got $(dict["solver"]["dlr"]["rtol"])")
-    dict["solver"]["dlr"]["Euv"] > 0 || error("dlr Euv must be positive, got $(dict["solver"]["dlr"]["Euv"])")
+    dict["solver"]["propagator"]["expansion_order"] >= 0 ||
+        error("propagator expansion_order must be non-negative, got $(dict["solver"]["propagator"]["expansion_order"])")
+    dict["solver"]["green"]["expansion_order"] >= 1 ||
+        error("green expansion_order must be at least 1, got $(dict["solver"]["green"]["expansion_order"])")
+    dict["solver"]["dlr"]["rtol"] > 0 ||
+        error("dlr rtol must be positive, got $(dict["solver"]["dlr"]["rtol"])")
+    dict["solver"]["dlr"]["Euv"] > 0 ||
+        error("dlr Euv must be positive, got $(dict["solver"]["dlr"]["Euv"])")
 
     # Get the directory containing the input file for resolving relative paths
     input_dir = dirname(abspath(file_path))
@@ -46,23 +50,23 @@ function read_input(file_path::String)
         dict["model"]["hopping_file"],
         dict["model"]["interaction_file"],
         dict["model"]["hybridization_poles_file"],
-        dict["model"]["hybridization_weights_file"]
+        dict["model"]["hybridization_weights_file"],
     )
 
     propagator_params = PropagatorParams(
         dict["solver"]["propagator"]["expansion_order"],
-        dict["solver"]["propagator"]["is_bold"]
+        dict["solver"]["propagator"]["is_bold"],
     )
 
     green_params = GreenParams(
         dict["solver"]["green"]["expansion_order"],
         dict["solver"]["green"]["is_bold"],
-        dict["solver"]["green"]["save_linear_size"]
+        dict["solver"]["green"]["save_linear_size"],
     )
 
     dlr_params = DLRParams(
         dict["solver"]["dlr"]["Euv"],
-        dict["solver"]["dlr"]["rtol"]
+        dict["solver"]["dlr"]["rtol"],
     )
 
     # Read Hilbert_space_format (default to "dense" for backward compatibility)
@@ -74,7 +78,7 @@ function read_input(file_path::String)
         green_params,
         dlr_params,
         output_path,
-        Hilbert_space_format
+        Hilbert_space_format,
     )
 
     return Params(model_params, solver_params)
@@ -129,7 +133,6 @@ function print_init_data(solver_data::SolverData)
     println(" Maximum reconstruction error in bare propagator: ", solver_data.model.bare_propagator_err)
 end
 
-
 """
     save_data(model_data, calc_data, file_path, total_wall_time, total_cpu_time)
 
@@ -149,11 +152,11 @@ Saves data in organized groups:
 - /timing/total_cpu_time: Total CPU time across all MPI ranks in seconds
 """
 function save_data(
-    model_data::ModelData,
-    calc_data::CalculationData,
-    file_path::String,
-    total_wall_time::Float64,
-    total_cpu_time::Float64
+        model_data::ModelData,
+        calc_data::CalculationData,
+        file_path::String,
+        total_wall_time::Float64,
+        total_cpu_time::Float64,
 )
     h5open(file_path, "w") do file
         # Save Green's function - linear grid
@@ -188,7 +191,9 @@ function save_data(
         calc_group = create_group(file, "partition_function")
         calc_group["partition_function"] = calc_data.partition_function_by_order[end]
         calc_group["partition_function_by_order"] = calc_data.partition_function_by_order
-        partition_function_corrected = exp(-model_data.E_shift*model_data.beta) * calc_data.partition_function_by_order[end] / model_data.Z_counterterms
+        partition_function_corrected = exp(-model_data.E_shift*model_data.beta) *
+                                       calc_data.partition_function_by_order[end] /
+                                       model_data.Z_counterterms
         calc_group["partition_function_corrected"] = partition_function_corrected
 
         # Save timing information
@@ -198,21 +203,24 @@ function save_data(
     end
 end
 
-
 """
     save_results(solver_data::SolverData, solver_params::SolverParams, total_wall_time::Float64, total_cpu_time::Float64)
 
 Process Green's function data and save to HDF5 file. Returns nothing.
 Prints summary information about the results.
 """
-function save_results(solver_data::SolverData, solver_params::SolverParams, total_wall_time::Float64, total_cpu_time::Float64)
+function save_results(solver_data::SolverData, solver_params::SolverParams,
+        total_wall_time::Float64, total_cpu_time::Float64,)
     println()
     println("--- Post-processing and saving data ---")
 
     # Compute linear grid and store in CalculationData
     # IMPORTANT: This must be done BEFORE calling save_data since save_data uses the linear grid
-    solver_data.calc.tau_linear_grid = collect(LinRange(0.0, solver_data.model.beta, solver_params.green.save_linear_size))
-    green_linear_data = QMBToolkitDLR.dlr2tau(solver_data.model.dlr_grid, solver_data.calc.green.coeffs.data, solver_data.calc.tau_linear_grid)
+    solver_data.calc.tau_linear_grid = collect(LinRange(
+        0.0, solver_data.model.beta, solver_params.green.save_linear_size,))
+    green_linear_data = QMBToolkitDLR.dlr2tau(
+        solver_data.model.dlr_grid, solver_data.calc.green.coeffs.data,
+        solver_data.calc.tau_linear_grid,)
     solver_data.calc.green_linear_grid = DensePropagator{eltype(green_linear_data)}(green_linear_data)
 
     # Print summary
@@ -221,14 +229,14 @@ function save_results(solver_data::SolverData, solver_params::SolverParams, tota
     println("Green's function G[1:4, 1,1] on linear grid:")
     println(solver_data.calc.green_linear_grid.data[1:4, 1, 1])
     println("Head + Tail (linear grid):")
-    println(solver_data.calc.green_linear_grid.data[1, 1, 1] + solver_data.calc.green_linear_grid.data[end, 1, 1])
+    println(solver_data.calc.green_linear_grid.data[1, 1, 1] +
+            solver_data.calc.green_linear_grid.data[end, 1, 1])
 
     # Save all data
     output_file = joinpath(solver_params.output_path, "sim.h5")
     save_data(solver_data.model, solver_data.calc, output_file, total_wall_time, total_cpu_time)
     println("Saved results to: ", output_file)
 end
-
 
 """
     print_timing_summary(nprocs, t_gen_prop_wall, t_eval_prop_wall, t_eval_prop_total,
@@ -238,13 +246,13 @@ Print a formatted timing summary table showing wall times, percentages, and CPU 
 for diagram generation and evaluation operations.
 """
 function print_timing_summary(
-    nprocs::Int,
-    t_gen_prop_wall::Float64,
-    t_eval_prop_wall::Float64,
-    t_eval_prop_total::Float64,
-    t_gen_green_wall::Float64,
-    t_eval_green_wall::Float64,
-    t_eval_green_total::Float64
+        nprocs::Int,
+        t_gen_prop_wall::Float64,
+        t_eval_prop_wall::Float64,
+        t_eval_prop_total::Float64,
+        t_gen_green_wall::Float64,
+        t_eval_green_wall::Float64,
+        t_eval_green_total::Float64,
 )
     println()
     println("--- TIMING SUMMARY ---")
@@ -261,26 +269,26 @@ function print_timing_summary(
     # Propagator generation
     prop_gen_pct = 100.0 * t_gen_prop_wall / total_wall
     @printf("Propagator diagram generation          | %13.3f | %6.1f%% | %s\n",
-            t_gen_prop_wall, prop_gen_pct, "-")
+        t_gen_prop_wall, prop_gen_pct, "-")
 
     # Propagator evaluation
     prop_eval_pct = 100.0 * t_eval_prop_wall / total_wall
     @printf("Propagator diagram evaluation          | %13.3f | %6.1f%% | %11.3f\n",
-            t_eval_prop_wall, prop_eval_pct, t_eval_prop_total)
+        t_eval_prop_wall, prop_eval_pct, t_eval_prop_total)
 
     # Green's function generation
     green_gen_pct = 100.0 * t_gen_green_wall / total_wall
     @printf("Green's function diagram generation    | %13.3f | %6.1f%% | %s\n",
-            t_gen_green_wall, green_gen_pct, "-")
+        t_gen_green_wall, green_gen_pct, "-")
 
     # Green's function evaluation
     green_eval_pct = 100.0 * t_eval_green_wall / total_wall
     @printf("Green's function diagram evaluation    | %13.3f | %6.1f%% | %11.3f\n",
-            t_eval_green_wall, green_eval_pct, t_eval_green_total)
+        t_eval_green_wall, green_eval_pct, t_eval_green_total)
 
     println("---------------------------------------+---------------+---------+-------------")
     @printf("TOTAL                                  | %13.3f | %6.1f%% | %11.3f\n",
-            total_wall, 100.0, t_eval_prop_total + t_eval_green_total)
+        total_wall, 100.0, t_eval_prop_total + t_eval_green_total)
 
     println()
 

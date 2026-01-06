@@ -30,14 +30,16 @@ The XOR logic `(index > 0) ⊻ is_reverse` determines which K to use:
 - Positive index, reverse → KMinus
 - Negative index, reverse → KPlus
 """
-@inline function apply_hybridization_inplace_dense!(temp_buffer::DensePropagator{T}, target::DensePropagator{T}, hyb::HybridizationState, model_data::ModelData{T}; is_reverse::Bool=false) where {T<:Number}
+@inline function apply_hybridization_inplace_dense!(
+        temp_buffer::DensePropagator{T}, target::DensePropagator{T}, hyb::HybridizationState,
+        model_data::ModelData{T}; is_reverse::Bool = false,) where {T <: Number}
     index = hyb.index
     if index != 0  # Not NoHyb
         # XOR determines if we should use KPlus: (positive and not reverse) OR (negative and reverse)
         use_kplus = (index > 0) ⊻ is_reverse
         l = abs(index)
         vec = use_kplus ? @view(model_data.hyb.KPlus_on_DLRtau[:, l]) :
-                          @view(model_data.hyb.KMinus_on_DLRtau[:, l])
+              @view(model_data.hyb.KMinus_on_DLRtau[:, l])
         _multiplication_13_dense!(temp_buffer, vec, target)
         copyto!(target, temp_buffer)
     end
@@ -49,5 +51,9 @@ end
 =============================================================================#
 
 # Hybridization application - interface version
-apply_hybridization_inplace!(temp_buffer::DensePropagator{T}, target::DensePropagator{T}, hyb::HybridizationState, model_data::ModelData{T}; is_reverse::Bool=false) where T = apply_hybridization_inplace_dense!(temp_buffer, target, hyb, model_data; is_reverse=is_reverse)
-
+function apply_hybridization_inplace!(
+        temp_buffer::DensePropagator{T}, target::DensePropagator{T}, hyb::HybridizationState,
+        model_data::ModelData{T}; is_reverse::Bool = false,) where {T}
+    apply_hybridization_inplace_dense!(
+        temp_buffer, target, hyb, model_data; is_reverse = is_reverse,)
+end

@@ -106,8 +106,11 @@ All operations are in-place to minimize allocations.
 - `conv_dlr`: DLR transform of conv operand
 - `result_dlr`: DLR transform of result
 """
-function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T}, propagator, buffers) where {T<:Number}
-    length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
+function multiplication_convolution(
+        nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid,
+        model_data::ModelData{T}, propagator, buffers,) where {T <: Number}
+    length(nodes) == length(edges) + 1 ||
+        error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
     # Get initial flux (nothing for Dense, OperatorFlux for BlockDense)
     current_flux = get_flux(propagator)
@@ -120,16 +123,16 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
     hyb_temp = get_hyb_temp(buffers, current_flux)
 
     # Process edges from right to left
-    for i in 1:length(edges)-1
+    for i in 1:(length(edges) - 1)
         edge = edges[i]
         if i == 1
             for hyb in edge.attached_hybs
-                apply_hybridization_inplace!(hyb_temp, result, hyb, model_data, is_reverse=false)
+                apply_hybridization_inplace!(hyb_temp, result, hyb, model_data, is_reverse = false)
             end
         end
 
         # Multiply with the next node operator
-        node = nodes[i+1]
+        node = nodes[i + 1]
         if node.opt_type !== :empty
             op = get_operator(node, model_data)
 
@@ -153,10 +156,11 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
         end
 
         # Apply hybridization attached to the node
-        apply_hybridization_inplace!(hyb_temp, result, node.attached_hyb, model_data, is_reverse=false)
+        apply_hybridization_inplace!(
+            hyb_temp, result, node.attached_hyb, model_data, is_reverse = false,)
 
         # Calculate the convolution with the next edge
-        edge_plus1 = edges[i+1]
+        edge_plus1 = edges[i + 1]
 
         # Get conv_operand buffer (fixed zero flux) and copy propagator
         conv_operand = get_conv_operand(buffers)
@@ -166,7 +170,8 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
         conv_hyb_temp = get_conv_hyb_temp(buffers)
 
         for hyb in edge_plus1.attached_hybs
-            apply_hybridization_inplace!(conv_hyb_temp, conv_operand, hyb, model_data, is_reverse=false)
+            apply_hybridization_inplace!(
+                conv_hyb_temp, conv_operand, hyb, model_data, is_reverse = false,)
         end
 
         # Transform to DLR using buffers
@@ -177,7 +182,8 @@ function multiplication_convolution(nodes::Vector{BackBoneNode}, edges::Vector{B
         tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.tau)
 
         # Perform convolution - result is written back to result buffer
-        do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid, model_data.kernel_cache, conv_dlr, result_dlr)
+        do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,
+            model_data.kernel_cache, conv_dlr, result_dlr,)
     end
 
     return result
@@ -202,8 +208,11 @@ Same as `multiplication_convolution`.
 # Returns
 Reference to the result buffer containing diagram contribution on DLR τ-grid.
 """
-function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid, model_data::ModelData{T}, propagator, buffers) where {T<:Number}
-    length(nodes) == length(edges) + 1 || error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
+function multiplication_convolution_reverse(
+        nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid,
+        model_data::ModelData{T}, propagator, buffers,) where {T <: Number}
+    length(nodes) == length(edges) + 1 ||
+        error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
     # Get initial flux (nothing for Dense, OperatorFlux for BlockDense)
     current_flux = get_flux(propagator)
@@ -220,7 +229,7 @@ function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::
         edge = edges[i]
         if i == length(edges)
             for hyb in edge.attached_hybs
-                apply_hybridization_inplace!(hyb_temp, result, hyb, model_data, is_reverse=false)
+                apply_hybridization_inplace!(hyb_temp, result, hyb, model_data, is_reverse = false)
             end
         end
 
@@ -248,10 +257,11 @@ function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::
         end
 
         # Apply hybridization with is_reverse=true (swaps K+ ↔ K-)
-        apply_hybridization_inplace!(hyb_temp, result, node.attached_hyb, model_data, is_reverse=true)
+        apply_hybridization_inplace!(
+            hyb_temp, result, node.attached_hyb, model_data, is_reverse = true,)
 
         # Calculate the convolution with the next edge
-        edge_minus1 = edges[i-1]
+        edge_minus1 = edges[i - 1]
 
         # Get conv_operand buffer (fixed zero flux) and copy propagator
         conv_operand = get_conv_operand(buffers)
@@ -261,7 +271,8 @@ function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::
         conv_hyb_temp = get_conv_hyb_temp(buffers)
 
         for hyb in edge_minus1.attached_hybs
-            apply_hybridization_inplace!(conv_hyb_temp, conv_operand, hyb, model_data, is_reverse=false)
+            apply_hybridization_inplace!(
+                conv_hyb_temp, conv_operand, hyb, model_data, is_reverse = false,)
         end
 
         # Transform to DLR using buffers (note: order reversed)
@@ -272,7 +283,8 @@ function multiplication_convolution_reverse(nodes::Vector{BackBoneNode}, edges::
         tau2dlr!(conv_dlr, dlr_grid, conv_operand, dlr_grid.tau)
 
         # Perform convolution (reversed order) - result is written back to result buffer
-        do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid, model_data.kernel_cache, result_dlr, conv_dlr)
+        do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,
+            model_data.kernel_cache, result_dlr, conv_dlr,)
     end
 
     return result
@@ -298,13 +310,14 @@ Called by `eval_propagator_given_order!`.
 # Returns
 Diagram contribution in imaginary time (format-specific propagator type).
 """
-function eval_propagator_backbone(diagram::BackBone, solver_data::SolverData{T}, buffers) where {T<:Number}
+function eval_propagator_backbone(diagram::BackBone, solver_data::SolverData{T}, buffers) where {T <:
+                                                                                                 Number}
     bare_propagator = get_bare_propagator(solver_data.model)
     return multiplication_convolution(
         diagram.nodes, diagram.edges,
         solver_data.model.dlr_grid, solver_data.model,
         bare_propagator.vals,
-        buffers
+        buffers,
     )
 end
 
@@ -328,14 +341,15 @@ Format-agnostic: works with both Dense and BlockDense propagators.
 # Returns
 Forward backbone contribution on DLR τ-grid.
 """
-function eval_forward_backbone(diagram::BackBone, split_point::Int, solver_data::SolverData{T}, propagator, buffers) where T
+function eval_forward_backbone(diagram::BackBone, split_point::Int,
+        solver_data::SolverData{T}, propagator, buffers,) where {T}
     return multiplication_convolution(
         diagram.nodes[1:split_point],
-        diagram.edges[1:split_point-1],
+        diagram.edges[1:(split_point - 1)],
         solver_data.model.dlr_grid,
         solver_data.model,
         propagator,
-        buffers.convolution_buffers.fwd_buffers
+        buffers.convolution_buffers.fwd_buffers,
     )
 end
 
@@ -355,13 +369,14 @@ Format-agnostic: works with both Dense and BlockDense propagators.
 # Returns
 Reverse backbone contribution on DLR τ-grid.
 """
-function eval_reverse_backbone(diagram::BackBone, split_point::Int, solver_data::SolverData{T}, propagator, buffers) where T
+function eval_reverse_backbone(diagram::BackBone, split_point::Int,
+        solver_data::SolverData{T}, propagator, buffers,) where {T}
     return multiplication_convolution_reverse(
         diagram.nodes[split_point:end],
         diagram.edges[split_point:end],
         solver_data.model.dlr_grid,
         solver_data.model,
         propagator,
-        buffers.convolution_buffers.rev_buffers
+        buffers.convolution_buffers.rev_buffers,
     )
 end

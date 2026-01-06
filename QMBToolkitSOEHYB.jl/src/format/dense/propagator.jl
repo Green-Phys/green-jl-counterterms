@@ -28,7 +28,7 @@ The flux parameter in accessor functions is ignored.
 - `conv_dlr`: DLR transform of convolution operand
 - `result_dlr`: DLR transform of result
 """
-struct DenseBackboneBuffers{T<:Number}
+struct DenseBackboneBuffers{T <: Number}
     # Tau-sized buffers
     result::DensePropagator{T}
     hyb_temp::DensePropagator{T}
@@ -40,7 +40,7 @@ struct DenseBackboneBuffers{T<:Number}
     result_dlr::DensePropagator{T}
 end
 
-function DenseBackboneBuffers{T}(n_tau::Int, n_fock::Int, n_dlr::Int) where T<:Number
+function DenseBackboneBuffers{T}(n_tau::Int, n_fock::Int, n_dlr::Int) where {T <: Number}
     return DenseBackboneBuffers{T}(
         zeros(DensePropagator{T}, n_tau, n_fock, n_fock),   # result
         zeros(DensePropagator{T}, n_tau, n_fock, n_fock),   # hyb_temp
@@ -88,28 +88,28 @@ compute_new_flux_reverse(current_flux::Nothing, op::DenseOperator) = nothing
 
 Get the result buffer. Flux parameter is ignored for Dense mode.
 """
-get_result(buffers::DenseBackboneBuffers{T}, flux) where T = buffers.result
+get_result(buffers::DenseBackboneBuffers{T}, flux) where {T} = buffers.result
 
 """
     get_hyb_temp(buffers::DenseBackboneBuffers{T}, flux) where T
 
 Get the hybridization temp buffer. Flux parameter is ignored for Dense mode.
 """
-get_hyb_temp(buffers::DenseBackboneBuffers{T}, flux) where T = buffers.hyb_temp
+get_hyb_temp(buffers::DenseBackboneBuffers{T}, flux) where {T} = buffers.hyb_temp
 
 """
     get_op_product(buffers::DenseBackboneBuffers{T}, flux) where T
 
 Get the operator product buffer. Flux parameter is ignored for Dense mode.
 """
-get_op_product(buffers::DenseBackboneBuffers{T}, flux) where T = buffers.op_product
+get_op_product(buffers::DenseBackboneBuffers{T}, flux) where {T} = buffers.op_product
 
 """
     get_result_dlr(buffers::DenseBackboneBuffers{T}, flux) where T
 
 Get the result DLR buffer. Flux parameter is ignored for Dense mode.
 """
-get_result_dlr(buffers::DenseBackboneBuffers{T}, flux) where T = buffers.result_dlr
+get_result_dlr(buffers::DenseBackboneBuffers{T}, flux) where {T} = buffers.result_dlr
 
 """
     get_conv_operand(buffers::DenseBackboneBuffers)
@@ -150,7 +150,7 @@ This is a format-specific function called by the format-independent
 # Returns
 - `DenseBackboneBuffers{T}`: Pre-allocated buffers for diagram evaluation
 """
-function allocate_propagator_buffers(solver_data::SolverData{T, DenseFormat}) where {T<:Number}
+function allocate_propagator_buffers(solver_data::SolverData{T, DenseFormat}) where {T <: Number}
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_fock = solver_data.model.n_fock
     n_dlr = solver_data.model.dlr_grid.size
@@ -162,7 +162,7 @@ end
 
 Allocate evaluation buffers for dense format Green's function computation.
 """
-function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where T
+function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where {T}
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_fock = solver_data.model.n_fock
     n_dlr = solver_data.model.dlr_grid.size
@@ -175,6 +175,6 @@ function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where T
 
     return (
         trace_result_buffer = zeros(Float64, n_tau),
-        convolution_buffers = conv_buffers
+        convolution_buffers = conv_buffers,
     )
 end

@@ -48,7 +48,6 @@ struct BackBoneNode
     attached_hyb::HybridizationState # can be NoHyb, KPlus(l), or KMinus(l)
 end
 
-
 struct BackBoneEdge
     attached_hybs::Vector{HybridizationState} # length <=L, each can be KPlus(l) or KMinus(l)
 end
@@ -61,4 +60,3 @@ struct BackBone
     edges::Vector{BackBoneEdge} # length M-1
     external_opts_loc::Vector{Int} # only for green_diagram, record the location of external operators (annihilation and creation); empty vector for other diagram types
 end
-

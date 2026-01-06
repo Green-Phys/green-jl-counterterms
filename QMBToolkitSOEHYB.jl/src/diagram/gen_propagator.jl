@@ -22,13 +22,14 @@ This function is format-independent - it only generates diagram structure/topolo
 """
 function gen_propagator_given_order(expansion_order::Int, n_flavors::Int, exponents::Vector{Float64})
     pairings_with_crossings = _generate_pairings(expansion_order)
-    diagrams_list = Vector{Array{BackBone,3}}()
+    diagrams_list = Vector{Array{BackBone, 3}}()
     for (pairing, crossing_count) in pairings_with_crossings
         crossing_parity = (-1.0)^crossing_count
-        new_diagrams = gen_propagator_given_topology(2 + 2 * expansion_order, pairing, crossing_parity, n_flavors, exponents)
+        new_diagrams = gen_propagator_given_topology(
+            2 + 2 * expansion_order, pairing, crossing_parity, n_flavors, exponents,)
         push!(diagrams_list, new_diagrams)
     end
-    diagrams = stack(diagrams_list, dims=1)
+    diagrams = stack(diagrams_list, dims = 1)
     return diagrams
 end
 
@@ -54,24 +55,26 @@ This function is format-independent - it only generates diagram structure.
 - Internal nodes (2 to M-1) are paired according to connected_pairs
 - Uses `gen_diagram_combinations` to enumerate all flavor and SOE assignments
 """
-function gen_propagator_given_topology(M::Int, connected_pairs::Vector{Tuple{Int,Int}}, crossing_parity::Float64, n_flavors::Int, exponents::Vector{Float64})
+function gen_propagator_given_topology(M::Int, connected_pairs::Vector{Tuple{Int, Int}},
+        crossing_parity::Float64, n_flavors::Int, exponents::Vector{Float64},)
     external_opts_loc = Int[]
     empty_node = BackBoneNode(:empty, -1, -1, NoHyb())
 
     # Validate connected_pairs structure
     @assert length(connected_pairs) == (M - 2) ÷ 2 "Number of connected pairs does not match M"
     @assert all(x -> x[1] > x[2], connected_pairs) "Connected pairs should have first index larger than second index"
-    @assert issorted([x[1] for x in connected_pairs]; rev=true) "Connected pairs are not ordered properly"
-    @assert sort(vcat([x[1] for x in connected_pairs], [x[2] for x in connected_pairs])) == collect(2:M-1) "Connected pairs do not cover all internal nodes"
+    @assert issorted([x[1] for x in connected_pairs]; rev = true) "Connected pairs are not ordered properly"
+    @assert sort(vcat([x[1] for x in connected_pairs], [x[2] for x in connected_pairs])) ==
+            collect(2:(M - 1)) "Connected pairs do not cover all internal nodes"
 
     base_nodes = Vector{BackBoneNode}(undef, M)
     base_nodes[1] = empty_node
     base_nodes[M] = empty_node
     base_sign = crossing_parity
 
-    return gen_diagram_combinations(:propagator_diagram, M, connected_pairs, n_flavors, exponents, base_nodes, base_sign, external_opts_loc)
+    return gen_diagram_combinations(:propagator_diagram, M, connected_pairs, n_flavors,
+        exponents, base_nodes, base_sign, external_opts_loc,)
 end
-
 
 """
     _generate_pairings(N)
@@ -95,7 +98,7 @@ then counts crossings for each (via `count_pair_crossings`).
 """
 function _generate_pairings(N::Int)
     # The set of points: 2, 3, ..., 2N+1
-    points = collect(2:(2*N+1))
+    points = collect(2:(2 * N + 1))
 
     # Generate all configurations using shared recurse_pairs function
     all_configs = recurse_pairs(points)

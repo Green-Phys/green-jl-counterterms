@@ -8,9 +8,9 @@ Dense and BlockDense representations through interface functions.
 - `get_operator(node, model_data)`: Get operator for a diagram node
 - `multiplication_convolution(...)`: Forward backbone evaluation (right to left)
 - `multiplication_convolution_reverse(...)`: Reverse backbone evaluation (left to right)
-- `eval_propagator_backbone(...)`: Propagator diagram evaluation
-- `eval_forward_backbone(...)`: Forward Green's function backbone
-- `eval_reverse_backbone(...)`: Reverse Green's function backbone
+- `eval_propagator_forward_backbone(...)`: Propagator diagram evaluation
+- `eval_green_forward_backbone(...)`: Forward Green's function backbone
+- `eval_green_reverse_backbone(...)`: Reverse Green's function backbone
 
 # Interface Functions Used
 - get_flux, compute_new_flux, compute_new_flux_reverse: Flux handling
@@ -295,7 +295,7 @@ end
 =============================================================================#
 
 """
-    eval_propagator_backbone(diagram, solver_data, buffers)
+    eval_propagator_forward_backbone(diagram, solver_data, buffers)
 
 Evaluate a single propagator diagram using the unified backbone evaluation.
 
@@ -310,8 +310,8 @@ Called by `eval_propagator_given_order!`.
 # Returns
 Diagram contribution in imaginary time (format-specific propagator type).
 """
-function eval_propagator_backbone(diagram::BackBone, solver_data::SolverData{T}, buffers) where {T <:
-                                                                                                 Number}
+function eval_propagator_forward_backbone(diagram::BackBone, solver_data::SolverData{T}, buffers) where {T <:
+                                                                                                         Number}
     bare_propagator = get_bare_propagator(solver_data.model)
     return multiplication_convolution(
         diagram.nodes, diagram.edges,
@@ -326,7 +326,7 @@ end
 =============================================================================#
 
 """
-    eval_forward_backbone(diagram, split_point, solver_data, propagator, buffers)
+    eval_green_forward_backbone(diagram, split_point, solver_data, propagator, buffers)
 
 Evaluate forward backbone contribution from node 1 to split_point.
 Format-agnostic: works with both Dense and BlockDense propagators.
@@ -341,7 +341,7 @@ Format-agnostic: works with both Dense and BlockDense propagators.
 # Returns
 Forward backbone contribution on DLR τ-grid.
 """
-function eval_forward_backbone(diagram::BackBone, split_point::Int,
+function eval_green_forward_backbone(diagram::BackBone, split_point::Int,
         solver_data::SolverData{T}, propagator, buffers,) where {T}
     return multiplication_convolution(
         diagram.nodes[1:split_point],
@@ -354,7 +354,7 @@ function eval_forward_backbone(diagram::BackBone, split_point::Int,
 end
 
 """
-    eval_reverse_backbone(diagram, split_point, solver_data, propagator, buffers)
+    eval_green_reverse_backbone(diagram, split_point, solver_data, propagator, buffers)
 
 Evaluate reverse backbone contribution from split_point to end.
 Format-agnostic: works with both Dense and BlockDense propagators.
@@ -369,7 +369,7 @@ Format-agnostic: works with both Dense and BlockDense propagators.
 # Returns
 Reverse backbone contribution on DLR τ-grid.
 """
-function eval_reverse_backbone(diagram::BackBone, split_point::Int,
+function eval_green_reverse_backbone(diagram::BackBone, split_point::Int,
         solver_data::SolverData{T}, propagator, buffers,) where {T}
     return multiplication_convolution_reverse(
         diagram.nodes[split_point:end],

@@ -48,7 +48,7 @@ function eval_propagator_given_order!(
 
     for i in my_diagrams
         diagram = diagrams_flat[i]
-        contribution = eval_propagator_backbone(diagram, solver_data, buffers)
+        contribution = eval_propagator_forward_backbone(diagram, solver_data, buffers)
         prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
         accumulate_contribution!(local_result, prefactor, contribution)
     end

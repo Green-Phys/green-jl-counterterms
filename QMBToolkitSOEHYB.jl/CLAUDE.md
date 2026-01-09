@@ -51,7 +51,7 @@ Note: The solver is MPI-enabled and uses `mpiexecjl` internally.
 ### Core Data Flow
 
 1. **Input Reading** (`src/util/io.jl::read_input`) - Parses TOML into `Params` structs
-2. **Model Initialization** (`src/util/init_data.jl::init_model_data` or `init_model_data_blockdense`) - Loads Hamiltonian, performs exact diagonalization, builds SOE representation
+2. **Model Initialization** (`src/util/init_data.jl::init_model_data`) - Loads Hamiltonian, performs exact diagonalization, builds SOE representation
 3. **Solver Initialization** (`src/util/init_data.jl::init_solver_data`) - Creates empty `CalculationData`
 4. **Solve** (`src/solver/solve.jl::solve`) - Generates and evaluates diagrams, computes partition function and Green's function
 
@@ -63,7 +63,7 @@ Note: The solver is MPI-enabled and uses `mpiexecjl` internally.
 - SOE representation: `SOEData` with coefficients, exponents, and K±(τ) on DLR grid
 - Bare propagator as `DLRData`
 - Pre-computed caches: `KernelCache`, `ConvolutionWorkspace`
-- Format-dependent fields for BlockDense operators
+- Format-dependent fields for operators
 
 **CalculationData** (`src/solver/Data.jl`):
 - Propagator and self-energy (format-dependent storage)
@@ -131,7 +131,7 @@ where K⁺(τ,ω) = exp(-ωτ)/(1+exp(-βω)) and K⁻(τ,-ω) for the adjoint.
 
 **Bare vs Bold Expansion**:
 - Both must be consistently bare or both bold
-- Propagator order must equal Green's function order - 1
+- Propagator order must equal Green's function order - 1 (propagator order and self-energy order is defined as the number of hybridization lines, while the order of Green's function is defined as the number of hybridziation liens plus one.)
 
 ### File Organization
 

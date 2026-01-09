@@ -68,10 +68,10 @@ function eval_green_given_order!(
                     @assert diagram.external_opts_loc == external_opts_loc "External operator locations do not match among diagrams of the same topology and direction."
 
                     # Compute forward and reverse contributions using format-agnostic interface
-                    contrib_0_to_tau = eval_forward_backbone(
+                    contrib_0_to_tau = eval_green_forward_backbone(
                         diagram, external_opts_loc[2], solver_data, propagator, buffers,
                     )
-                    contrib_tau_to_beta = eval_reverse_backbone(
+                    contrib_tau_to_beta = eval_green_reverse_backbone(
                         diagram, external_opts_loc[2], solver_data, propagator, buffers,
                     )
 
@@ -123,5 +123,5 @@ function eval_green_given_order!(
     solver_data.calc.green.vals.data .+= order_result
 end
 
-# eval_forward_backbone and eval_reverse_backbone are now defined in backbone_eval.jl
+# eval_green_forward_backbone and eval_green_reverse_backbone are now defined in backbone_eval.jl
 # as format-agnostic unified functions.

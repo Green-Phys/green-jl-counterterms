@@ -48,25 +48,15 @@ function eval_green_given_order!(
 
     for i in my_topologies
         for j in 1:n_directions
-            external_opts_loc = diagrams[i, j, 1, 1].external_opts_loc
-            @assert length(external_opts_loc) == 2 && external_opts_loc[1] == 1 "External operator locations are invalid."
-
-            # Initialize backbone accumulators (will accumulate contributions for each ann_index)
-            # Pre-allocate with correct flux from annihilation operators
-            backbone_0_to_beta_with_ann = [zeros_like_with_flux(propagator, ann_opts[idx])
-                                           for idx in 1:solver_data.model.n_flavors_physical]
-
             for k in 1:n_line_flavors
                 for l in 1:n_hyb_exponents
                     diagram = diagrams[i, j, k, l]
-                    @assert diagram.external_opts_loc == external_opts_loc "External operator locations do not match among diagrams of the same topology and direction."
 
-                    # Compute forward and reverse contributions using format-agnostic interface
                     contrib_0_to_tau = eval_green_forward_backbone(
-                        diagram, external_opts_loc[2], solver_data, propagator, buffers
+                        diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
                     )
                     contrib_tau_to_beta = eval_green_reverse_backbone(
-                        diagram, external_opts_loc[2], solver_data, propagator, buffers
+                        diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
                     )
 
                     # Reflection: tau -> beta - tau
@@ -84,23 +74,22 @@ function eval_green_given_order!(
                         final_product = allocate_product_buffer(contrib_tau_to_beta, ann_product, n_tau)
                         multiply_prop_prop!(final_product, contrib_tau_to_beta, ann_product)
 
-                        # Accumulate
-                        add_scaled!(backbone_0_to_beta_with_ann[ann_index], prefactor, final_product)
+                        add_scaled!(buffers.backbone_0_to_beta_with_ann[ann_index], prefactor, final_product)
                     end
                 end
             end
+        end
+    end
 
-            # Compute final Green's function by applying creation operators and taking trace
-            for ann_index in 1:solver_data.model.n_flavors_physical
-                for cre_index in 1:solver_data.model.n_flavors_physical
-                    cre_opt = cre_opts[cre_index]
-                    cre_product = allocate_product_buffer(backbone_0_to_beta_with_ann[ann_index], cre_opt, n_tau)
-                    multiply_prop_op!(cre_product, backbone_0_to_beta_with_ann[ann_index], cre_opt)
+    # Compute final Green's function by applying creation operators and taking trace
+    for ann_index in 1:solver_data.model.n_flavors_physical
+        for cre_index in 1:solver_data.model.n_flavors_physical
+            cre_opt = cre_opts[cre_index]
+            cre_product = allocate_product_buffer(buffers.backbone_0_to_beta_with_ann[ann_index], cre_opt, n_tau)
+            multiply_prop_op!(cre_product, buffers.backbone_0_to_beta_with_ann[ann_index], cre_opt)
 
-                    trace_prop!(buffers.trace_result_buffer, cre_product)
-                    view(local_result, :, ann_index, cre_index) .+= buffers.trace_result_buffer
-                end
-            end
+            trace_prop!(buffers.trace_result_buffer, cre_product)
+            view(local_result, :, ann_index, cre_index) .+= buffers.trace_result_buffer
         end
     end
 

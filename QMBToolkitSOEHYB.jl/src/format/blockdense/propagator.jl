@@ -32,20 +32,24 @@ Buffer pools are indexed by quantum number (flux), allowing pre-allocation of
 buffers for all possible flux values encountered during diagram evaluation.
 
 # Type Parameters
-- `T`: Numeric element type
-- `QN`: Quantum number type (QN_N or QN_NSz)
+
+  - `T`: Numeric element type
+  - `QN`: Quantum number type (QN_N or QN_NSz)
 
 # Buffer Roles
+
 ## Variable-flux pools (indexed by QuantumNumber):
-- `result_pool`: Accumulates the backbone result (flux changes during evaluation)
-- `hyb_temp_pool`: Scratch buffer for hybridization on result (same flux as result)
-- `op_product_pool`: Holds operator multiplication output (new flux after op)
-- `result_dlr_pool`: DLR transform of result (same flux as result)
+
+  - `result_pool`: Accumulates the backbone result (flux changes during evaluation)
+  - `hyb_temp_pool`: Scratch buffer for hybridization on result (same flux as result)
+  - `op_product_pool`: Holds operator multiplication output (new flux after op)
+  - `result_dlr_pool`: DLR transform of result (same flux as result)
 
 ## Fixed zero-flux buffers:
-- `conv_operand`: Propagator copy for convolution (always zero flux)
-- `conv_hyb_temp`: Scratch buffer for hybridization on conv operand (always zero flux)
-- `conv_dlr`: DLR transform of convolution operand (always zero flux)
+
+  - `conv_operand`: Propagator copy for convolution (always zero flux)
+  - `conv_hyb_temp`: Scratch buffer for hybridization on conv operand (always zero flux)
+  - `conv_dlr`: DLR transform of convolution operand (always zero flux)
 """
 struct BlockDenseBackboneBuffers{T <: Number, QN <: QuantumNumber}
     basis::BlockDenseBasis
@@ -140,10 +144,11 @@ end
 Construct BlockDenseBackboneBuffers with pre-allocated pools for all possible flux values.
 
 # Arguments
-- `basis::BlockDenseBasis`: Basis defining the block structure
-- `max_order::Int`: Maximum expansion order (determines flux range)
-- `n_tau::Int`: Number of tau grid points
-- `n_dlr::Int`: Number of DLR basis functions
+
+  - `basis::BlockDenseBasis`: Basis defining the block structure
+  - `max_order::Int`: Maximum expansion order (determines flux range)
+  - `n_tau::Int`: Number of tau grid points
+  - `n_dlr::Int`: Number of DLR basis functions
 """
 function BlockDenseBackboneBuffers{T}(
         basis::BlockDenseBasis, max_order::Int, n_tau::Int, n_dlr::Int) where {T <: Number}
@@ -176,7 +181,7 @@ function BlockDenseBackboneBuffers{T}(
     return BlockDenseBackboneBuffers{T, QN}(
         basis, n_tau, n_dlr,
         result_pool, hyb_temp_pool, op_product_pool, result_dlr_pool,
-        zero_flux, conv_operand, conv_hyb_temp, conv_dlr,
+        zero_flux, conv_operand, conv_hyb_temp, conv_dlr
     )
 end
 
@@ -284,7 +289,7 @@ get_conv_dlr(buffers::BlockDenseBackboneBuffers) = buffers.conv_dlr
 Allocate buffers for BlockDense propagator evaluation.
 """
 function allocate_propagator_buffers(solver_data::SolverData{
-        T, BlockDenseFormat,}) where {T <: Number}
+        T, BlockDenseFormat}) where {T <: Number}
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_dlr = solver_data.model.dlr_grid.size
     basis = get_bare_propagator(solver_data.model).vals.basis
@@ -301,6 +306,7 @@ function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) wh
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_dlr = solver_data.model.dlr_grid.size
     basis = get_bare_propagator(solver_data.model).vals.basis
+    n_flavors = solver_data.model.n_flavors_physical
 
     # Use a reasonable max order for buffer pre-allocation
     max_order = 10  # Conservative estimate, can be tuned
@@ -308,11 +314,17 @@ function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) wh
     # Pre-allocate buffers for forward and reverse backbone evaluation
     conv_buffers = (
         fwd_buffers = BlockDenseBackboneBuffers{T}(basis, max_order, n_tau, n_dlr),
-        rev_buffers = BlockDenseBackboneBuffers{T}(basis, max_order, n_tau, n_dlr),
+        rev_buffers = BlockDenseBackboneBuffers{T}(basis, max_order, n_tau, n_dlr)
     )
+
+    # Pre-allocate backbone accumulators with correct flux from annihilation operators
+    ann_opts = get_ann_opts(solver_data.model)
+    backbone_0_to_beta_with_ann = [zeros(BlockDensePropagator{T}, basis, ann_opts[idx].flux, n_tau)
+                                   for idx in 1:n_flavors]
 
     return (
         trace_result_buffer = zeros(Float64, n_tau),
         convolution_buffers = conv_buffers,
+        backbone_0_to_beta_with_ann = backbone_0_to_beta_with_ann
     )
 end

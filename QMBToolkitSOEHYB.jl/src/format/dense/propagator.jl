@@ -18,15 +18,17 @@ All buffers have the same shape since Dense mode doesn't track flux.
 The flux parameter in accessor functions is ignored.
 
 # Buffer Roles (tau-sized: n_tau × n_fock × n_fock)
-- `result`: Accumulates the backbone result through multiplication and convolution
-- `hyb_temp`: Scratch buffer for hybridization operations on result
-- `op_product`: Holds operator multiplication output
-- `conv_operand`: Holds propagator copy for convolution
-- `conv_hyb_temp`: Scratch buffer for hybridization on convolution operand
+
+  - `result`: Accumulates the backbone result through multiplication and convolution
+  - `hyb_temp`: Scratch buffer for hybridization operations on result
+  - `op_product`: Holds operator multiplication output
+  - `conv_operand`: Holds propagator copy for convolution
+  - `conv_hyb_temp`: Scratch buffer for hybridization on convolution operand
 
 # Buffer Roles (dlr-sized: n_dlr × n_fock × n_fock)
-- `conv_dlr`: DLR transform of convolution operand
-- `result_dlr`: DLR transform of result
+
+  - `conv_dlr`: DLR transform of convolution operand
+  - `result_dlr`: DLR transform of result
 """
 struct DenseBackboneBuffers{T <: Number}
     # Tau-sized buffers
@@ -48,7 +50,7 @@ function DenseBackboneBuffers{T}(n_tau::Int, n_fock::Int, n_dlr::Int) where {T <
         zeros(DensePropagator{T}, n_tau, n_fock, n_fock),   # conv_operand
         zeros(DensePropagator{T}, n_tau, n_fock, n_fock),   # conv_hyb_temp
         zeros(DensePropagator{T}, n_dlr, n_fock, n_fock),   # conv_dlr
-        zeros(DensePropagator{T}, n_dlr, n_fock, n_fock),   # result_dlr
+        zeros(DensePropagator{T}, n_dlr, n_fock, n_fock)   # result_dlr
     )
 end
 
@@ -145,10 +147,12 @@ This is a format-specific function called by the format-independent
 `eval_propagator_given_order!` wrapper.
 
 # Arguments
-- `solver_data::SolverData{T}`: Solver data containing grid and Fock space information
+
+  - `solver_data::SolverData{T}`: Solver data containing grid and Fock space information
 
 # Returns
-- `DenseBackboneBuffers{T}`: Pre-allocated buffers for diagram evaluation
+
+  - `DenseBackboneBuffers{T}`: Pre-allocated buffers for diagram evaluation
 """
 function allocate_propagator_buffers(solver_data::SolverData{T, DenseFormat}) where {T <: Number}
     n_tau = length(solver_data.model.dlr_grid.tau)
@@ -166,15 +170,21 @@ function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where {
     n_tau = length(solver_data.model.dlr_grid.tau)
     n_fock = solver_data.model.n_fock
     n_dlr = solver_data.model.dlr_grid.size
+    n_flavors = solver_data.model.n_flavors_physical
 
     # Pre-allocate buffers for forward and reverse backbone evaluation
     conv_buffers = (
         fwd_buffers = DenseBackboneBuffers{T}(n_tau, n_fock, n_dlr),
-        rev_buffers = DenseBackboneBuffers{T}(n_tau, n_fock, n_dlr),
+        rev_buffers = DenseBackboneBuffers{T}(n_tau, n_fock, n_dlr)
     )
+
+    # Pre-allocate backbone accumulators (one per annihilation flavor)
+    backbone_0_to_beta_with_ann = [zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
+                                   for _ in 1:n_flavors]
 
     return (
         trace_result_buffer = zeros(Float64, n_tau),
         convolution_buffers = conv_buffers,
+        backbone_0_to_beta_with_ann = backbone_0_to_beta_with_ann
     )
 end

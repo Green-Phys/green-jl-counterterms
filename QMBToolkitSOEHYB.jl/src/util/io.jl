@@ -210,17 +210,17 @@ Process Green's function data and save to HDF5 file. Returns nothing.
 Prints summary information about the results.
 """
 function save_results(solver_data::SolverData, solver_params::SolverParams,
-        total_wall_time::Float64, total_cpu_time::Float64,)
+        total_wall_time::Float64, total_cpu_time::Float64)
     println()
     println("--- Post-processing and saving data ---")
 
     # Compute linear grid and store in CalculationData
     # IMPORTANT: This must be done BEFORE calling save_data since save_data uses the linear grid
     solver_data.calc.tau_linear_grid = collect(LinRange(
-        0.0, solver_data.model.beta, solver_params.green.save_linear_size,))
+        0.0, solver_data.model.beta, solver_params.green.save_linear_size))
     green_linear_data = QMBToolkitDLR.dlr2tau(
         solver_data.model.dlr_grid, solver_data.calc.green.coeffs.data,
-        solver_data.calc.tau_linear_grid,)
+        solver_data.calc.tau_linear_grid)
     solver_data.calc.green_linear_grid = DensePropagator{eltype(green_linear_data)}(green_linear_data)
 
     # Print summary
@@ -239,13 +239,13 @@ function save_results(solver_data::SolverData, solver_params::SolverParams,
 end
 
 """
-    print_timing_summary(nprocs, t_gen_prop_wall, t_eval_prop_wall, t_eval_prop_total,
+    print_shutdown_message(nprocs, t_gen_prop_wall, t_eval_prop_wall, t_eval_prop_total,
                         t_gen_green_wall, t_eval_green_wall, t_eval_green_total)
 
 Print a formatted timing summary table showing wall times, percentages, and CPU times
 for diagram generation and evaluation operations.
 """
-function print_timing_summary(
+function print_shutdown_message(
         nprocs::Int,
         t_gen_prop_wall::Float64,
         t_eval_prop_wall::Float64,
@@ -295,4 +295,17 @@ function print_timing_summary(
     println("========================================")
     println("  QMBToolkitSOEHYB Solver Finished  ")
     println("========================================")
+end
+
+
+function print_startup_message()
+    println("========================================")
+    println("  QMBToolkitSOEHYB Solver Starting Up  ")
+    println("========================================")
+
+    println()
+    println("--- Definition of expansion orders ---")
+    println("Propagator: number of hybridization lines")
+    println("Self-energy: number of hybridization lines")
+    println("Green's function: number of hybridization lines + 1")
 end

@@ -145,7 +145,7 @@ Draw nodes and their markers on the diagram lines.
 """
 function draw_nodes!(line2::Vector{Char}, line3::Vector{Char},
         node_center_pos::Vector{Int}, node_infos,
-        node_strs::Vector{String}, min_overall_coord::Int,)
+        node_strs::Vector{String}, min_overall_coord::Int)
     M = length(node_center_pos)
     for i in 1:M
         center_unshifed = node_center_pos[i]
@@ -178,7 +178,7 @@ Draw edges and R markers on the diagram lines.
 """
 function draw_edges!(line3::Vector{Char}, line4::Vector{Char},
         node_center_pos::Vector{Int}, min_overall_coord::Int,
-        diagram_type::Symbol,)
+        diagram_type::Symbol)
     M = length(node_center_pos)
     for i in 1:(M - 1)
         start_unshifed = node_center_pos[i] + 1
@@ -207,7 +207,7 @@ Draw hybridization labels on the diagram lines.
 """
 function draw_hybridizations!(hyb_lines::Vector{Vector{Char}}, edges::Vector{BackBoneEdge},
         node_center_pos::Vector{Int}, min_overall_coord::Int,
-        total_width::Int,)
+        total_width::Int)
     max_hybs = length(hyb_lines)
     M = length(node_center_pos)
 

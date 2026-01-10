@@ -16,7 +16,7 @@ Different matrix elements share the same exponents.
 """
 mutable struct SOEData
     coeffs::Array{Float64, 3}         # SOE coefficients, shape: (p, o1, o2)
-    exponents::Vector{Float64}       # SOE exponents, shape: (p,)
+    exponents::Vector{Float64}       # SOE exponents, shape: (p)
     KPlus_on_DLRtau::Array{Float64, 2}  # K(tau_k, exponent_i) on the DLR tau grid
     KMinus_on_DLRtau::Array{Float64, 2} # K(tau_k, -exponent_i) on the DLR tau grid
 end

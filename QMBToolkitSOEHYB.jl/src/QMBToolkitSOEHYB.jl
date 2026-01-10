@@ -60,9 +60,7 @@ function run(input_file::String)
     rank = MPI.Comm_rank(comm)
 
     if rank == 0
-        println("========================================")
-        println("  QMBToolkitSOEHYB Solver Starting Up  ")
-        println("========================================")
+        print_startup_message()
     end
 
     params = read_input(input_file)

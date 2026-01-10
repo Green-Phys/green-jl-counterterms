@@ -21,7 +21,7 @@ For Green's function diagrams, updates green.
 """
 function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::SolverParams,
         diagram_type::Symbol, diagrams::Vector{Array{BackBone, 4}},
-        comm::MPI.Comm,) where {T, Format <: HilbertSpaceFormat}
+        comm::MPI.Comm) where {T, Format <: HilbertSpaceFormat}
     rank = MPI.Comm_rank(comm)
     propagator = get_propagator(solver_data.calc)  # Cache accessor result
 
@@ -57,7 +57,7 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
             # Store Green's function numerator after this order
             # Green's function is always stored as DensePropagator
             push!(solver_data.calc.green_numerator_by_order,
-                DensePropagator{T}(copy(solver_data.calc.green.vals.data)),)
+                DensePropagator{T}(copy(solver_data.calc.green.vals.data)))
         end
 
         # Compute Green's function by order (numerator / Z)
@@ -73,7 +73,7 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
         copyto!(solver_data.calc.green.vals, solver_data.calc.green_by_order[end])
         # Green's function coefficients (Green's function is always stored as DensePropagator)
         solver_data.calc.green.coeffs = tau2dlr(
-            solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau,)
+            solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.tau)
     else
         error("Unknown diagram type: $diagram_type. Supported types are: :propagator_diagram, :green_diagram, :selfenergy_diagram")
     end

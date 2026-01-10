@@ -25,7 +25,7 @@ function gen_diagrams(solver_data::SolverData, solver_params::SolverParams, diag
     if diagram_type == :propagator_diagram && !solver_params.propagator.is_bold
         for order in 0:solver_params.propagator.expansion_order
             new_diagrams = gen_propagator_given_order(
-                order, solver_data.model.n_flavors, solver_data.model.hyb.exponents,)
+                order, solver_data.model.n_flavors, solver_data.model.hyb.exponents)
             push!(diagrams, new_diagrams)
             if rank == 0
                 println("Generated ", size(new_diagrams), " propagator diagrams at order ", order)
@@ -34,7 +34,7 @@ function gen_diagrams(solver_data::SolverData, solver_params::SolverParams, diag
     elseif diagram_type == :green_diagram
         for order in 1:solver_params.green.expansion_order
             new_diagrams = gen_green_given_order(order, solver_data.model.n_flavors,
-                solver_data.model.hyb.exponents, solver_params.green.is_bold,)
+                solver_data.model.hyb.exponents, solver_params.green.is_bold)
             push!(diagrams, new_diagrams)
             if rank == 0
                 println("Generated ", size(new_diagrams), " Green's function diagrams at order ", order)
@@ -167,7 +167,7 @@ function gen_diagram_combinations(
                     )
                 end
                 diagrams[ind_x, ind_y, ind_z] = BackBone(
-                    diagram_type, sign, prefactor_Kexps, nodes, edges, external_opts_loc,)
+                    diagram_type, sign, prefactor_Kexps, nodes, edges, external_opts_loc)
             end
         end
     end

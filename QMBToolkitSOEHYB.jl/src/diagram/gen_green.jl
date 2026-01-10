@@ -37,7 +37,7 @@ function gen_green_given_order(expansion_order::Int, n_flavors::Int, exponents::
         for (pairing, annihilation_pos, crossing_count) in pairings_with_crossings
             crossing_parity = (-1.0)^crossing_count
             new_diagrams = gen_green_given_topology(2 * expansion_order + 1, annihilation_pos,
-                pairing, crossing_parity, n_flavors, exponents,)
+                pairing, crossing_parity, n_flavors, exponents)
             push!(diagrams_list, new_diagrams)
         end
         diagrams = stack(diagrams_list, dims = 1)
@@ -63,7 +63,7 @@ Generate all Green's function diagrams for a fixed topology.
 """
 function gen_green_given_topology(
         M::Int, annihilation_pos::Int, connected_pairs::Vector{Tuple{Int, Int}},
-        crossing_parity::Float64, n_flavors::Int, exponents::Vector{Float64},)
+        crossing_parity::Float64, n_flavors::Int, exponents::Vector{Float64})
     external_opts_loc = [1, annihilation_pos]
     empty_node = BackBoneNode(:empty, -1, -1, NoHyb())
     p = length(exponents)
@@ -82,7 +82,7 @@ function gen_green_given_topology(
     base_sign = -1 * crossing_parity #-1 comes from the definition of Green's function
 
     return gen_diagram_combinations(:green_diagram, M, connected_pairs, n_flavors,
-        exponents, base_nodes, base_sign, external_opts_loc,)
+        exponents, base_nodes, base_sign, external_opts_loc)
 end
 
 """

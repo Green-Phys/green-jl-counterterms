@@ -131,7 +131,7 @@ end
 Add scaled contribution to accumulator: accumulator += prefactor * contribution
 """
 function accumulate_contribution!(
-        accumulator::DensePropagator{T}, prefactor, contribution::DensePropagator{T},) where {T}
+        accumulator::DensePropagator{T}, prefactor, contribution::DensePropagator{T}) where {T}
     accumulator.data .+= prefactor .* contribution.data
     return accumulator
 end
@@ -142,7 +142,7 @@ end
 Perform MPI Allreduce on local_result and add to propagator.vals.
 """
 function mpi_reduce_and_add!(propagator::DenseDLRPropagator{T},
-        local_result::DensePropagator{T}, comm::MPI.Comm,) where {T}
+        local_result::DensePropagator{T}, comm::MPI.Comm) where {T}
     order_result = MPI.Allreduce(local_result.data, MPI.SUM, comm)
     propagator.vals.data .+= order_result
     return propagator

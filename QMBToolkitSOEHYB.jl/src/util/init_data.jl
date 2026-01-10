@@ -27,7 +27,7 @@ Initialize a `ModelData` object from input parameters.
 - `ModelData{T, format}`: Initialized model data with appropriate format-specific storage
 """
 function init_model_data(model_params::ModelParams, dlr_params::DLRParams,
-        ::Type{Format},) where {Format <: HilbertSpaceFormat}
+        ::Type{Format}) where {Format <: HilbertSpaceFormat}
     # Load Hamiltonian paths and build basis
     hopping_path, interaction_path = _load_hamiltonian_paths(model_params)
     basis = _build_basis(hopping_path, Format)
@@ -80,7 +80,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams,
 
     # Create format-specific storage (BlockDense also creates global convolution workspace)
     format_data = _create_model_storage(Format, T, eigenvalues, eigenvectors, ann_opts, cre_opts,
-        ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid,)
+        ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid)
 
     return ModelData{T, Format, typeof(format_data)}(
         # Model properties
@@ -253,7 +253,7 @@ function _load_hybridization_data(model_params::ModelParams, n_flavors::Int, dlr
 
     hyb_weights_flat = hyb_weights_orig[:, 4]
     hyb_weights_permuted = reshape(hyb_weights_flat, (
-        n_flavors_physical, n_flavors_physical, n_poles,))
+        n_flavors_physical, n_flavors_physical, n_poles))
     hyb_weights_physical = permutedims(hyb_weights_permuted, (3, 2, 1))
 
     # hyb_weights contains both weights for physical orbitals and those for counterterms (which are trivially zeros)
@@ -303,7 +303,7 @@ The propagator is diagonal in the eigenbasis.
 Returns a DensePropagator{T}.
 """
 function _build_bare_propagator(::Type{T}, eigenvalues::DenseDiagonalOperator,
-        tau_grid::Vector{Float64}, E_shift::Float64,) where {T}
+        tau_grid::Vector{Float64}, E_shift::Float64) where {T}
     evals = eigenvalues.diag
     evals_shifted = evals .- E_shift
     n_fock = length(evals)
@@ -327,7 +327,7 @@ The propagator is diagonal in the eigenbasis:
 No eigenvector transformation is needed since we work in the eigenbasis.
 """
 function _build_bare_propagator(::Type{T}, eigenvalues::BlockDenseDiagonalOperator,
-        tau_grid::Vector{Float64}, E_shift::Float64,) where {T}
+        tau_grid::Vector{Float64}, E_shift::Float64) where {T}
     basis = eigenvalues.basis
     n_tau = length(tau_grid)
 
@@ -401,7 +401,7 @@ Compute the maximum DLR reconstruction error for BlockDense format.
 Performs round-trip: tau → dlr → tau, then measures max absolute difference across all blocks.
 """
 function _compute_dlr_error(dlr_grid, bare_propagator_tau::BlockDensePropagator,
-        bare_propagator_dlr::BlockDensePropagator,)
+        bare_propagator_dlr::BlockDensePropagator)
     bare_propagator_reconstructed = dlr2tau_blockdense(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
 
     max_err = 0.0
@@ -487,7 +487,7 @@ end
 Wrap Dense bare propagators into DenseDLRPropagator.
 """
 function _wrap_bare_propagator(
-        bare_propagator_tau::DensePropagator{T}, bare_propagator_dlr::DensePropagator{T},) where {T}
+        bare_propagator_tau::DensePropagator{T}, bare_propagator_dlr::DensePropagator{T}) where {T}
     return DenseDLRPropagator(bare_propagator_tau, bare_propagator_dlr)
 end
 
@@ -497,7 +497,7 @@ end
 Wrap BlockDense bare propagators into BlockDenseDLRPropagator.
 """
 function _wrap_bare_propagator(bare_propagator_tau::BlockDensePropagator{T},
-        bare_propagator_dlr::BlockDensePropagator{T},) where {T}
+        bare_propagator_dlr::BlockDensePropagator{T}) where {T}
     return BlockDenseDLRPropagator(bare_propagator_tau, bare_propagator_dlr)
 end
 
@@ -509,7 +509,7 @@ Note: dlr_grid is unused for Dense format but included for consistent interface.
 """
 function _create_model_storage(
         ::Type{DenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts, cre_opts,
-        ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid,) where {T}
+        ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where {T}
     return DenseModelDataStorage{T}(
         eigenvalues,
         eigenvectors,
@@ -528,7 +528,7 @@ Create BlockDenseModelDataStorage from components, including the pre-allocated c
 """
 function _create_model_storage(
         ::Type{BlockDenseFormat}, ::Type{T}, eigenvalues, eigenvectors, ann_opts,
-        cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid,) where {T}
+        cre_opts, ann_opts_bar, cre_opts_bar, bare_propagator_wrapped, dlr_grid) where {T}
     return BlockDenseModelDataStorage{T}(
         eigenvalues,
         eigenvectors,

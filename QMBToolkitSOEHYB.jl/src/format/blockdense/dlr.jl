@@ -39,7 +39,7 @@ In-place transform block-dense propagator from tau space to DLR representation.
 Writes result to dest, which must have the same block structure as prop.
 """
 function tau2dlr_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
-        prop::BlockDensePropagator{T}, tau_grid::Vector{Float64},) where {T}
+        prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T}
     @assert dest.basis === prop.basis "Destination and source must have same basis"
     @assert dest.flux.delta_qn == prop.flux.delta_qn "Destination and source must have same flux"
 
@@ -113,7 +113,7 @@ The result flux is computed as flux_F + flux_G. Only blocks that have non-zero c
 """
 function do_convolution_dlr2tau_blockdense!(
         workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache,
-        F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T},) where {T <: Number}
+        F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where {T <: Number}
     H_tau_blocks = Dict{Tuple{Int, Int}, Array{T, 3}}()
 
     # Get basis from F_dlr (both should have the same basis)
@@ -143,7 +143,7 @@ function do_convolution_dlr2tau_blockdense!(
 
                     # Use dense convolution with do_view=true since workspace is max-sized
                     block_contrib = QMBToolkitDLR.do_convolution_dlr2tau!(
-                        workspace, dlr_grid, kernel_cache, F_block, G_block, do_view = true,)
+                        workspace, dlr_grid, kernel_cache, F_block, G_block, do_view = true)
 
                     if H_block_tau === nothing
                         H_block_tau = copy(block_contrib)
@@ -173,7 +173,7 @@ The destination must have the correct flux (flux_F + flux_G) and matching block 
 function do_convolution_dlr2tau_blockdense!(
         dest::BlockDensePropagator{T}, workspace::ConvolutionWorkspace{T},
         dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::BlockDensePropagator{T},
-        G_dlr::BlockDensePropagator{T},) where {T <: Number}
+        G_dlr::BlockDensePropagator{T}) where {T <: Number}
     # Get basis from F_dlr (both should have the same basis)
     basis = F_dlr.basis
 
@@ -208,7 +208,7 @@ function do_convolution_dlr2tau_blockdense!(
 
                     # Use dense convolution with do_view=true since workspace is max-sized
                     block_contrib = QMBToolkitDLR.do_convolution_dlr2tau!(
-                        workspace, dlr_grid, kernel_cache, F_block, G_block, do_view = true,)
+                        workspace, dlr_grid, kernel_cache, F_block, G_block, do_view = true)
 
                     dest.blocks[dest_key] .+= block_contrib
                 end
@@ -276,7 +276,7 @@ function tau2dlr(dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vec
     tau2dlr_blockdense(dlr_grid, prop, tau_grid)
 end
 function tau2dlr!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
-        prop::BlockDensePropagator{T}, tau_grid::Vector{Float64},) where {T}
+        prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T}
     tau2dlr_blockdense!(dest, dlr_grid, prop, tau_grid)
 end
 function dlr2tau(dlr_grid::DLRGrid, prop_dlr::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T}
@@ -296,11 +296,11 @@ end
 # Convolution
 function do_convolution_dlr2tau!(
         workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache,
-        F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T},) where {T}
+        F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where {T}
     do_convolution_dlr2tau_blockdense!(workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)
 end
 function do_convolution_dlr2tau!(dest::BlockDensePropagator{T}, workspace::ConvolutionWorkspace{T},
         dlr_grid::DLRGrid, kernel_cache::KernelCache,
-        F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T},) where {T}
+        F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where {T}
     do_convolution_dlr2tau_blockdense!(dest, workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)
 end

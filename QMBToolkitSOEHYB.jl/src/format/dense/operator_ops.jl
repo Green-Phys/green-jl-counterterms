@@ -106,7 +106,7 @@ end
 In-place operator-propagator multiplication: temp_buffer[τ,:,:] = A * B[τ,:,:] for all τ.
 """
 function _multiplication_23_dense!(temp_buffer::DensePropagator{T}, A::DenseOperator,
-        B::DensePropagator{T},) where {T <: Number}
+        B::DensePropagator{T}) where {T <: Number}
     _multiplication_23_dense!(temp_buffer.data, A.data, B.data)
     return temp_buffer
 end
@@ -117,7 +117,7 @@ end
 In-place propagator-operator multiplication: temp_buffer[τ,:,:] = A[τ,:,:] * B for all τ.
 """
 function _multiplication_32_dense!(temp_buffer::DensePropagator{T}, A::DensePropagator{T},
-        B::DenseOperator,) where {T <: Number}
+        B::DenseOperator) where {T <: Number}
     _multiplication_32_dense!(temp_buffer.data, A.data, B.data)
     return temp_buffer
 end
@@ -128,7 +128,7 @@ end
 In-place vector-propagator element-wise multiplication: temp_buffer[τ,:,:] = A[τ] * B[τ,:,:].
 """
 function _multiplication_13_dense!(temp_buffer::DensePropagator{T}, A::AbstractVector,
-        B::DensePropagator{T},) where {T <: Number}
+        B::DensePropagator{T}) where {T <: Number}
     _multiplication_13_dense!(temp_buffer.data, A, B.data)
     return temp_buffer
 end
@@ -139,7 +139,7 @@ end
 In-place propagator-propagator multiplication: temp_buffer[τ,:,:] = A[τ,:,:] * B[τ,:,:].
 """
 function _multiplication_33_dense!(temp_buffer::DensePropagator{T}, A::DensePropagator{T},
-        B::DensePropagator{T},) where {T <: Number}
+        B::DensePropagator{T}) where {T <: Number}
     _multiplication_33_dense!(temp_buffer.data, A.data, B.data)
     return temp_buffer
 end

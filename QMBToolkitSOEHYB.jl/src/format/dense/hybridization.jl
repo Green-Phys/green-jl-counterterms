@@ -32,7 +32,7 @@ The XOR logic `(index > 0) ⊻ is_reverse` determines which K to use:
 """
 @inline function apply_hybridization_inplace_dense!(
         temp_buffer::DensePropagator{T}, target::DensePropagator{T}, hyb::HybridizationState,
-        model_data::ModelData{T}; is_reverse::Bool = false,) where {T <: Number}
+        model_data::ModelData{T}; is_reverse::Bool = false) where {T <: Number}
     index = hyb.index
     if index != 0  # Not NoHyb
         # XOR determines if we should use KPlus: (positive and not reverse) OR (negative and reverse)
@@ -53,7 +53,7 @@ end
 # Hybridization application - interface version
 function apply_hybridization_inplace!(
         temp_buffer::DensePropagator{T}, target::DensePropagator{T}, hyb::HybridizationState,
-        model_data::ModelData{T}; is_reverse::Bool = false,) where {T}
+        model_data::ModelData{T}; is_reverse::Bool = false) where {T}
     apply_hybridization_inplace_dense!(
-        temp_buffer, target, hyb, model_data; is_reverse = is_reverse,)
+        temp_buffer, target, hyb, model_data; is_reverse = is_reverse)
 end

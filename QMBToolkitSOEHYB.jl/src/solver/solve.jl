@@ -35,7 +35,7 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
     end
 
     if solver_params.propagator.is_bold
-        error("Bold propagator calculation not yet implemented.")
+        error("Bold propagator calculation (i.e., bold expansion based on self-energy) not yet implemented.")
     else
         # Generate propagator diagrams
         t_start = MPI.Wtime()
@@ -91,7 +91,7 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
 
     # === Print Timing Summary (rank 0 only) ===
     if rank == 0
-        print_timing_summary(
+        print_shutdown_message(
             nprocs,
             t_gen_prop_wall, t_eval_prop_wall, t_eval_prop_total,
             t_gen_green_wall, t_eval_green_wall, t_eval_green_total,

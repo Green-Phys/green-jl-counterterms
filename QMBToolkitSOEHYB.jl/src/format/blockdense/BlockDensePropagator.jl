@@ -28,7 +28,7 @@ end
 
 # Constructor
 function BlockDensePropagator(basis::BlockDenseBasis, flux::OperatorFlux,
-        blocks::Dict{Tuple{Int, Int}, Array{T, 3}},) where {T}
+        blocks::Dict{Tuple{Int, Int}, Array{T, 3}}) where {T}
     return BlockDensePropagator{T}(basis, flux, blocks)
 end
 
@@ -212,7 +212,7 @@ end
 Add scaled contribution to accumulator: accumulator += prefactor * contribution
 """
 function accumulate_contribution!(accumulator::BlockDensePropagator{T}, prefactor,
-        contribution::BlockDensePropagator{T},) where {T}
+        contribution::BlockDensePropagator{T}) where {T}
     add_scaled!(accumulator, prefactor, contribution)
     return accumulator
 end
@@ -223,7 +223,7 @@ end
 Perform MPI Allreduce on local_result block-by-block and add to propagator.vals.
 """
 function mpi_reduce_and_add!(propagator::BlockDenseDLRPropagator{T},
-        local_result::BlockDensePropagator{T}, comm::MPI.Comm,) where {T}
+        local_result::BlockDensePropagator{T}, comm::MPI.Comm) where {T}
     for (key, local_block) in local_result.blocks
         # Reduce this block across all ranks
         global_block = MPI.Allreduce(local_block, MPI.SUM, comm)

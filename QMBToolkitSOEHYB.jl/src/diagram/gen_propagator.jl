@@ -26,7 +26,7 @@ function gen_propagator_given_order(expansion_order::Int, n_flavors::Int, expone
     for (pairing, crossing_count) in pairings_with_crossings
         crossing_parity = (-1.0)^crossing_count
         new_diagrams = gen_propagator_given_topology(
-            2 + 2 * expansion_order, pairing, crossing_parity, n_flavors, exponents,)
+            2 + 2 * expansion_order, pairing, crossing_parity, n_flavors, exponents)
         push!(diagrams_list, new_diagrams)
     end
     diagrams = stack(diagrams_list, dims = 1)
@@ -56,7 +56,7 @@ This function is format-independent - it only generates diagram structure.
 - Uses `gen_diagram_combinations` to enumerate all flavor and SOE assignments
 """
 function gen_propagator_given_topology(M::Int, connected_pairs::Vector{Tuple{Int, Int}},
-        crossing_parity::Float64, n_flavors::Int, exponents::Vector{Float64},)
+        crossing_parity::Float64, n_flavors::Int, exponents::Vector{Float64})
     external_opts_loc = Int[]
     empty_node = BackBoneNode(:empty, -1, -1, NoHyb())
 
@@ -73,7 +73,7 @@ function gen_propagator_given_topology(M::Int, connected_pairs::Vector{Tuple{Int
     base_sign = crossing_parity
 
     return gen_diagram_combinations(:propagator_diagram, M, connected_pairs, n_flavors,
-        exponents, base_nodes, base_sign, external_opts_loc,)
+        exponents, base_nodes, base_sign, external_opts_loc)
 end
 
 """

@@ -120,7 +120,7 @@ end
 Allocate a BlockDensePropagator with the correct block structure for a given flux.
 """
 function allocate_buffer_for_flux(basis::BlockDenseBasis, delta_qn::QN, n_time::Int,
-        ::Type{T},) where {T <: Number, QN <: QuantumNumber}
+        ::Type{T}) where {T <: Number, QN <: QuantumNumber}
     blocks = Dict{Tuple{Int, Int}, Array{T, 3}}()
     block_indices = compute_blocks_for_flux(basis, delta_qn)
 
@@ -146,7 +146,7 @@ Construct BlockDenseBackboneBuffers with pre-allocated pools for all possible fl
 - `n_dlr::Int`: Number of DLR basis functions
 """
 function BlockDenseBackboneBuffers{T}(
-        basis::BlockDenseBasis, max_order::Int, n_tau::Int, n_dlr::Int,) where {T <: Number}
+        basis::BlockDenseBasis, max_order::Int, n_tau::Int, n_dlr::Int) where {T <: Number}
     # Determine quantum number type from basis
     QN = typeof(basis.sectors[1].qn)
 

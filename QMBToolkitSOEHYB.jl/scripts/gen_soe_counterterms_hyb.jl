@@ -127,9 +127,9 @@ end
 
 function _obtain_hyb(poles, weights; svdtol=1e-7)
     # From the output (poles, weights) to (counterterms_energy, counterterms_hyb)
-    # poles shape: (p,)
+    # poles shape: (p)
     # weights shape: (p, o1, o2)
-    # counterterms_energy [E]: (Nb,)
+    # counterterms_energy [E]: (Nb)
     # counterterms_hyb [V]: (Nb, o)
     
     # Delta_{ij}(tau) = \sum_{k} weights_{ijk} K(poles_{k}, tau) = \sum_{b} -1.0 * V_{bi}^{*} V_{bj} K(E_{b}, tau)

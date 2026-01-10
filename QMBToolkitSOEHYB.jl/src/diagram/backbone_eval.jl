@@ -108,7 +108,7 @@ All operations are in-place to minimize allocations.
 """
 function multiplication_convolution(
         nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid,
-        model_data::ModelData{T}, propagator, buffers,) where {T <: Number}
+        model_data::ModelData{T}, propagator, buffers) where {T <: Number}
     length(nodes) == length(edges) + 1 ||
         error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
@@ -157,7 +157,7 @@ function multiplication_convolution(
 
         # Apply hybridization attached to the node
         apply_hybridization_inplace!(
-            hyb_temp, result, node.attached_hyb, model_data, is_reverse = false,)
+            hyb_temp, result, node.attached_hyb, model_data, is_reverse = false)
 
         # Calculate the convolution with the next edge
         edge_plus1 = edges[i + 1]
@@ -171,7 +171,7 @@ function multiplication_convolution(
 
         for hyb in edge_plus1.attached_hybs
             apply_hybridization_inplace!(
-                conv_hyb_temp, conv_operand, hyb, model_data, is_reverse = false,)
+                conv_hyb_temp, conv_operand, hyb, model_data, is_reverse = false)
         end
 
         # Transform to DLR using buffers
@@ -183,7 +183,7 @@ function multiplication_convolution(
 
         # Perform convolution - result is written back to result buffer
         do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,
-            model_data.kernel_cache, conv_dlr, result_dlr,)
+            model_data.kernel_cache, conv_dlr, result_dlr)
     end
 
     return result
@@ -210,7 +210,7 @@ Reference to the result buffer containing diagram contribution on DLR τ-grid.
 """
 function multiplication_convolution_reverse(
         nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid,
-        model_data::ModelData{T}, propagator, buffers,) where {T <: Number}
+        model_data::ModelData{T}, propagator, buffers) where {T <: Number}
     length(nodes) == length(edges) + 1 ||
         error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
@@ -258,7 +258,7 @@ function multiplication_convolution_reverse(
 
         # Apply hybridization with is_reverse=true (swaps K+ ↔ K-)
         apply_hybridization_inplace!(
-            hyb_temp, result, node.attached_hyb, model_data, is_reverse = true,)
+            hyb_temp, result, node.attached_hyb, model_data, is_reverse = true)
 
         # Calculate the convolution with the next edge
         edge_minus1 = edges[i - 1]
@@ -272,7 +272,7 @@ function multiplication_convolution_reverse(
 
         for hyb in edge_minus1.attached_hybs
             apply_hybridization_inplace!(
-                conv_hyb_temp, conv_operand, hyb, model_data, is_reverse = false,)
+                conv_hyb_temp, conv_operand, hyb, model_data, is_reverse = false)
         end
 
         # Transform to DLR using buffers (note: order reversed)
@@ -284,7 +284,7 @@ function multiplication_convolution_reverse(
 
         # Perform convolution (reversed order) - result is written back to result buffer
         do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,
-            model_data.kernel_cache, result_dlr, conv_dlr,)
+            model_data.kernel_cache, result_dlr, conv_dlr)
     end
 
     return result
@@ -342,7 +342,7 @@ Format-agnostic: works with both Dense and BlockDense propagators.
 Forward backbone contribution on DLR τ-grid.
 """
 function eval_green_forward_backbone(diagram::BackBone, split_point::Int,
-        solver_data::SolverData{T}, propagator, buffers,) where {T}
+        solver_data::SolverData{T}, propagator, buffers) where {T}
     return multiplication_convolution(
         diagram.nodes[1:split_point],
         diagram.edges[1:(split_point - 1)],
@@ -370,7 +370,7 @@ Format-agnostic: works with both Dense and BlockDense propagators.
 Reverse backbone contribution on DLR τ-grid.
 """
 function eval_green_reverse_backbone(diagram::BackBone, split_point::Int,
-        solver_data::SolverData{T}, propagator, buffers,) where {T}
+        solver_data::SolverData{T}, propagator, buffers) where {T}
     return multiplication_convolution_reverse(
         diagram.nodes[split_point:end],
         diagram.edges[split_point:end],

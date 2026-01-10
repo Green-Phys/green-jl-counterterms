@@ -23,7 +23,7 @@ Uses MPI parallelization to distribute diagram evaluation across ranks.
 """
 function eval_green_given_order!(
         solver_data::SolverData{T, Format}, diagrams::Array{BackBone, 4}, is_bold::Bool,
-        comm::MPI.Comm,) where {T <: Number, Format <: HilbertSpaceFormat}
+        comm::MPI.Comm) where {T <: Number, Format <: HilbertSpaceFormat}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 

@@ -37,7 +37,7 @@ For each block (target, source) in the result:
 """
 function _multiplication_23_blockdense!(
         temp_buffer::BlockDensePropagator{T}, A::BlockDenseOperator,
-        B::BlockDensePropagator{T},) where {T <: Number}
+        B::BlockDensePropagator{T}) where {T <: Number}
     @assert A.basis === B.basis "Operator and array must use same basis"
     @assert temp_buffer.basis === B.basis "Buffer must use same basis as input"
 
@@ -120,7 +120,7 @@ For each block (target, source) in the result:
 """
 function _multiplication_32_blockdense!(
         temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T},
-        B::BlockDenseOperator,) where {T <: Number}
+        B::BlockDenseOperator) where {T <: Number}
     @assert A.basis === B.basis "Array and operator must use same basis"
     @assert temp_buffer.basis === A.basis "Buffer must use same basis as input"
 
@@ -242,7 +242,7 @@ For each block (target, source) in the result:
 """
 function _multiplication_33_blockdense!(
         temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T},
-        B::BlockDensePropagator{T},) where {T <: Number}
+        B::BlockDensePropagator{T}) where {T <: Number}
     @assert A.basis === B.basis "Both arrays must use same basis"
     @assert temp_buffer.basis === A.basis "Buffer must use same basis as inputs"
 
@@ -292,7 +292,7 @@ function _multiplication_33_blockdense!(
                     # For each time point: result[tgt, src](τ) += A[tgt, mid](τ) * B[mid, src](τ)
                     @inbounds for k in 1:n_tau
                         mul!(view(result_block,k,:,:), view(A_block,k,:,:),
-                            view(B_block,k,:,:), 1.0, 1.0,)
+                            view(B_block,k,:,:), 1.0, 1.0)
                     end
                 end
             end
@@ -308,19 +308,19 @@ end
 
 # Operator-propagator multiplication: result = op * prop
 function multiply_op_prop!(result::BlockDensePropagator{T}, op::BlockDenseOperator,
-        prop::BlockDensePropagator{T},) where {T}
+        prop::BlockDensePropagator{T}) where {T}
     _multiplication_23_blockdense!(result, op, prop)
 end
 
 # Propagator-operator multiplication: result = prop * op
 function multiply_prop_op!(result::BlockDensePropagator{T}, prop::BlockDensePropagator{T},
-        op::BlockDenseOperator,) where {T}
+        op::BlockDenseOperator) where {T}
     _multiplication_32_blockdense!(result, prop, op)
 end
 
 # Propagator-propagator multiplication: result = A * B
 function multiply_prop_prop!(result::BlockDensePropagator{T}, A::BlockDensePropagator{T},
-        B::BlockDensePropagator{T},) where {T}
+        B::BlockDensePropagator{T}) where {T}
     _multiplication_33_blockdense!(result, A, B)
 end
 

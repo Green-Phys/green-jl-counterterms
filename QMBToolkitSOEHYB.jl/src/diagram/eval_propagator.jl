@@ -27,7 +27,7 @@ Uses format-agnostic interface functions for:
 """
 function eval_propagator_given_order!(
         solver_data::SolverData{T, Format}, diagrams::Array{BackBone, 4},
-        comm::MPI.Comm,) where {T <: Number, Format <: HilbertSpaceFormat}
+        comm::MPI.Comm) where {T <: Number, Format <: HilbertSpaceFormat}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 

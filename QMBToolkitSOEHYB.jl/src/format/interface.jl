@@ -9,6 +9,7 @@ written once and work with any format.
 
 ## Propagator Operations
 - `zeros_like(template)`: Create zero-initialized propagator matching template structure
+- `zeros_like_with_flux(template, op)`: Create zero-initialized propagator with flux from operator
 - `add_scaled!(dest, scale, src)`: Add scaled contribution: dest += scale * src
 - `get_data(prop)`: Get underlying data array
 
@@ -89,6 +90,7 @@ function mpi_reduce_and_add! end
 
 # Propagator creation
 function zeros_like end
+function zeros_like_with_flux end  # Create zeros with flux from operator
 function add_scaled! end
 
 # Product buffer allocation

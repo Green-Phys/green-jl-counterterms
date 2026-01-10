@@ -2,6 +2,6 @@
 
 style = "sciml"
 indent = 4
-margin = 100
+margin = 1000
 format_docstrings = true
 trailing_comma = false

@@ -33,8 +33,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams,
     basis = _build_basis(hopping_path, Format)
 
     # Build and solve Hamiltonian
-    H,
-    ann_opts_raw = build_hamiltonian(hopping_path, interaction_path; method = ed_method(Format), basis = basis)
+    H, ann_opts_raw = build_hamiltonian(hopping_path, interaction_path; method = ed_method(Format), basis = basis)
     result = solve_hamiltonian(H)
 
     eigenvalues = result.eigenvalues
@@ -197,8 +196,8 @@ Assumes particle number conservation (QN_N quantum number).
 function _build_basis(hopping_path::String, ::Type{BlockDenseFormat})
     hopping_data = readdlm(hopping_path)
     n_orbitals = Int(maximum(hopping_data[:, 1:2])) + 1
-    site_qns = [QN_N(1) for _ in 1:n_orbitals]
-    return make_basis(site_qns)
+    qns = [QN_N(1) for _ in 1:n_orbitals]
+    return make_basis(qns)
 end
 
 """

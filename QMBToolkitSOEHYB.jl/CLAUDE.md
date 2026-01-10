@@ -110,7 +110,7 @@ The codebase uses a format-agnostic interface pattern (`src/format/interface.jl`
 - **Operator Operations**: `multiply_op_prop!`, `multiply_prop_op!`, `multiply_prop_prop!`, `trace_prop!`
 - **Convolution**: `multiplication_convolution`, `multiplication_convolution_reverse`
 - **Buffer Management**: `allocate_propagator_buffers`, `allocate_green_buffers`, `get_result`, `get_hyb_temp`, etc.
-- **MPI**: `create_local_accumulator`, `accumulate_contribution!`, `mpi_reduce_and_add!`
+- **MPI**: `mpi_reduce_and_add!`
 
 Each format (Dense/BlockDense) implements these interfaces in its respective subdirectory under `src/format/`.
 

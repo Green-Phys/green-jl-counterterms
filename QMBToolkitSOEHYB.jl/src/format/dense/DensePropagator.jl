@@ -8,9 +8,10 @@ Provides a wrapper around Array{T,3} for consistent interface with BlockDensePro
     DensePropagator{T<:Number}
 
 Time-dependent dense propagator. A wrapper around Array{T,3} where:
-- First dimension: tau grid points
-- Second dimension: row index (Fock space dimension)
-- Third dimension: column index (Fock space dimension)
+
+  - First dimension: tau grid points
+  - Second dimension: row index (Fock space dimension)
+  - Third dimension: column index (Fock space dimension)
 
 This is a trivial wrapper that provides consistent interface with BlockDensePropagator.
 """
@@ -62,8 +63,9 @@ Contains both the values on the DLR tau grid and the DLR coefficients,
 both wrapped as DensePropagator{T}.
 
 Fields:
-- `vals::DensePropagator{T}`: Values on the DLR tau grid
-- `coeffs::DensePropagator{T}`: DLR expansion coefficients
+
+  - `vals::DensePropagator{T}`: Values on the DLR tau grid
+  - `coeffs::DensePropagator{T}`: DLR expansion coefficients
 """
 mutable struct DenseDLRPropagator{T <: Number}
     vals::DensePropagator{T}
@@ -115,26 +117,6 @@ get_data(prop::DensePropagator) = prop.data
 #=============================================================================
 # MPI Operations
 =============================================================================#
-
-"""
-    create_local_accumulator(::Type{DensePropagator{T}}, template::DensePropagator{T}) where T
-
-Create a zero-initialized local accumulator for MPI reduction.
-"""
-function create_local_accumulator(::Type{DensePropagator{T}}, template::DensePropagator{T}) where {T}
-    return zeros_like(template)
-end
-
-"""
-    accumulate_contribution!(accumulator::DensePropagator{T}, prefactor, contribution::DensePropagator{T}) where T
-
-Add scaled contribution to accumulator: accumulator += prefactor * contribution
-"""
-function accumulate_contribution!(
-        accumulator::DensePropagator{T}, prefactor, contribution::DensePropagator{T}) where {T}
-    accumulator.data .+= prefactor .* contribution.data
-    return accumulator
-end
 
 """
     mpi_reduce_and_add!(propagator::DenseDLRPropagator{T}, local_result::DensePropagator{T}, comm::MPI.Comm) where T

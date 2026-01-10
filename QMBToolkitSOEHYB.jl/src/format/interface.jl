@@ -37,8 +37,6 @@ written once and work with any format.
 - `allocate_green_buffers(solver_data)`: Allocate buffers for Green's function evaluation
 
 ## MPI Operations
-- `create_local_accumulator(solver_data)`: Create format-appropriate local accumulator
-- `accumulate_contribution!(accumulator, prefactor, contribution)`: Add contribution to accumulator
 - `mpi_reduce_and_add!(propagator, local_result, comm)`: MPI reduce and add to propagator
 """
 
@@ -87,8 +85,6 @@ function allocate_propagator_buffers end
 function allocate_green_buffers end
 
 # MPI Operations
-function create_local_accumulator end
-function accumulate_contribution! end
 function mpi_reduce_and_add! end
 
 # Propagator creation

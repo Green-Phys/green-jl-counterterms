@@ -16,9 +16,10 @@ Each block is stored as a 3D array: (time_points, row_dim, col_dim)
 where time_points is either tau grid or DLR grid.
 
 Fields:
-- `basis::BlockDenseBasis`: Basis defining the block structure
-- `flux::OperatorFlux`: Quantum number change (flux) of the operator
-- `blocks::Dict{Tuple{Int,Int}, Array{T,3}}`: Blocks indexed by (target_sector, source_sector)
+
+  - `basis::BlockDenseBasis`: Basis defining the block structure
+  - `flux::OperatorFlux`: Quantum number change (flux) of the operator
+  - `blocks::Dict{Tuple{Int,Int}, Array{T,3}}`: Blocks indexed by (target_sector, source_sector)
 """
 struct BlockDensePropagator{T <: Number}
     basis::BlockDenseBasis
@@ -149,8 +150,9 @@ Contains both the values on the DLR tau grid and the DLR coefficients,
 both wrapped as BlockDensePropagator{T}.
 
 Fields:
-- `vals::BlockDensePropagator{T}`: Values on the DLR tau grid
-- `coeffs::BlockDensePropagator{T}`: DLR expansion coefficients
+
+  - `vals::BlockDensePropagator{T}`: Values on the DLR tau grid
+  - `coeffs::BlockDensePropagator{T}`: DLR expansion coefficients
 """
 mutable struct BlockDenseDLRPropagator{T <: Number}
     vals::BlockDensePropagator{T}
@@ -195,27 +197,6 @@ get_data(prop::BlockDensePropagator) = prop.blocks
 #=============================================================================
 # MPI Operations
 =============================================================================#
-
-"""
-    create_local_accumulator(::Type{BlockDensePropagator{T}}, template::BlockDensePropagator{T}) where T
-
-Create a zero-initialized local accumulator for MPI reduction.
-Returns a BlockDensePropagator with same structure as template.
-"""
-function create_local_accumulator(::Type{BlockDensePropagator{T}}, template::BlockDensePropagator{T}) where {T}
-    return zeros_like(template)
-end
-
-"""
-    accumulate_contribution!(accumulator::BlockDensePropagator{T}, prefactor, contribution::BlockDensePropagator{T}) where T
-
-Add scaled contribution to accumulator: accumulator += prefactor * contribution
-"""
-function accumulate_contribution!(accumulator::BlockDensePropagator{T}, prefactor,
-        contribution::BlockDensePropagator{T}) where {T}
-    add_scaled!(accumulator, prefactor, contribution)
-    return accumulator
-end
 
 """
     mpi_reduce_and_add!(propagator::BlockDenseDLRPropagator{T}, local_result::BlockDensePropagator{T}, comm::MPI.Comm) where T

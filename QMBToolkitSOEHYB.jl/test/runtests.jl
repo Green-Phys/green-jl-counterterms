@@ -10,7 +10,7 @@ MPI.Init()
 
     @testset "Bare expansion - Analytical comparison" begin
         # Test directory
-        test_dir = joinpath(@__DIR__, "bare")
+        test_dir = joinpath(@__DIR__, "bare_dense")
         input_file = joinpath(test_dir, "input.toml")
         output_file = joinpath(test_dir, "sim.h5")
 

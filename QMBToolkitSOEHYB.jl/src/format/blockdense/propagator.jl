@@ -332,7 +332,7 @@ Allocate buffers for BlockDense propagator evaluation.
 function allocate_propagator_buffers(solver_data::SolverData{
             T, BlockDenseFormat}, expansion_order::Int) where {T <: Number}
     # Cast to concrete type for type stability
-    tau_grid = solver_data.model.dlr_grid.tau::Vector{Float64}
+    tau_grid = solver_data.model.dlr_grid.τ
     n_tau = length(tau_grid)
     n_dlr = solver_data.model.dlr_grid.size
     basis = get_bare_propagator(solver_data.model).vals.basis
@@ -352,7 +352,7 @@ Allocate evaluation buffers for blockdense format Green's function computation.
 """
 function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}, expansion_order::Int) where {T}
     # Cast to concrete type for type stability
-    tau_grid = solver_data.model.dlr_grid.tau::Vector{Float64}
+    tau_grid = solver_data.model.dlr_grid.τ
     n_tau = length(tau_grid)
     n_dlr = solver_data.model.dlr_grid.size
     basis = get_bare_propagator(solver_data.model).vals.basis

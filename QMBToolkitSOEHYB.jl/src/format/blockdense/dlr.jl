@@ -84,10 +84,10 @@ Writes result to dest's existing blocks. Assumes dest has matching block structu
 function do_reflection_tau2tau_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
         prop_tau::BlockDensePropagator{T}) where {T}
     # Transform to DLR
-    prop_dlr = tau2dlr_blockdense(dlr_grid, prop_tau, dlr_grid.tau)
+    prop_dlr = tau2dlr_blockdense(dlr_grid, prop_tau, dlr_grid.τ)
 
     # Evaluate at reflected tau points (beta - tau)
-    tau_grid_reflected = dlr_grid.beta .- dlr_grid.tau
+    tau_grid_reflected = dlr_grid.β .- dlr_grid.τ
 
     for ((target, source), block_dlr) in prop_dlr.blocks
         block_tau = QMBToolkitDLR.dlr2tau(dlr_grid, block_dlr, tau_grid_reflected)
@@ -169,7 +169,7 @@ Extract propagator value at specific tau by DLR interpolation, return as dense m
 """
 function extract_at_tau_blockdense(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where {T}
     # Convert to DLR coefficients
-    prop_dlr = tau2dlr_blockdense(dlr_grid, propagator, dlr_grid.tau)
+    prop_dlr = tau2dlr_blockdense(dlr_grid, propagator, dlr_grid.τ)
 
     # Evaluate at the requested tau
     prop_at_tau = dlr2tau_blockdense(dlr_grid, prop_dlr, [tau])

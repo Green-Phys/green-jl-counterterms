@@ -176,10 +176,10 @@ function multiplication_convolution(
 
         # Transform to DLR using buffers
         conv_dlr = get_conv_dlr(buffers)
-        tau2dlr!(conv_dlr, dlr_grid, conv_operand, dlr_grid.tau)
+        tau2dlr!(conv_dlr, dlr_grid, conv_operand, dlr_grid.τ)
 
         result_dlr = get_result_dlr(buffers, current_flux)
-        tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.tau)
+        tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.τ)
 
         # Perform convolution - result is written back to result buffer
         do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,
@@ -277,10 +277,10 @@ function multiplication_convolution_reverse(
 
         # Transform to DLR using buffers (note: order reversed)
         result_dlr = get_result_dlr(buffers, current_flux)
-        tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.tau)
+        tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.τ)
 
         conv_dlr = get_conv_dlr(buffers)
-        tau2dlr!(conv_dlr, dlr_grid, conv_operand, dlr_grid.tau)
+        tau2dlr!(conv_dlr, dlr_grid, conv_operand, dlr_grid.τ)
 
         # Perform convolution (reversed order) - result is written back to result buffer
         do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,

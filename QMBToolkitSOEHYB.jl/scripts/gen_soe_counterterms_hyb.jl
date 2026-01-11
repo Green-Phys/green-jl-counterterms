@@ -345,7 +345,7 @@ function gen_soe(beta::Float64, G_data::GData, soe_subroutine::String, n_soe::In
     elseif soe_subroutine == "DLR"
         dlr = DLRGrid(2.0, beta, dlr_eps, true)
         G_dlr = tau2dlr(dlr, G_data.G_tau, G_data.tau_grid)
-        poles = dlr.omega
+        poles = dlr.ω
         weights = G_dlr
         error = _inf_error(G_data.G_tau, _reconstruct_green(poles, weights, G_data.tau_grid, beta))
     else

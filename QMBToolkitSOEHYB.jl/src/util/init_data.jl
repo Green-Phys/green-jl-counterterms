@@ -51,7 +51,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams,
 
     # Build bare propagator (diagonal in eigenbasis)
     E_shift = _get_E_shift(eigenvalues)
-    bare_propagator_tau = _build_bare_propagator(T, eigenvalues, dlr_grid.tau, E_shift)
+    bare_propagator_tau = _build_bare_propagator(T, eigenvalues, dlr_grid.τ, E_shift)
 
     # Load hybridization data
     hyb_soe, n_flavors_physical = _load_hybridization_data(model_params, n_flavors, dlr_grid)
@@ -369,7 +369,7 @@ Convert Dense bare propagator from tau to DLR representation.
 Returns the DLR coefficients as DensePropagator.
 """
 function _convert_to_dlr(dlr_grid, bare_propagator::DensePropagator)
-    return tau2dlr_dense(dlr_grid, bare_propagator, dlr_grid.tau)
+    return tau2dlr_dense(dlr_grid, bare_propagator, dlr_grid.τ)
 end
 
 """
@@ -379,7 +379,7 @@ Convert BlockDense bare propagator from tau to DLR representation.
 Returns the DLR coefficients as BlockDensePropagator.
 """
 function _convert_to_dlr(dlr_grid, bare_propagator::BlockDensePropagator)
-    return tau2dlr_blockdense(dlr_grid, bare_propagator, dlr_grid.tau)
+    return tau2dlr_blockdense(dlr_grid, bare_propagator, dlr_grid.τ)
 end
 
 """
@@ -389,7 +389,7 @@ Compute the maximum DLR reconstruction error for Dense format.
 Performs round-trip: tau → dlr → tau, then measures max absolute difference.
 """
 function _compute_dlr_error(dlr_grid, bare_propagator_tau::DensePropagator, bare_propagator_dlr::DensePropagator)
-    bare_propagator_reconstructed = dlr2tau_dense(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
+    bare_propagator_reconstructed = dlr2tau_dense(dlr_grid, bare_propagator_dlr, dlr_grid.τ)
     return maximum(abs.(bare_propagator_reconstructed.data .- bare_propagator_tau.data))
 end
 
@@ -401,7 +401,7 @@ Performs round-trip: tau → dlr → tau, then measures max absolute difference 
 """
 function _compute_dlr_error(dlr_grid, bare_propagator_tau::BlockDensePropagator,
         bare_propagator_dlr::BlockDensePropagator)
-    bare_propagator_reconstructed = dlr2tau_blockdense(dlr_grid, bare_propagator_dlr, dlr_grid.tau)
+    bare_propagator_reconstructed = dlr2tau_blockdense(dlr_grid, bare_propagator_dlr, dlr_grid.τ)
 
     max_err = 0.0
     for (block_key, block_tau) in bare_propagator_tau.blocks
@@ -419,8 +419,8 @@ Create ConvolutionWorkspace for Dense format with full Fock space dimensions.
 Infers dimensions from the propagator shape (n_tau, n_fock, n_fock).
 """
 function _create_convolution_workspace(::Type{T}, dlr_grid, prop::DensePropagator) where {T}
-    r = length(dlr_grid.omega)
-    n_tau = length(dlr_grid.tau)
+    r = length(dlr_grid.ω)
+    n_tau = length(dlr_grid.τ)
     n_fock = size(prop, 2)
     return ConvolutionWorkspace{T}(r, n_fock, n_fock, n_tau)
 end
@@ -432,8 +432,8 @@ Create ConvolutionWorkspace for BlockDense format sized for maximum sector dimen
 This workspace is reused for all block convolutions using `do_view=true` mode.
 """
 function _create_convolution_workspace(::Type{T}, dlr_grid, prop::BlockDensePropagator) where {T}
-    r = length(dlr_grid.omega)
-    n_tau = length(dlr_grid.tau)
+    r = length(dlr_grid.ω)
+    n_tau = length(dlr_grid.τ)
     # Size workspace for maximum sector dimension
     max_dim = maximum(sector.dim for sector in prop.basis.sectors)
     return ConvolutionWorkspace{T}(r, max_dim, max_dim, max_dim, n_tau)
@@ -466,11 +466,11 @@ function _gen_K0_inverse(exponents::Vector{Float64}, beta::Float64)
 end
 
 function _gen_K_on_DLRtau(exponents::Vector{Float64}, dlr_grid::DLRGrid)
-    tau_grid = dlr_grid.tau
+    tau_grid = dlr_grid.τ
     K_on_DLRtau = zeros(Float64, length(tau_grid), length(exponents))
     for (j, omega) in enumerate(exponents)
         for (i, tau) in enumerate(tau_grid)
-            K_on_DLRtau[i, j] = kernel_tau(tau, omega, dlr_grid.beta)
+            K_on_DLRtau[i, j] = kernel_tau(tau, omega, dlr_grid.β)
         end
     end
     return K_on_DLRtau

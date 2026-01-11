@@ -92,7 +92,7 @@ Extract propagator value at specific tau by DLR interpolation, return as dense m
 """
 function extract_at_tau_dense(propagator::DensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where {T}
     # Convert to DLR coefficients
-    prop_dlr = tau2dlr_dense(dlr_grid, propagator, dlr_grid.tau)
+    prop_dlr = tau2dlr_dense(dlr_grid, propagator, dlr_grid.τ)
 
     # Evaluate at the requested tau
     prop_at_tau = dlr2tau_dense(dlr_grid, prop_dlr, [tau])

@@ -179,7 +179,7 @@ This is a format-specific function called by the format-independent
 """
 function allocate_propagator_buffers(solver_data::SolverData{T, DenseFormat}, expansion_order::Int) where {T <: Number}
     # Cast to concrete type for type stability
-    tau_grid = solver_data.model.dlr_grid.tau::Vector{Float64}
+    tau_grid = solver_data.model.dlr_grid.τ::Vector{Float64}
     n_tau = length(tau_grid)
     n_fock = solver_data.model.n_fock
     n_dlr = solver_data.model.dlr_grid.size
@@ -198,7 +198,7 @@ Allocate evaluation buffers for dense format Green's function computation.
 """
 function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}, expansion_order::Int) where {T}
     # Cast to concrete type for type stability
-    tau_grid = solver_data.model.dlr_grid.tau::Vector{Float64}
+    tau_grid = solver_data.model.dlr_grid.τ::Vector{Float64}
     n_tau = length(tau_grid)
     n_fock = solver_data.model.n_fock
     n_dlr = solver_data.model.dlr_grid.size

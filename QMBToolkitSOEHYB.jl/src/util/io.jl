@@ -167,7 +167,7 @@ function save_data(
         # Save Green's function - DLR grid
         green_dlr_group = create_group(file, "green/dlr_grid")
         green_dlr_group["green_tau"] = calc_data.green.vals.data
-        green_dlr_group["tau"] = model_data.dlr_grid.tau
+        green_dlr_group["tau"] = model_data.dlr_grid.τ
         green_dlr_group["coeffs"] = calc_data.green.coeffs.data
 
         # Save Green's function by order (on linear grid)
@@ -175,7 +175,7 @@ function save_data(
         green_by_order_group = create_group(file, "green/by_order")
         for (i, green_at_order_dlr) in enumerate(calc_data.green_by_order)
             # Convert from DLR grid to DLR coefficients
-            green_coeffs = tau2dlr(model_data.dlr_grid, green_at_order_dlr, model_data.dlr_grid.tau)
+            green_coeffs = tau2dlr(model_data.dlr_grid, green_at_order_dlr, model_data.dlr_grid.τ)
             # Interpolate to linear grid
             green_at_order_linear = dlr2tau(model_data.dlr_grid, green_coeffs, calc_data.tau_linear_grid)
             green_by_order_group["green_order_$i"] = green_at_order_linear.data

@@ -28,11 +28,6 @@ function eval_green_given_order!(
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 
-    n_topology = size(diagrams, 1)
-    n_directions = size(diagrams, 2)
-    n_line_flavors = size(diagrams, 3)
-    n_hyb_exponents = size(diagrams, 4)
-
     propagator = is_bold ? get_propagator(solver_data.calc).vals :
                  get_bare_propagator(solver_data.model).vals
 
@@ -44,48 +39,61 @@ function eval_green_given_order!(
     buffers = allocate_green_buffers(solver_data)
     n_tau = length(solver_data.model.dlr_grid.tau)
 
-    my_topologies = (rank + 1):nprocs:n_topology
+    diagrams_flat = vcat(diagrams...)
+    n_diagrams = length(diagrams_flat)
 
-    for i in my_topologies
-        for j in 1:n_directions
-            for k in 1:n_line_flavors
-                for l in 1:n_hyb_exponents
-                    diagram = diagrams[i, j, k, l]
+    my_diagrams = (rank + 1):nprocs:n_diagrams
 
-                    contrib_0_to_tau = eval_green_forward_backbone(
-                        diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
-                    )
-                    contrib_tau_to_beta = eval_green_reverse_backbone(
-                        diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
-                    )
+    for i in my_diagrams
+        diagram = diagrams_flat[i]
 
-                    # Reflection: tau -> beta - tau
-                    contrib_tau_to_beta = do_reflection_tau2tau(solver_data.model.dlr_grid, contrib_tau_to_beta)
+        contrib_0_to_tau = eval_green_forward_backbone(
+            diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
+        )
+        contrib_tau_to_beta_unreflected = eval_green_reverse_backbone(
+            diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
+        )
 
-                    prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
+        # Reflection: tau -> beta - tau (using pre-allocated buffer)
+        flux = get_flux(contrib_tau_to_beta_unreflected)
+        contrib_tau_to_beta = get_contrib_tau_to_beta_reflected(buffers, flux)
+        do_reflection_tau2tau!(contrib_tau_to_beta, solver_data.model.dlr_grid, contrib_tau_to_beta_unreflected)
 
-                    for ann_index in 1:solver_data.model.n_flavors_physical
-                        # Apply annihilation operator: ann_opt * contrib_0_to_tau
-                        ann_opt = ann_opts[ann_index]
-                        ann_product = allocate_product_buffer(ann_opt, contrib_0_to_tau, n_tau)
-                        multiply_op_prop!(ann_product, ann_opt, contrib_0_to_tau)
+        prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
 
-                        # Multiply: contrib_tau_to_beta * ann_product
-                        final_product = allocate_product_buffer(contrib_tau_to_beta, ann_product, n_tau)
-                        multiply_prop_prop!(final_product, contrib_tau_to_beta, ann_product)
+        for ann_index in 1:solver_data.model.n_flavors_physical
+            # Apply annihilation operator: ann_opt * contrib_0_to_tau
+            ann_opt = ann_opts[ann_index]
+            ann_product_flux = compute_new_flux(get_flux(contrib_0_to_tau), ann_opt)
+            ann_product = get_ann_product(buffers, ann_product_flux)
+            fill!(ann_product, zero(T))
+            multiply_op_prop!(ann_product, ann_opt, contrib_0_to_tau)
 
-                        add_scaled!(buffers.backbone_0_to_beta_with_ann[ann_index], prefactor, final_product)
-                    end
-                end
-            end
+            # Multiply: contrib_tau_to_beta * ann_product
+            # Result flux = same as backbone_0_to_beta_with_ann[ann_index]
+            final_product_flux = get_flux(buffers.backbone_0_to_beta_with_ann[ann_index])
+            final_product = get_final_product(buffers, final_product_flux)
+            fill!(final_product, zero(T))
+            multiply_prop_prop!(final_product, contrib_tau_to_beta, ann_product)
+
+            add_scaled!(buffers.backbone_0_to_beta_with_ann[ann_index], prefactor, final_product)
         end
     end
 
     # Compute final Green's function by applying creation operators and taking trace
+    cre_product = get_cre_product(buffers)
     for ann_index in 1:solver_data.model.n_flavors_physical
+        backbone_flux = get_flux(buffers.backbone_0_to_beta_with_ann[ann_index])
         for cre_index in 1:solver_data.model.n_flavors_physical
             cre_opt = cre_opts[cre_index]
-            cre_product = allocate_product_buffer(buffers.backbone_0_to_beta_with_ann[ann_index], cre_opt, n_tau)
+
+            # Skip if total flux is non-zero (trace would be zero anyway)
+            total_flux = compute_new_flux_reverse(backbone_flux, cre_opt)
+            if !is_zero_flux(total_flux)
+                continue
+            end
+
+            fill!(cre_product, zero(T))
             multiply_prop_op!(cre_product, buffers.backbone_0_to_beta_with_ann[ann_index], cre_opt)
 
             trace_prop!(buffers.trace_result_buffer, cre_product)
@@ -96,6 +104,3 @@ function eval_green_given_order!(
     # Sum results from all ranks for this order, then ADD to existing green values
     mpi_reduce_and_add!(solver_data.calc.green, local_result, comm)
 end
-
-# eval_green_forward_backbone and eval_green_reverse_backbone are now defined in backbone_eval.jl
-# as format-agnostic unified functions.

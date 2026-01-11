@@ -23,17 +23,21 @@ For each time slice τ, performs block-aware multiplication where only blocks al
 quantum number conservation are computed.
 
 # Arguments
-- `temp_buffer::BlockDensePropagator{T}`: Output buffer (will be overwritten)
-- `A::BlockDenseOperator`: Static operator (time-independent)
-- `B::BlockDensePropagator{T}`: Time-dependent tensor
+
+  - `temp_buffer::BlockDensePropagator{T}`: Output buffer (will be overwritten)
+  - `A::BlockDenseOperator`: Static operator (time-independent)
+  - `B::BlockDensePropagator{T}`: Time-dependent tensor
 
 # Returns
-- `temp_buffer`: The input buffer with results written
+
+  - `temp_buffer`: The input buffer with results written
 
 # Algorithm
+
 For each block (target, source) in the result:
-- Sum over intermediate sectors: result[tgt, src](τ) = Σ_mid A[tgt, mid] * B[mid, src](τ)
-- Uses native BlockDenseOperator multiplication at each time point
+
+  - Sum over intermediate sectors: result[tgt, src](%CF%84) = Σ_mid A[tgt, mid] * B[mid, src](%CF%84)
+  - Uses native BlockDenseOperator multiplication at each time point
 """
 function _multiplication_23_blockdense!(
         temp_buffer::BlockDensePropagator{T}, A::BlockDenseOperator,
@@ -107,16 +111,20 @@ For each time slice τ, performs block-aware multiplication where only blocks al
 quantum number conservation are computed.
 
 # Arguments
-- `temp_buffer::BlockDensePropagator{T}`: Output buffer (will be overwritten)
-- `A::BlockDensePropagator{T}`: Time-dependent tensor
-- `B::BlockDenseOperator`: Static operator (time-independent)
+
+  - `temp_buffer::BlockDensePropagator{T}`: Output buffer (will be overwritten)
+  - `A::BlockDensePropagator{T}`: Time-dependent tensor
+  - `B::BlockDenseOperator`: Static operator (time-independent)
 
 # Returns
-- `temp_buffer`: The input buffer with results written
+
+  - `temp_buffer`: The input buffer with results written
 
 # Algorithm
+
 For each block (target, source) in the result:
-- Sum over intermediate sectors: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src]
+
+  - Sum over intermediate sectors: result[tgt, src](%CF%84) = Σ_mid A[tgt, mid](%CF%84) * B[mid, src]
 """
 function _multiplication_32_blockdense!(
         temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T},
@@ -185,11 +193,13 @@ end
 In-place version: writes trace results to trace_buffer.
 
 # Arguments
-- `trace_buffer::Vector{<:Real}`: Pre-allocated buffer for trace values
-- `A::BlockDensePropagator{<:Number}`: Time-dependent block-dense array
+
+  - `trace_buffer::Vector{<:Real}`: Pre-allocated buffer for trace values
+  - `A::BlockDensePropagator{<:Number}`: Time-dependent block-dense array
 
 # Returns
-- `trace_buffer`: The input buffer with trace values written
+
+  - `trace_buffer`: The input buffer with trace values written
 """
 function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDensePropagator{<:Number})
     # Handle empty case
@@ -229,16 +239,20 @@ For each time slice τ, performs block-aware multiplication where only blocks al
 quantum number conservation are computed.
 
 # Arguments
-- `temp_buffer::BlockDensePropagator{T}`: Output buffer (will be overwritten)
-- `A::BlockDensePropagator{T}`: First time-dependent tensor
-- `B::BlockDensePropagator{T}`: Second time-dependent tensor
+
+  - `temp_buffer::BlockDensePropagator{T}`: Output buffer (will be overwritten)
+  - `A::BlockDensePropagator{T}`: First time-dependent tensor
+  - `B::BlockDensePropagator{T}`: Second time-dependent tensor
 
 # Returns
-- `temp_buffer`: The input buffer with results written
+
+  - `temp_buffer`: The input buffer with results written
 
 # Algorithm
+
 For each block (target, source) in the result:
-- Sum over intermediate sectors: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src](τ)
+
+  - Sum over intermediate sectors: result[tgt, src](%CF%84) = Σ_mid A[tgt, mid](%CF%84) * B[mid, src](%CF%84)
 """
 function _multiplication_33_blockdense!(
         temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T},
@@ -327,84 +341,4 @@ end
 # Trace over spatial indices
 function trace_prop!(result_buffer::Vector{<:Real}, prop::BlockDensePropagator)
     _trace_3_blockdense!(result_buffer, prop)
-end
-
-#=============================================================================
-# Product Buffer Allocation Helpers
-=============================================================================#
-
-"""
-    allocate_product_buffer(op::BlockDenseOperator, prop::BlockDensePropagator{T}, n_tau::Int) where T
-
-Allocate a buffer for the result of op * prop (operator × propagator multiplication).
-Determines which blocks exist based on quantum number conservation.
-"""
-function allocate_product_buffer(op::BlockDenseOperator, prop::BlockDensePropagator{T}, n_tau::Int) where {T}
-    basis = prop.basis
-    op_flux = OperatorFlux(combine_qn(op.flux.delta_qn, prop.flux.delta_qn))
-
-    result_blocks = Dict{Tuple{Int, Int}, Array{T, 3}}()
-    for ((tgt, mid), op_block) in op.blocks
-        for ((mid2, src), prop_block) in prop.blocks
-            if mid == mid2
-                key = (tgt, src)
-                if !haskey(result_blocks, key)
-                    dim_tgt = basis.sectors[tgt].dim
-                    dim_src = basis.sectors[src].dim
-                    result_blocks[key] = zeros(T, n_tau, dim_tgt, dim_src)
-                end
-            end
-        end
-    end
-    return BlockDensePropagator{T}(basis, op_flux, result_blocks)
-end
-
-"""
-    allocate_product_buffer(prop::BlockDensePropagator{T}, op::BlockDenseOperator, n_tau::Int) where T
-
-Allocate a buffer for the result of prop * op (propagator × operator multiplication).
-"""
-function allocate_product_buffer(prop::BlockDensePropagator{T}, op::BlockDenseOperator, n_tau::Int) where {T}
-    basis = prop.basis
-    op_flux = OperatorFlux(combine_qn(prop.flux.delta_qn, op.flux.delta_qn))
-
-    result_blocks = Dict{Tuple{Int, Int}, Array{T, 3}}()
-    for ((tgt, mid), prop_block) in prop.blocks
-        for ((mid2, src), op_block) in op.blocks
-            if mid == mid2
-                key = (tgt, src)
-                if !haskey(result_blocks, key)
-                    dim_tgt = basis.sectors[tgt].dim
-                    dim_src = basis.sectors[src].dim
-                    result_blocks[key] = zeros(T, n_tau, dim_tgt, dim_src)
-                end
-            end
-        end
-    end
-    return BlockDensePropagator{T}(basis, op_flux, result_blocks)
-end
-
-"""
-    allocate_product_buffer(A::BlockDensePropagator{T}, B::BlockDensePropagator{T}, n_tau::Int) where T
-
-Allocate a buffer for the result of A * B (propagator × propagator multiplication).
-"""
-function allocate_product_buffer(A::BlockDensePropagator{T}, B::BlockDensePropagator{T}, n_tau::Int) where {T}
-    basis = A.basis
-    result_flux = OperatorFlux(combine_qn(A.flux.delta_qn, B.flux.delta_qn))
-
-    result_blocks = Dict{Tuple{Int, Int}, Array{T, 3}}()
-    for ((tgt, mid), A_block) in A.blocks
-        for ((mid2, src), B_block) in B.blocks
-            if mid == mid2
-                key = (tgt, src)
-                if !haskey(result_blocks, key)
-                    dim_tgt = basis.sectors[tgt].dim
-                    dim_src = basis.sectors[src].dim
-                    result_blocks[key] = zeros(T, n_tau, dim_tgt, dim_src)
-                end
-            end
-        end
-    end
-    return BlockDensePropagator{T}(basis, result_flux, result_blocks)
 end

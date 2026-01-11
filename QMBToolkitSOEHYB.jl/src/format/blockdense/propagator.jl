@@ -214,6 +214,13 @@ function compute_new_flux_reverse(current_flux::OperatorFlux, op::BlockDenseOper
     OperatorFlux(combine_qn(current_flux.delta_qn, op.flux.delta_qn))
 end
 
+"""
+    is_zero_flux(flux::OperatorFlux)
+
+Check if the flux is zero (BlockDense mode).
+"""
+is_zero_flux(flux::OperatorFlux) = flux.delta_qn == zero_qn(typeof(flux.delta_qn))
+
 #=============================================================================
 # Buffer Accessors
 =============================================================================#
@@ -279,6 +286,36 @@ Get the convolution DLR buffer (always zero flux).
 """
 get_conv_dlr(buffers::BlockDenseBackboneBuffers) = buffers.conv_dlr
 
+"""
+    get_contrib_tau_to_beta_reflected(buffers, flux::OperatorFlux)
+
+Get the reflection buffer for the given flux (BlockDense mode).
+"""
+function get_contrib_tau_to_beta_reflected(buffers, flux::OperatorFlux)
+    qn = flux.delta_qn
+    return buffers.contrib_tau_to_beta_reflected_pool[qn]
+end
+
+"""
+    get_ann_product(buffers, flux::OperatorFlux)
+
+Get the ann_product buffer for the given flux (BlockDense mode).
+"""
+function get_ann_product(buffers, flux::OperatorFlux)
+    qn = flux.delta_qn
+    return buffers.ann_product_pool[qn]
+end
+
+"""
+    get_final_product(buffers, flux::OperatorFlux)
+
+Get the final_product buffer for the given flux (BlockDense mode).
+"""
+function get_final_product(buffers, flux::OperatorFlux)
+    qn = flux.delta_qn
+    return buffers.final_product_pool[qn]
+end
+
 #=============================================================================
 # Buffer Allocation for Solver
 =============================================================================#
@@ -322,9 +359,40 @@ function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) wh
     backbone_0_to_beta_with_ann = [zeros(BlockDensePropagator{T}, basis, ann_opts[idx].flux, n_tau)
                                    for idx in 1:n_flavors]
 
+    # Pre-allocate flux-indexed pool for reflected contrib_tau_to_beta
+    QN = typeof(basis.sectors[1].qn)
+    possible_fluxes = enumerate_possible_flux(QN, max_order)
+    contrib_tau_to_beta_reflected_pool = Dict{QN, BlockDensePropagator{T}}()
+    for flux_qn in possible_fluxes
+        contrib_tau_to_beta_reflected_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
+    end
+
+    # Pre-allocate ann_product_pool for all possible flux values
+    ann_product_pool = Dict{QN, BlockDensePropagator{T}}()
+    for flux_qn in possible_fluxes
+        ann_product_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
+    end
+
+    # Pre-allocate final_product_pool for annihilation operator fluxes only
+    final_product_pool = Dict{QN, BlockDensePropagator{T}}()
+    for idx in 1:n_flavors
+        ann_flux_qn = ann_opts[idx].flux.delta_qn
+        if !haskey(final_product_pool, ann_flux_qn)
+            final_product_pool[ann_flux_qn] = allocate_buffer_for_flux(basis, ann_flux_qn, n_tau, T)
+        end
+    end
+
+    # Pre-allocate cre_product with zero flux
+    zero_qn_val = zero_qn(QN)
+    cre_product = allocate_buffer_for_flux(basis, zero_qn_val, n_tau, T)
+
     return (
         trace_result_buffer = zeros(Float64, n_tau),
         convolution_buffers = conv_buffers,
-        backbone_0_to_beta_with_ann = backbone_0_to_beta_with_ann
+        backbone_0_to_beta_with_ann = backbone_0_to_beta_with_ann,
+        contrib_tau_to_beta_reflected_pool = contrib_tau_to_beta_reflected_pool,
+        ann_product_pool = ann_product_pool,
+        final_product_pool = final_product_pool,
+        cre_product = cre_product
     )
 end

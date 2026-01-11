@@ -29,10 +29,6 @@ written once and work with any format.
 ## Hybridization
 - `apply_hybridization_inplace!(buffer, prop, hyb, model_data; is_reverse)`: Apply hybridization
 
-## Convolution Evaluation
-- `multiplication_convolution(nodes, edges, dlr_grid, model_data, propagator, buffers)`: Forward chain
-- `multiplication_convolution_reverse(nodes, edges, dlr_grid, model_data, propagator, buffers)`: Reverse chain
-
 ## Buffer Allocation
 - `allocate_propagator_buffers(solver_data)`: Allocate buffers for propagator evaluation
 - `allocate_green_buffers(solver_data)`: Allocate buffers for Green's function evaluation
@@ -77,10 +73,6 @@ function trace_prop! end
 # Hybridization
 function apply_hybridization_inplace! end
 
-# Convolution Evaluation
-function multiplication_convolution end
-function multiplication_convolution_reverse end
-
 # Buffer Allocation
 function allocate_propagator_buffers end
 function allocate_green_buffers end
@@ -93,13 +85,13 @@ function zeros_like end
 function zeros_like_with_flux end  # Create zeros with flux from operator
 function add_scaled! end
 
-# Product buffer allocation
-function allocate_product_buffer end
-
 # Flux handling
 function get_flux end
 function compute_new_flux end
 function compute_new_flux_reverse end
+
+# For Dense mode, flux is always Nothing (zero)
+is_zero_flux(::Nothing) = true
 
 # Buffer accessors (used in backbone evaluation)
 function get_result end
@@ -109,3 +101,11 @@ function get_result_dlr end
 function get_conv_operand end
 function get_conv_hyb_temp end
 function get_conv_dlr end
+
+# Buffer accessors (used in Green's function evaluation)
+function get_contrib_tau_to_beta_reflected end
+function get_ann_product end
+function get_final_product end
+
+# get_cre_product: generic accessor (cre_product always has zero flux)
+get_cre_product(buffers) = buffers.cre_product

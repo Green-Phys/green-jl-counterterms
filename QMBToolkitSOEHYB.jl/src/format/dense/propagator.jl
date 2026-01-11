@@ -134,6 +134,28 @@ Get the convolution DLR buffer.
 """
 get_conv_dlr(buffers::DenseBackboneBuffers) = buffers.conv_dlr
 
+"""
+    get_contrib_tau_to_beta_reflected(buffers, flux)
+
+Get the reflection buffer for Green's function evaluation.
+Flux parameter is ignored for Dense mode.
+"""
+get_contrib_tau_to_beta_reflected(buffers, flux) = buffers.contrib_tau_to_beta_reflected
+
+"""
+    get_ann_product(buffers, flux)
+
+Get the ann_product buffer. Flux parameter is ignored for Dense mode.
+"""
+get_ann_product(buffers, flux) = buffers.ann_product
+
+"""
+    get_final_product(buffers, flux)
+
+Get the final_product buffer. Flux parameter is ignored for Dense mode.
+"""
+get_final_product(buffers, flux) = buffers.final_product
+
 #=============================================================================
 # Buffer Allocation for Solver
 =============================================================================#
@@ -182,9 +204,21 @@ function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where {
     backbone_0_to_beta_with_ann = [zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
                                    for _ in 1:n_flavors]
 
+    # Pre-allocate buffer for reflected contrib_tau_to_beta
+    contrib_tau_to_beta_reflected = zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
+
+    # Pre-allocate buffers for operator products (reused across loop iterations)
+    ann_product = zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
+    final_product = zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
+    cre_product = zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
+
     return (
         trace_result_buffer = zeros(Float64, n_tau),
         convolution_buffers = conv_buffers,
-        backbone_0_to_beta_with_ann = backbone_0_to_beta_with_ann
+        backbone_0_to_beta_with_ann = backbone_0_to_beta_with_ann,
+        contrib_tau_to_beta_reflected = contrib_tau_to_beta_reflected,
+        ann_product = ann_product,
+        final_product = final_product,
+        cre_product = cre_product
     )
 end

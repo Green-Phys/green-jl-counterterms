@@ -19,10 +19,10 @@ dlr_eps_counterterms=1e-3
 dlr_eps_hybridization=1e-12
 hyb_type="SemiCircular"
 soe_subroutine_counterterms="ESPRIT"
-n_soe_counterterms=5
+n_soe_counterterms=0
 # soe_subroutine_hyb="DLR"
 soe_subroutine_hyb="ESPRIT"
-n_soe_hybridization=9
+n_soe_hybridization=7
 do_subtraction_trick=true
 
 # Extract the exponent from dlr_eps_hybridization (e.g., 1e-12 -> 12)

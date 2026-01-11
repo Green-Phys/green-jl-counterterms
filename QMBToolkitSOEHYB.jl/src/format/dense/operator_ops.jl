@@ -26,7 +26,7 @@ In-place matrix-tensor multiplication: temp_buffer[τ,:,:] = A * B[τ,:,:] for a
 Writes result to temp_buffer. Caller should copy back to input if needed.
 """
 function _multiplication_23_dense!(temp_buffer::Array{T, 3}, A::Array{T, 2}, B::Array{
-        T, 3,}) where {T <: Number}
+        T, 3}) where {T <: Number}
     n_tau = size(B, 1)
     @inbounds for k in 1:n_tau
         mul!(view(temp_buffer,k,:,:), A, view(B,k,:,:))
@@ -40,7 +40,7 @@ end
 In-place tensor-matrix multiplication: temp_buffer[τ,:,:] = A[τ,:,:] * B for all τ.
 """
 function _multiplication_32_dense!(temp_buffer::Array{T, 3}, A::Array{T, 3}, B::Array{
-        T, 2,}) where {T <: Number}
+        T, 2}) where {T <: Number}
     n_tau = size(A, 1)
     @inbounds for k in 1:n_tau
         mul!(view(temp_buffer,k,:,:), view(A,k,:,:), B)
@@ -54,7 +54,7 @@ end
 In-place vector-tensor element-wise multiplication: temp_buffer[τ,:,:] = A[τ] * B[τ,:,:].
 """
 function _multiplication_13_dense!(temp_buffer::Array{T, 3}, A::AbstractVector, B::Array{
-        T, 3,}) where {T <: Number}
+        T, 3}) where {T <: Number}
     n_tau = size(B, 1)
     @inbounds for k in 1:n_tau
         @views temp_buffer[k, :, :] .= A[k] .* B[k, :, :]
@@ -68,7 +68,7 @@ end
 In-place tensor-tensor multiplication: temp_buffer[τ,:,:] = A[τ,:,:] * B[τ,:,:].
 """
 function _multiplication_33_dense!(temp_buffer::Array{T, 3}, A::Array{T, 3}, B::Array{
-        T, 3,}) where {T <: Number}
+        T, 3}) where {T <: Number}
     n_tau = size(A, 1)
     @inbounds for k in 1:n_tau
         mul!(view(temp_buffer,k,:,:), view(A,k,:,:), view(B,k,:,:))
@@ -175,36 +175,4 @@ end
 # Trace over spatial indices
 function trace_prop!(result_buffer::Vector{<:Real}, prop::DensePropagator)
     _trace_3_dense!(result_buffer, prop)
-end
-
-#=============================================================================
-# Product Buffer Allocation Helpers (Dense format - simple pre-allocation)
-=============================================================================#
-
-"""
-    allocate_product_buffer(op::DenseOperator, prop::DensePropagator{T}, n_tau::Int) where T
-
-Allocate a buffer for the result of op * prop.
-For dense format, just allocate a zero array of appropriate size.
-"""
-function allocate_product_buffer(op::DenseOperator, prop::DensePropagator{T}, n_tau::Int) where {T}
-    return zeros(DensePropagator{T}, n_tau, size(op.data, 1), size(prop.data, 3))
-end
-
-"""
-    allocate_product_buffer(prop::DensePropagator{T}, op::DenseOperator, n_tau::Int) where T
-
-Allocate a buffer for the result of prop * op.
-"""
-function allocate_product_buffer(prop::DensePropagator{T}, op::DenseOperator, n_tau::Int) where {T}
-    return zeros(DensePropagator{T}, n_tau, size(prop.data, 2), size(op.data, 2))
-end
-
-"""
-    allocate_product_buffer(A::DensePropagator{T}, B::DensePropagator{T}, n_tau::Int) where T
-
-Allocate a buffer for the result of A * B.
-"""
-function allocate_product_buffer(A::DensePropagator{T}, B::DensePropagator{T}, n_tau::Int) where {T}
-    return zeros(DensePropagator{T}, n_tau, size(A.data, 2), size(B.data, 3))
 end

@@ -50,6 +50,19 @@ end
 =============================================================================#
 
 """
+    do_reflection_tau2tau_dense!(dest::DensePropagator{T}, dlr_grid::DLRGrid, prop_tau::DensePropagator{T}) where T
+
+In-place reflection operation on tau-space dense data: dest = prop_tau(beta - tau).
+Writes result to dest.
+"""
+function do_reflection_tau2tau_dense!(dest::DensePropagator{T}, dlr_grid::DLRGrid,
+        prop_tau::DensePropagator{T}) where {T}
+    reflected = QMBToolkitDLR.do_reflection_tau2tau(dlr_grid, prop_tau.data)
+    copyto!(dest.data, reflected)
+    return dest
+end
+
+"""
     do_reflection_tau2tau_dense(dlr_grid::DLRGrid, prop_tau::DensePropagator{T}) where T
 
 Perform reflection operation on tau-space dense data: F(tau) = H(beta - tau).
@@ -77,20 +90,6 @@ function do_convolution_dlr2tau_dense!(
         workspace, dlr_grid, kernel_cache, F_dlr.data, G_dlr.data)
     copyto!(dest.data, result)
     return dest
-end
-
-"""
-    do_convolution_dlr2tau_dense!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache, F_dlr::DensePropagator{T}, G_dlr::DensePropagator{T}) where T
-
-Compute convolution H = F * G for dense propagators in DLR representation.
-Returns result in tau space as a new DensePropagator (allocating version).
-"""
-function do_convolution_dlr2tau_dense!(
-        workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache,
-        F_dlr::DensePropagator{T}, G_dlr::DensePropagator{T}) where {T}
-    result = QMBToolkitDLR.do_convolution_dlr2tau!(
-        workspace, dlr_grid, kernel_cache, F_dlr.data, G_dlr.data)
-    return DensePropagator{T}(copy(result))  # Must copy since workspace.H_tau is reused
 end
 
 #=============================================================================
@@ -133,6 +132,10 @@ end
 function do_reflection_tau2tau(dlr_grid::DLRGrid, prop_tau::DensePropagator{T}) where {T}
     do_reflection_tau2tau_dense(dlr_grid, prop_tau)
 end
+function do_reflection_tau2tau!(dest::DensePropagator{T}, dlr_grid::DLRGrid,
+        prop_tau::DensePropagator{T}) where {T}
+    do_reflection_tau2tau_dense!(dest, dlr_grid, prop_tau)
+end
 
 # Extract at tau
 function extract_at_tau(propagator::DensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where {T}
@@ -140,11 +143,6 @@ function extract_at_tau(propagator::DensePropagator{T}, tau::Float64, dlr_grid::
 end
 
 # Convolution
-function do_convolution_dlr2tau!(
-        workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid, kernel_cache::KernelCache,
-        F_dlr::DensePropagator{T}, G_dlr::DensePropagator{T}) where {T}
-    do_convolution_dlr2tau_dense!(workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)
-end
 function do_convolution_dlr2tau!(
         dest::DensePropagator{T}, workspace::ConvolutionWorkspace{T}, dlr_grid::DLRGrid,
         kernel_cache::KernelCache, F_dlr::DensePropagator{T}, G_dlr::DensePropagator{T}) where {T}

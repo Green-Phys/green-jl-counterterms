@@ -98,14 +98,6 @@ Create a zero-initialized DensePropagator with the same shape as template.
 zeros_like(template::DensePropagator{T}) where {T} = zeros(DensePropagator{T}, size(template)...)
 
 """
-    zeros_like_with_flux(template::DensePropagator{T}, op) where T
-
-Create a zero-initialized DensePropagator with the same shape as template.
-For Dense format, flux is not applicable so operator is ignored.
-"""
-zeros_like_with_flux(template::DensePropagator{T}, op) where {T} = zeros_like(template)
-
-"""
     add_scaled!(dest::DensePropagator{T}, scale, src::DensePropagator{T}) where T
 
 Add scaled contribution: dest += scale * src
@@ -114,13 +106,6 @@ function add_scaled!(dest::DensePropagator{T}, scale, src::DensePropagator{T}) w
     dest.data .+= scale .* src.data
     return dest
 end
-
-"""
-    get_data(prop::DensePropagator)
-
-Get the underlying data array.
-"""
-get_data(prop::DensePropagator) = prop.data
 
 #=============================================================================
 # MPI Operations

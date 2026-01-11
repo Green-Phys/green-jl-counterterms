@@ -16,7 +16,6 @@ expansion order. The 7 buffer roles match the Dense mode structure for consisten
 """
 
 using QMBToolkitED.BlockDense
-using QMBToolkitDLR
 
 #=============================================================================
 # BlockDense Backbone Buffers

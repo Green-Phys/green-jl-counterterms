@@ -1,6 +1,5 @@
 # Green's function diagram evaluation for both bare and bold expansion
 using MPI
-using QMBToolkitDLR
 
 # allocate_green_buffers is defined in format-specific files:
 # - src/format/dense/propagator.jl

@@ -1,5 +1,4 @@
 using TOML
-using QMBToolkitDLR
 using Printf
 using HDF5
 
@@ -50,23 +49,23 @@ function read_input(file_path::String)
         dict["model"]["hopping_file"],
         dict["model"]["interaction_file"],
         dict["model"]["hybridization_poles_file"],
-        dict["model"]["hybridization_weights_file"],
+        dict["model"]["hybridization_weights_file"]
     )
 
     propagator_params = PropagatorParams(
         dict["solver"]["propagator"]["expansion_order"],
-        dict["solver"]["propagator"]["is_bold"],
+        dict["solver"]["propagator"]["is_bold"]
     )
 
     green_params = GreenParams(
         dict["solver"]["green"]["expansion_order"],
         dict["solver"]["green"]["is_bold"],
-        dict["solver"]["green"]["save_linear_size"],
+        dict["solver"]["green"]["save_linear_size"]
     )
 
     dlr_params = DLRParams(
         dict["solver"]["dlr"]["Euv"],
-        dict["solver"]["dlr"]["rtol"],
+        dict["solver"]["dlr"]["rtol"]
     )
 
     # Read Hilbert_space_format (default to "dense" for backward compatibility)
@@ -78,7 +77,7 @@ function read_input(file_path::String)
         green_params,
         dlr_params,
         output_path,
-        Hilbert_space_format,
+        Hilbert_space_format
     )
 
     return Params(model_params, solver_params)
@@ -139,24 +138,25 @@ end
 Save all calculation results to an HDF5 file.
 
 Saves data in organized groups:
-- /green/linear_grid/green_tau: Green's function on uniform linear grid
-- /green/linear_grid/tau: Uniform linear tau grid
-- /green/dlr_grid/green_tau: Green's function on DLR tau grid
-- /green/dlr_grid/tau: DLR tau grid points
-- /green/dlr_grid/coeffs: DLR expansion coefficients
-- /model/E_shift: Energy shift applied to Hamiltonian
-- /model/beta: Inverse temperature
-- /calculation/partition_function: Final partition function
-- /calculation/partition_function_by_order: Partition function after each expansion order
-- /timing/total_wall_time: Total wall clock time in seconds
-- /timing/total_cpu_time: Total CPU time across all MPI ranks in seconds
+
+  - /green/linear_grid/green_tau: Green's function on uniform linear grid
+  - /green/linear_grid/tau: Uniform linear tau grid
+  - /green/dlr_grid/green_tau: Green's function on DLR tau grid
+  - /green/dlr_grid/tau: DLR tau grid points
+  - /green/dlr_grid/coeffs: DLR expansion coefficients
+  - /model/E_shift: Energy shift applied to Hamiltonian
+  - /model/beta: Inverse temperature
+  - /calculation/partition_function: Final partition function
+  - /calculation/partition_function_by_order: Partition function after each expansion order
+  - /timing/total_wall_time: Total wall clock time in seconds
+  - /timing/total_cpu_time: Total CPU time across all MPI ranks in seconds
 """
 function save_data(
         model_data::ModelData,
         calc_data::CalculationData,
         file_path::String,
         total_wall_time::Float64,
-        total_cpu_time::Float64,
+        total_cpu_time::Float64
 )
     h5open(file_path, "w") do file
         # Save Green's function - linear grid
@@ -175,10 +175,10 @@ function save_data(
         green_by_order_group = create_group(file, "green/by_order")
         for (i, green_at_order_dlr) in enumerate(calc_data.green_by_order)
             # Convert from DLR grid to DLR coefficients
-            green_coeffs = QMBToolkitDLR.tau2dlr(model_data.dlr_grid, green_at_order_dlr.data, model_data.dlr_grid.tau)
+            green_coeffs = tau2dlr(model_data.dlr_grid, green_at_order_dlr, model_data.dlr_grid.tau)
             # Interpolate to linear grid
-            green_at_order_linear = QMBToolkitDLR.dlr2tau(model_data.dlr_grid, green_coeffs, calc_data.tau_linear_grid)
-            green_by_order_group["green_order_$i"] = green_at_order_linear
+            green_at_order_linear = dlr2tau(model_data.dlr_grid, green_coeffs, calc_data.tau_linear_grid)
+            green_by_order_group["green_order_$i"] = green_at_order_linear.data
         end
 
         # Save model parameters
@@ -218,10 +218,10 @@ function save_results(solver_data::SolverData, solver_params::SolverParams,
     # IMPORTANT: This must be done BEFORE calling save_data since save_data uses the linear grid
     solver_data.calc.tau_linear_grid = collect(LinRange(
         0.0, solver_data.model.beta, solver_params.green.save_linear_size))
-    green_linear_data = QMBToolkitDLR.dlr2tau(
-        solver_data.model.dlr_grid, solver_data.calc.green.coeffs.data,
+    green_linear = dlr2tau(
+        solver_data.model.dlr_grid, solver_data.calc.green.coeffs,
         solver_data.calc.tau_linear_grid)
-    solver_data.calc.green_linear_grid = DensePropagator{eltype(green_linear_data)}(green_linear_data)
+    solver_data.calc.green_linear_grid = green_linear
 
     # Print summary
     println("First 4 linear grid tau points:")
@@ -252,7 +252,7 @@ function print_shutdown_message(
         t_eval_prop_total::Float64,
         t_gen_green_wall::Float64,
         t_eval_green_wall::Float64,
-        t_eval_green_total::Float64,
+        t_eval_green_total::Float64
 )
     println()
     println("--- TIMING SUMMARY ---")
@@ -296,7 +296,6 @@ function print_shutdown_message(
     println("  QMBToolkitSOEHYB Solver Finished  ")
     println("========================================")
 end
-
 
 function print_startup_message()
     println("========================================")

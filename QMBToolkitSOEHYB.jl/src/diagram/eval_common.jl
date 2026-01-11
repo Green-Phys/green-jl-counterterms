@@ -1,7 +1,6 @@
 ### Evaluate the backbone diagrams to obtain their contributions
 using MPI
 using LinearAlgebra
-using QMBToolkitDLR
 
 """
     eval_diagrams!(solver_data, solver_params, diagram_type, diagrams, comm)
@@ -45,7 +44,7 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
         propagator.coeffs = tau2dlr(
             solver_data.model.dlr_grid, propagator.vals, solver_data.model.dlr_grid.tau)
     elseif diagram_type == :green_diagram &&
-       !solver_params.green.is_bold
+           !solver_params.green.is_bold
         empty!(solver_data.calc.green_numerator_by_order)
         empty!(solver_data.calc.green_by_order)
         for order in 1:(solver_params.green.expansion_order)

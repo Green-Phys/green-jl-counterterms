@@ -9,14 +9,11 @@ written once and work with any format.
 
 ## Propagator Operations
 - `zeros_like(template)`: Create zero-initialized propagator matching template structure
-- `zeros_like_with_flux(template, op)`: Create zero-initialized propagator with flux from operator
 - `add_scaled!(dest, scale, src)`: Add scaled contribution: dest += scale * src
-- `get_data(prop)`: Get underlying data array
 
 ## DLR Operations
 - `tau2dlr(dlr_grid, prop, tau_grid)`: Transform from tau to DLR representation
 - `dlr2tau(dlr_grid, prop_dlr, tau_grid)`: Transform from DLR to tau representation
-- `do_reflection_tau2tau(dlr_grid, prop_tau)`: Reflection F(τ) → F(β-τ)
 - `extract_at_tau(prop, tau, dlr_grid)`: Extract value at specific tau as dense matrix
 - `do_convolution_dlr2tau!(workspace, dlr_grid, cache, F_dlr, G_dlr)`: DLR convolution
 
@@ -40,19 +37,6 @@ written once and work with any format.
 using MPI
 
 # ============================================================================
-# Propagator Operations - these have default implementations that can be overridden
-# ============================================================================
-
-"""
-    get_data(prop)
-
-Get the underlying data array from a propagator.
-For DensePropagator, returns prop.data.
-For BlockDensePropagator, returns the blocks dictionary.
-"""
-function get_data end
-
-# ============================================================================
 # The following are interface declarations - implementations are in format-specific files
 # ============================================================================
 
@@ -60,7 +44,7 @@ function get_data end
 function tau2dlr end
 function tau2dlr! end  # In-place version for buffer reuse
 function dlr2tau end
-function do_reflection_tau2tau end
+function do_reflection_tau2tau! end  # In-place reflection F(τ) → F(β-τ)
 function extract_at_tau end
 function do_convolution_dlr2tau! end
 
@@ -82,7 +66,6 @@ function mpi_reduce_and_add! end
 
 # Propagator creation
 function zeros_like end
-function zeros_like_with_flux end  # Create zeros with flux from operator
 function add_scaled! end
 
 # Flux handling

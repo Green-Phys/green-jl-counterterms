@@ -187,24 +187,6 @@ function zeros_like(template::BlockDensePropagator{T}) where {T}
     return BlockDensePropagator{T}(template.basis, template.flux, new_blocks)
 end
 
-"""
-    zeros_like_with_flux(template::BlockDensePropagator{T}, op::BlockDenseOperator) where T
-
-Create a zero-initialized BlockDensePropagator with flux from operator.
-Uses template for basis and time dimension, but flux comes from operator.
-"""
-function zeros_like_with_flux(template::BlockDensePropagator{T}, op::BlockDenseOperator) where {T}
-    n_tau = size(first(values(template.blocks)), 1)
-    return zeros(BlockDensePropagator{T}, template.basis, op.flux, n_tau)
-end
-
-"""
-    get_data(prop::BlockDensePropagator)
-
-Get the underlying blocks dictionary.
-"""
-get_data(prop::BlockDensePropagator) = prop.blocks
-
 #=============================================================================
 # MPI Operations
 =============================================================================#

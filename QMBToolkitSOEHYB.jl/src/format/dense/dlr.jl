@@ -62,17 +62,6 @@ function do_reflection_tau2tau_dense!(dest::DensePropagator{T}, dlr_grid::DLRGri
     return dest
 end
 
-"""
-    do_reflection_tau2tau_dense(dlr_grid::DLRGrid, prop_tau::DensePropagator{T}) where T
-
-Perform reflection operation on tau-space dense data: F(tau) = H(beta - tau).
-First transforms to DLR, then applies reflection.
-"""
-function do_reflection_tau2tau_dense(dlr_grid::DLRGrid, prop_tau::DensePropagator{T}) where {T}
-    reflected = QMBToolkitDLR.do_reflection_tau2tau(dlr_grid, prop_tau.data)
-    return DensePropagator{T}(reflected)
-end
-
 #=============================================================================
 # Convolution Operations
 =============================================================================#
@@ -128,10 +117,7 @@ function dlr2tau(dlr_grid::DLRGrid, prop_dlr::DensePropagator{T}, tau_grid::Vect
     dlr2tau_dense(dlr_grid, prop_dlr, tau_grid)
 end
 
-# Reflection
-function do_reflection_tau2tau(dlr_grid::DLRGrid, prop_tau::DensePropagator{T}) where {T}
-    do_reflection_tau2tau_dense(dlr_grid, prop_tau)
-end
+# Reflection (in-place only)
 function do_reflection_tau2tau!(dest::DensePropagator{T}, dlr_grid::DLRGrid,
         prop_tau::DensePropagator{T}) where {T}
     do_reflection_tau2tau_dense!(dest, dlr_grid, prop_tau)

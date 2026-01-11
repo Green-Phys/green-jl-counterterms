@@ -97,28 +97,6 @@ function do_reflection_tau2tau_blockdense!(dest::BlockDensePropagator{T}, dlr_gr
     return dest
 end
 
-"""
-    do_reflection_tau2tau_blockdense(dlr_grid::DLRGrid, prop_tau::BlockDensePropagator{T}) where T
-
-Perform reflection operation on tau-space BlockDense data: F(tau) = H(beta - tau).
-First transforms to DLR, then applies reflection to get values at beta - tau.
-"""
-function do_reflection_tau2tau_blockdense(dlr_grid::DLRGrid, prop_tau::BlockDensePropagator{T}) where {T}
-    # Transform to DLR
-    prop_dlr = tau2dlr_blockdense(dlr_grid, prop_tau, dlr_grid.tau)
-
-    # Evaluate at reflected tau points (beta - tau)
-    tau_grid_reflected = dlr_grid.beta .- dlr_grid.tau
-    blocks_tau = Dict{Tuple{Int, Int}, Array{T, 3}}()
-
-    for ((target, source), block_dlr) in prop_dlr.blocks
-        block_tau = QMBToolkitDLR.dlr2tau(dlr_grid, block_dlr, tau_grid_reflected)
-        blocks_tau[(target, source)] = block_tau
-    end
-
-    return BlockDensePropagator{T}(prop_dlr.basis, prop_dlr.flux, blocks_tau)
-end
-
 #=============================================================================
 # Convolution Operations
 =============================================================================#
@@ -244,10 +222,7 @@ function dlr2tau(dlr_grid::DLRGrid, prop_dlr::BlockDensePropagator{T}, tau_grid:
     dlr2tau_blockdense(dlr_grid, prop_dlr, tau_grid)
 end
 
-# Reflection
-function do_reflection_tau2tau(dlr_grid::DLRGrid, prop_tau::BlockDensePropagator{T}) where {T}
-    do_reflection_tau2tau_blockdense(dlr_grid, prop_tau)
-end
+# Reflection (in-place only)
 function do_reflection_tau2tau!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
         prop_tau::BlockDensePropagator{T}) where {T}
     do_reflection_tau2tau_blockdense!(dest, dlr_grid, prop_tau)

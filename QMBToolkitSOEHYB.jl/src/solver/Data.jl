@@ -110,9 +110,10 @@ The `format_data` field contains format-specific data (operators and bare propag
 Dense or BlockDense representation, eliminating the need for Union{..., Nothing} fields.
 
 # Type Parameters
-- `T<:Number`: Numeric type for propagator values (typically ComplexF64)
-- `Format<:HilbertSpaceFormat`: Either DenseFormat or BlockDenseFormat
-- `Storage<:ModelDataStorage{T}`: Format-specific storage type
+
+  - `T<:Number`: Numeric type for propagator values (typically ComplexF64)
+  - `Format<:HilbertSpaceFormat`: Either DenseFormat or BlockDenseFormat
+  - `Storage<:ModelDataStorage{T}`: Format-specific storage type
 """
 struct ModelData{T <: Number, Format <: HilbertSpaceFormat, Storage <: ModelDataStorage{T}}
     # Model properties
@@ -129,9 +130,9 @@ struct ModelData{T <: Number, Format <: HilbertSpaceFormat, Storage <: ModelData
     K0_inverse::Vector{Float64}
 
     # Numerical infrastructure
-    dlr_grid::DLRGrid
+    dlr_grid::DLRGrid{Float64, :none}
     kernel_cache::KernelCache
-    convolution_workspace::ConvolutionWorkspace
+    convolution_workspace::ConvolutionWorkspace{T}
 
     # Format-specific storage (eigenvalues, eigenvectors, operators, bare propagator)
     format_data::Storage
@@ -153,12 +154,13 @@ Note: Green's function is always stored in dense format (it's a physical observa
 in small orbital space).
 
 # Type Parameters
-- `T<:Number`: Numeric type for propagator values
-- `Format<:HilbertSpaceFormat`: Either DenseFormat or BlockDenseFormat
-- `Storage<:CalculationDataStorage{T}`: Format-specific storage type
+
+  - `T<:Number`: Numeric type for propagator values
+  - `Format<:HilbertSpaceFormat`: Either DenseFormat or BlockDenseFormat
+  - `Storage<:CalculationDataStorage{T}`: Format-specific storage type
 """
 mutable struct CalculationData{
-    T <: Number, Format <: HilbertSpaceFormat, Storage <: CalculationDataStorage{T},}
+    T <: Number, Format <: HilbertSpaceFormat, Storage <: CalculationDataStorage{T}}
     # Format-specific storage
     format_data::Storage
 
@@ -176,20 +178,28 @@ end
 =============================================================================#
 
 """
-    SolverData{T, Format}
+    SolverData{T, Format, MS, CS}
 
 Holds all the data required for the solver calculation.
 Combines model data and calculation data, both parametrized by the same Format.
+
+# Type Parameters
+
+  - `T<:Number`: Numeric type for propagator values
+  - `Format<:HilbertSpaceFormat`: Either DenseFormat or BlockDenseFormat
+  - `MS<:ModelDataStorage{T}`: Format-specific model storage type
+  - `CS<:CalculationDataStorage{T}`: Format-specific calculation storage type
 """
-struct SolverData{T <: Number, Format <: HilbertSpaceFormat}
-    model::ModelData{T, Format}
-    calc::CalculationData{T, Format}
+struct SolverData{T <: Number, Format <: HilbertSpaceFormat,
+    MS <: ModelDataStorage{T}, CS <: CalculationDataStorage{T}}
+    model::ModelData{T, Format, MS}
+    calc::CalculationData{T, Format, CS}
 end
 
-# Allow SolverData to infer Storage types from its components
+# Convenience constructor that infers Storage types from components
 function SolverData(model::ModelData{T, Format, MS}, calc::CalculationData{
-        T, Format, CS,}) where {T, Format, MS, CS}
-    SolverData{T, Format}(model, calc)
+        T, Format, CS}) where {T, Format, MS, CS}
+    SolverData{T, Format, MS, CS}(model, calc)
 end
 
 #=============================================================================

@@ -320,32 +320,46 @@ end
 =============================================================================#
 
 """
-    allocate_propagator_buffers(solver_data::SolverData{T, BlockDenseFormat}) where T
+    allocate_propagator_buffers(solver_data, expansion_order)
 
 Allocate buffers for BlockDense propagator evaluation.
+
+# Arguments
+
+  - `solver_data::SolverData{T, BlockDenseFormat}`: Solver data
+  - `expansion_order::Int`: Expansion order (determines max flux range for buffer pools)
 """
 function allocate_propagator_buffers(solver_data::SolverData{
-        T, BlockDenseFormat}) where {T <: Number}
-    n_tau = length(solver_data.model.dlr_grid.tau)
+            T, BlockDenseFormat}, expansion_order::Int) where {T <: Number}
+    # Cast to concrete type for type stability
+    tau_grid = solver_data.model.dlr_grid.tau::Vector{Float64}
+    n_tau = length(tau_grid)
     n_dlr = solver_data.model.dlr_grid.size
     basis = get_bare_propagator(solver_data.model).vals.basis
-    max_order = 10  # Conservative estimate for buffer pre-allocation
-    return BlockDenseBackboneBuffers{T}(basis, max_order, n_tau, n_dlr)
+    # max_order equals expansion_order: maximum flux = ±order
+    return BlockDenseBackboneBuffers{T}(basis, expansion_order, n_tau, n_dlr)
 end
 
 """
-    allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) where T
+    allocate_green_buffers(solver_data, expansion_order)
 
 Allocate evaluation buffers for blockdense format Green's function computation.
+
+# Arguments
+
+  - `solver_data::SolverData{T, BlockDenseFormat}`: Solver data
+  - `expansion_order::Int`: Expansion order (determines max flux range for buffer pools)
 """
-function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) where {T}
-    n_tau = length(solver_data.model.dlr_grid.tau)
+function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}, expansion_order::Int) where {T}
+    # Cast to concrete type for type stability
+    tau_grid = solver_data.model.dlr_grid.tau::Vector{Float64}
+    n_tau = length(tau_grid)
     n_dlr = solver_data.model.dlr_grid.size
     basis = get_bare_propagator(solver_data.model).vals.basis
     n_flavors = solver_data.model.n_flavors_physical
 
-    # Use a reasonable max order for buffer pre-allocation
-    max_order = 10  # Conservative estimate, can be tuned
+    # max_order equals expansion_order: maximum flux = ±order
+    max_order = expansion_order
 
     # Pre-allocate buffers for forward and reverse backbone evaluation
     conv_buffers = (
@@ -354,9 +368,11 @@ function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) wh
     )
 
     # Pre-allocate backbone accumulators with correct flux from annihilation operators
+    # Explicitly type the Vector for type stability
     ann_opts = get_ann_opts(solver_data.model)
-    backbone_0_to_beta_with_ann = [zeros(BlockDensePropagator{T}, basis, ann_opts[idx].flux, n_tau)
-                                   for idx in 1:n_flavors]
+    backbone_0_to_beta_with_ann = Vector{BlockDensePropagator{T}}(
+        [zeros(BlockDensePropagator{T}, basis, ann_opts[idx].flux, n_tau) for idx in 1:n_flavors]
+    )
 
     # Pre-allocate flux-indexed pool for reflected contrib_tau_to_beta
     QN = typeof(basis.sectors[1].qn)
@@ -385,8 +401,11 @@ function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}) wh
     zero_qn_val = zero_qn(QN)
     cre_product = allocate_buffer_for_flux(basis, zero_qn_val, n_tau, T)
 
+    # Pre-allocate trace result buffer (Real type - trace of Hermitian is real)
+    trace_buffer = zeros(Float64, n_tau)
+
     return (
-        trace_result_buffer = zeros(Float64, n_tau),
+        trace_result_buffer = trace_buffer,
         convolution_buffers = conv_buffers,
         backbone_0_to_beta_with_ann = backbone_0_to_beta_with_ann,
         contrib_tau_to_beta_reflected_pool = contrib_tau_to_beta_reflected_pool,

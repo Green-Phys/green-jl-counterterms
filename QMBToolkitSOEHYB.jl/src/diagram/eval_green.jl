@@ -35,10 +35,15 @@ function eval_green_given_order!(
 
     local_result = zeros_like(solver_data.calc.green.vals)
 
-    buffers = allocate_green_buffers(solver_data)
-    n_tau = length(solver_data.model.dlr_grid.tau)
+    # Use vec() instead of vcat() for type stability
+    diagrams_flat = vec(diagrams)
 
-    diagrams_flat = vcat(diagrams...)
+    # Compute expansion order from diagram structure: order = (M - 1) / 2
+    # where M is the number of nodes in a Green's function diagram
+    first_diagram = diagrams_flat[1]
+    expansion_order = (length(first_diagram.nodes) - 1) ÷ 2
+
+    buffers = allocate_green_buffers(solver_data, expansion_order)
     n_diagrams = length(diagrams_flat)
 
     my_diagrams = (rank + 1):nprocs:n_diagrams

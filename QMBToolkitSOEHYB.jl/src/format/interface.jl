@@ -27,8 +27,8 @@ written once and work with any format.
 - `apply_hybridization_inplace!(buffer, prop, hyb, model_data; is_reverse)`: Apply hybridization
 
 ## Buffer Allocation
-- `allocate_propagator_buffers(solver_data)`: Allocate buffers for propagator evaluation
-- `allocate_green_buffers(solver_data)`: Allocate buffers for Green's function evaluation
+- `allocate_propagator_buffers(solver_data, expansion_order)`: Allocate buffers for propagator evaluation
+- `allocate_green_buffers(solver_data, expansion_order)`: Allocate buffers for Green's function evaluation
 
 ## MPI Operations
 - `mpi_reduce_and_add!(propagator, local_result, comm)`: MPI reduce and add to propagator

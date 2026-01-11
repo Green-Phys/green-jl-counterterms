@@ -33,12 +33,18 @@ function eval_propagator_given_order!(
 
     propagator = get_propagator(solver_data.calc)
 
-    diagrams_flat = vcat(diagrams...)
+    # Use vec() instead of vcat() for type stability
+    diagrams_flat = vec(diagrams)
     n_diagrams = length(diagrams_flat)
 
     local_result = zeros_like(propagator.vals)
 
-    buffers = allocate_propagator_buffers(solver_data)
+    # Compute expansion order from diagram structure: order = (M - 2) / 2
+    # where M is the number of nodes in a propagator diagram
+    first_diagram = diagrams_flat[1]
+    expansion_order = (length(first_diagram.nodes) - 2) ÷ 2
+
+    buffers = allocate_propagator_buffers(solver_data, expansion_order)
 
     my_diagrams = (rank + 1):nprocs:n_diagrams
 

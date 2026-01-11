@@ -5,6 +5,7 @@
 /docs/build/
 /auxiliary/
 /examples/
+test_*.jl
 
 # macOS
 .DS_Store

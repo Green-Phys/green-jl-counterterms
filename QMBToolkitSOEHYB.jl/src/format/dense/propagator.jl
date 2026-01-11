@@ -161,7 +161,7 @@ get_final_product(buffers, flux) = buffers.final_product
 =============================================================================#
 
 """
-    allocate_propagator_buffers(solver_data)
+    allocate_propagator_buffers(solver_data, expansion_order)
 
 Allocate buffers for dense propagator evaluation.
 
@@ -171,25 +171,35 @@ This is a format-specific function called by the format-independent
 # Arguments
 
   - `solver_data::SolverData{T}`: Solver data containing grid and Fock space information
+  - `expansion_order::Int`: Expansion order (unused in Dense mode, no flux tracking)
 
 # Returns
 
   - `DenseBackboneBuffers{T}`: Pre-allocated buffers for diagram evaluation
 """
-function allocate_propagator_buffers(solver_data::SolverData{T, DenseFormat}) where {T <: Number}
-    n_tau = length(solver_data.model.dlr_grid.tau)
+function allocate_propagator_buffers(solver_data::SolverData{T, DenseFormat}, expansion_order::Int) where {T <: Number}
+    # Cast to concrete type for type stability
+    tau_grid = solver_data.model.dlr_grid.tau::Vector{Float64}
+    n_tau = length(tau_grid)
     n_fock = solver_data.model.n_fock
     n_dlr = solver_data.model.dlr_grid.size
     return DenseBackboneBuffers{T}(n_tau, n_fock, n_dlr)
 end
 
 """
-    allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where T
+    allocate_green_buffers(solver_data, expansion_order)
 
 Allocate evaluation buffers for dense format Green's function computation.
+
+# Arguments
+
+  - `solver_data::SolverData{T, DenseFormat}`: Solver data
+  - `expansion_order::Int`: Expansion order (unused in Dense mode, no flux tracking)
 """
-function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where {T}
-    n_tau = length(solver_data.model.dlr_grid.tau)
+function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}, expansion_order::Int) where {T}
+    # Cast to concrete type for type stability
+    tau_grid = solver_data.model.dlr_grid.tau::Vector{Float64}
+    n_tau = length(tau_grid)
     n_fock = solver_data.model.n_fock
     n_dlr = solver_data.model.dlr_grid.size
     n_flavors = solver_data.model.n_flavors_physical
@@ -201,8 +211,10 @@ function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where {
     )
 
     # Pre-allocate backbone accumulators (one per annihilation flavor)
-    backbone_0_to_beta_with_ann = [zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
-                                   for _ in 1:n_flavors]
+    # Explicitly type the Vector for type stability
+    backbone_0_to_beta_with_ann = Vector{DensePropagator{T}}(
+        [zeros(DensePropagator{T}, n_tau, n_fock, n_fock) for _ in 1:n_flavors]
+    )
 
     # Pre-allocate buffer for reflected contrib_tau_to_beta
     contrib_tau_to_beta_reflected = zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
@@ -212,8 +224,11 @@ function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}) where {
     final_product = zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
     cre_product = zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
 
+    # Pre-allocate trace result buffer (Real type - trace of Hermitian is real)
+    trace_buffer = zeros(Float64, n_tau)
+
     return (
-        trace_result_buffer = zeros(Float64, n_tau),
+        trace_result_buffer = trace_buffer,
         convolution_buffers = conv_buffers,
         backbone_0_to_beta_with_ann = backbone_0_to_beta_with_ann,
         contrib_tau_to_beta_reflected = contrib_tau_to_beta_reflected,

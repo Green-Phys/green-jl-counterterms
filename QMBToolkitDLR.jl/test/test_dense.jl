@@ -28,7 +28,7 @@ using Printf
 
     ### calculate error on an equidistant grid
     tau_grid_test = collect(LinRange(0.0, beta, 10000))
-    H_reconstructed_test = dlr2tau(dlr_grid, reshape(H_dlr, :,), tau_grid_test)
+    H_reconstructed_test = dlr2tau(dlr_grid, reshape(H_dlr, :), tau_grid_test)
     H_analytical_test = [ (kernel_tau(tau, omega_G, beta)*kernel_tau(0.0, omega_F, beta) - kernel_tau(tau, omega_F, beta)*kernel_tau(0.0, omega_G, beta)) / (omega_F - omega_G) for tau in tau_grid_test]
     err_inf = maximum(abs.(H_reconstructed_test .- H_analytical_test))
     err_l2 = sqrt(sum(abs.(H_reconstructed_test .- H_analytical_test).^2) / length(tau_grid_test))

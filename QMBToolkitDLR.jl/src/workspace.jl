@@ -33,6 +33,7 @@ Supports non-square matrix convolutions: F (r × d1 × d2) * G (r × d2 × d3) -
 - `term2`: Temporary buffer for G accumulation (d2 × d3)
 - `term1_result`: Result buffer for term1 * G (d1 × d3)
 - `term2_result`: Result buffer for F * term2 (d1 × d3)
+- `temp_FG`: Temporary buffer for F[j] * G[j] matrix multiplication (d1 × d3)
 """
 struct ConvolutionWorkspace{T<:Number}
     H1_dlr::Array{T,3}
@@ -41,6 +42,7 @@ struct ConvolutionWorkspace{T<:Number}
     term2::Array{T,2}
     term1_result::Array{T,2}
     term2_result::Array{T,2}
+    temp_FG::Array{T,2}
 end
 
 """
@@ -80,7 +82,8 @@ function ConvolutionWorkspace{T}(r::Int, d1::Int, d2::Int, d3::Int, n_tau::Int) 
         zeros(T, d1, d2),           # term1 (accumulates F slices)
         zeros(T, d2, d3),           # term2 (accumulates G slices)
         zeros(T, d1, d3),           # term1_result (term1 * G)
-        zeros(T, d1, d3)            # term2_result (F * term2)
+        zeros(T, d1, d3),           # term2_result (F * term2)
+        zeros(T, d1, d3)            # temp_FG (F[j] * G[j] result)
     )
 end
 
@@ -107,9 +110,9 @@ Pre-compute kernel_tau(0, omega[i], beta) for all DLR omega points.
 This cache eliminates ~1.1 GB of allocations in do_convolution_dlr2tau.
 """
 function compute_kernel_cache(dlr_grid::DLRGrid)
-    cache = Vector{Float64}(undef, length(dlr_grid.omega))
-    for i in 1:length(dlr_grid.omega)
-        cache[i] = kernel_tau(0.0, dlr_grid.omega[i], dlr_grid.beta)
+    cache = Vector{Float64}(undef, length(dlr_grid.ω))
+    for i in 1:length(dlr_grid.ω)
+        cache[i] = kernel_tau(0.0, dlr_grid.ω[i], dlr_grid.β)
     end
     return KernelCache(cache)
 end

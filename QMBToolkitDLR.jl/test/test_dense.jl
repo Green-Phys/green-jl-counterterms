@@ -11,7 +11,7 @@ using Printf
     omega_F = 0.1234
     omega_G = -0.5678
 
-    tau_grid = dlr_grid.tau
+    tau_grid = dlr_grid.τ
     F=[kernel_tau(tau, omega_F, beta) for tau in tau_grid]
     G=[kernel_tau(tau, omega_G, beta) for tau in tau_grid]
 
@@ -19,12 +19,12 @@ using Printf
     G_dlr = tau2dlr(dlr_grid, G, tau_grid)
 
     # Create workspace and kernel cache
-    r = length(dlr_grid.omega)
+    r = length(dlr_grid.ω)
     workspace = ConvolutionWorkspace(r, 1, 1, length(tau_grid))
     kernel_cache = compute_kernel_cache(dlr_grid)
 
     H_tau = do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, reshape(F_dlr, :, 1, 1), reshape(G_dlr, :, 1, 1))
-    H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.tau)
+    H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.τ)
 
     ### calculate error on an equidistant grid
     tau_grid_test = collect(LinRange(0.0, beta, 10000))
@@ -54,7 +54,7 @@ end
     F_coeffs = [1.0 2.0; 3.0 4.0]
     G_coeffs = [5.0 6.0; 7.0 8.0]
 
-    tau_grid = dlr_grid.tau
+    tau_grid = dlr_grid.τ
     f_tau = [kernel_tau(tau, omega_F, beta) for tau in tau_grid]
     g_tau = [kernel_tau(tau, omega_G, beta) for tau in tau_grid]
 
@@ -65,12 +65,12 @@ end
     G_dlr = g_dlr .* reshape(G_coeffs, (1, 2, 2))
 
     # Create workspace and kernel cache
-    r = length(dlr_grid.omega)
+    r = length(dlr_grid.ω)
     workspace = ConvolutionWorkspace(r, 2, 2, length(tau_grid))
     kernel_cache = compute_kernel_cache(dlr_grid)
 
     H_tau = do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)
-    H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.tau)
+    H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.τ)
 
 
     tau_grid_test = collect(LinRange(0.0, beta, 10000))
@@ -104,8 +104,8 @@ end
 
     omega_matrix = [0.1234 0.5678; -0.9012 -0.3456] # All positive omegas
 
-    tau_grid = dlr_grid.tau
-    r = length(dlr_grid.omega)
+    tau_grid = dlr_grid.τ
+    r = length(dlr_grid.ω)
 
     H_dlr = zeros(Float64, r, 2, 2)
     for i in 1:2
@@ -115,9 +115,9 @@ end
         end
     end
     
-    H_tau = dlr2tau(dlr_grid, H_dlr, dlr_grid.tau)
+    H_tau = dlr2tau(dlr_grid, H_dlr, dlr_grid.τ)
     G_tau = do_reflection_tau2tau(dlr_grid, H_tau)
-    G_dlr = tau2dlr(dlr_grid, G_tau, dlr_grid.tau)
+    G_dlr = tau2dlr(dlr_grid, G_tau, dlr_grid.τ)
 
     tau_grid_test = collect(LinRange(0.0, beta, 10000))
     G_reconstructed_test = dlr2tau(dlr_grid, G_dlr, tau_grid_test)

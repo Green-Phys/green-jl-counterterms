@@ -65,7 +65,8 @@ function _do_convolution_direct!(workspace::ConvolutionWorkspace{T}, dlr_grid::D
 
     # Compute H1_dlr using workspace
     @inbounds for j in 1:r
-        @view(workspace.H1_dlr[j, :, :]) .= kernel_cache.values[j] .* (@view(F_dlr[j, :, :]) * @view(G_dlr[j, :, :]))
+        mul!(workspace.temp_FG, @view(F_dlr[j, :, :]), @view(G_dlr[j, :, :]))
+        @view(workspace.H1_dlr[j, :, :]) .= kernel_cache.values[j] .* workspace.temp_FG
     end
 
     # Compute H2_dlr using workspace with in-place operations
@@ -76,7 +77,7 @@ function _do_convolution_direct!(workspace::ConvolutionWorkspace{T}, dlr_grid::D
         # Accumulate terms without broadcasting allocations
         for k in 1:r
             if k != j
-                coeff = kernel_cache.values[k] / (dlr_grid.omega[k] - dlr_grid.omega[j])
+                coeff = kernel_cache.values[k] / (dlr_grid.ω[k] - dlr_grid.ω[j])
                 workspace.term1 .+= coeff .* @view(F_dlr[k, :, :])
                 workspace.term2 .+= coeff .* @view(G_dlr[k, :, :])
             end
@@ -89,11 +90,11 @@ function _do_convolution_direct!(workspace::ConvolutionWorkspace{T}, dlr_grid::D
     end
 
     # Transform to tau space
-    H1_tau = dlr2tau(dlr_grid, workspace.H1_dlr, dlr_grid.tau)
-    H2_tau = dlr2tau(dlr_grid, workspace.H2_dlr, dlr_grid.tau)
+    H1_tau = dlr2tau(dlr_grid, workspace.H1_dlr, dlr_grid.τ)
+    H2_tau = dlr2tau(dlr_grid, workspace.H2_dlr, dlr_grid.τ)
 
     # Compute final result
-    H_tau = dlr_grid.tau .* H1_tau .+ H2_tau
+    H_tau = dlr_grid.τ .* H1_tau .+ H2_tau
     return H_tau
 end
 
@@ -115,8 +116,10 @@ function _do_convolution_view!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLR
     fill!(H2_dlr_view, zero(T))
 
     # Compute H1_dlr
+    temp_FG_view = @view workspace.temp_FG[1:d1, 1:d3]
     @inbounds for j in 1:r
-        @view(H1_dlr_view[j, :, :]) .= kernel_cache.values[j] .* (@view(F_dlr[j, :, :]) * @view(G_dlr[j, :, :]))
+        mul!(temp_FG_view, @view(F_dlr[j, :, :]), @view(G_dlr[j, :, :]))
+        @view(H1_dlr_view[j, :, :]) .= kernel_cache.values[j] .* temp_FG_view
     end
 
     # Compute H2_dlr
@@ -126,7 +129,7 @@ function _do_convolution_view!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLR
 
         for k in 1:r
             if k != j
-                coeff = kernel_cache.values[k] / (dlr_grid.omega[k] - dlr_grid.omega[j])
+                coeff = kernel_cache.values[k] / (dlr_grid.ω[k] - dlr_grid.ω[j])
                 term1_view .+= coeff .* @view(F_dlr[k, :, :])
                 term2_view .+= coeff .* @view(G_dlr[k, :, :])
             end
@@ -139,10 +142,10 @@ function _do_convolution_view!(workspace::ConvolutionWorkspace{T}, dlr_grid::DLR
 
     # Transform to tau space
     # Need to collect to contiguous arrays as strided views are slower with dlr2tau
-    H1_tau = dlr2tau(dlr_grid, collect(H1_dlr_view), dlr_grid.tau)
-    H2_tau = dlr2tau(dlr_grid, collect(H2_dlr_view), dlr_grid.tau)
+    H1_tau = dlr2tau(dlr_grid, collect(H1_dlr_view), dlr_grid.τ)
+    H2_tau = dlr2tau(dlr_grid, collect(H2_dlr_view), dlr_grid.τ)
 
     # Compute final result
-    H_tau = dlr_grid.tau .* H1_tau .+ H2_tau
+    H_tau = dlr_grid.τ .* H1_tau .+ H2_tau
     return H_tau
 end

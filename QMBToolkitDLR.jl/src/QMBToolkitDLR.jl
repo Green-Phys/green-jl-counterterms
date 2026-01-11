@@ -17,6 +17,6 @@ export kernel_tau, KernelCache, compute_kernel_cache, ConvolutionWorkspace
 
 # Dense operation exports
 export do_convolution_dlr2tau!
-export do_reflection_dlr2tau, do_reflection_tau2tau, do_multiplication_tau2tau
+export do_reflection_dlr2tau, do_reflection_tau2tau
 
 end

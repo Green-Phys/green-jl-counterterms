@@ -36,18 +36,7 @@ function do_convolution_dlr2tau!(workspace::ConvolutionWorkspace{T}, dlr_grid::D
     d2 = size(F_dlr, 3)  # intermediate dimension
     d3 = size(G_dlr, 3)  # output column dimension
 
-    @assert size(G_dlr, 1) == r "F and G must have same DLR rank"
-    @assert size(G_dlr, 2) == d2 "Intermediate dimensions must match: F has $d2, G has $(size(G_dlr, 2))"
-
     if do_view
-        # View-based mode: workspace can be larger than needed
-        @assert size(workspace.H1_dlr, 2) >= d1 "Workspace H1_dlr dim 2 must be >= d1"
-        @assert size(workspace.H1_dlr, 3) >= d3 "Workspace H1_dlr dim 3 must be >= d3"
-        @assert size(workspace.term1, 1) >= d1 "Workspace term1 dim 1 must be >= d1"
-        @assert size(workspace.term1, 2) >= d2 "Workspace term1 dim 2 must be >= d2"
-        @assert size(workspace.term2, 1) >= d2 "Workspace term2 dim 1 must be >= d2"
-        @assert size(workspace.term2, 2) >= d3 "Workspace term2 dim 2 must be >= d3"
-
         return _do_convolution_view!(workspace, dlr_grid, kernel_cache, F_dlr, G_dlr, r, d1, d2, d3)
     else
         # Direct mode: workspace dimensions must match exactly

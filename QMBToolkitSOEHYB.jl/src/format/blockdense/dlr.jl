@@ -200,7 +200,7 @@ function blockdense_to_dense_single_tau(bda::BlockDensePropagator{T}) where {T}
 
         # Extract single time slice (should be at index 1)
         @boundscheck @assert size(block, 1) == 1 "Expected single time slice"
-        result[(row_offset + 1):(row_offset + dim_i), (col_offset + 1):(col_offset + dim_j)] = block[1, :, :]
+        @inbounds result[(row_offset + 1):(row_offset + dim_i), (col_offset + 1):(col_offset + dim_j)] = block[1, :, :]
     end
 
     return result

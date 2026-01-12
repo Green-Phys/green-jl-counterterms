@@ -54,46 +54,37 @@ function _multiplication_23_blockdense!(
         return
     end
 
-    # Get time dimension
+    # Get time dimension and basis
     # All blocks should have same n_tau, so get from any block
     n_tau = size(first(values(B.blocks)), 1)
+    basis = B.basis
+    n_sectors = length(basis.sectors)
 
     # Result flux is composition of input fluxes
     result_flux = OperatorFlux(combine_qn(A.flux.delta_qn, B.flux.delta_qn))
     @boundscheck @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
 
-    # Index B blocks by their target (mid) sector for efficient lookup
-    B_by_mid = Dict{Int, Vector{Tuple{Int, Array{T, 3}}}}()
-    for ((mid, src), B_block) in B.blocks
-        if !haskey(B_by_mid, mid)
-            B_by_mid[mid] = Tuple{Int, Array{T, 3}}[]
-        end
-        push!(B_by_mid[mid], (src, B_block))
-    end
-
     # For each result block, compute: result[tgt, src](τ) = Σ_mid A[tgt, mid] * B[mid, src](τ)
+    # Use direct dict lookups instead of building temporary index structures
     for (result_key, result_block) in temp_buffer.blocks
         (tgt, src) = result_key
 
         # Zero out the buffer block
         fill!(result_block, zero(T))
 
-        # Accumulate contributions from all intermediate sectors
-        for ((A_tgt, mid), A_block) in A.blocks
-            if A_tgt != tgt
-                continue
-            end
+        # Sum over all intermediate sectors with direct O(1) lookups
+        @inbounds for mid in 1:n_sectors
+            A_key = (tgt, mid)
+            B_key = (mid, src)
 
-            if haskey(B_by_mid, mid)
-                for (B_src, B_block) in B_by_mid[mid]
-                    if B_src != src
-                        continue
-                    end
+            # Direct dict lookups - no allocation, O(1) each
+            if haskey(A.blocks, A_key) && haskey(B.blocks, B_key)
+                A_block = A.blocks[A_key]
+                B_block = B.blocks[B_key]
 
-                    # For each time point: result[tgt, src](τ) += A[tgt, mid] * B[mid, src](τ)
-                    @inbounds for k in 1:n_tau
-                        mul!(view(result_block,k,:,:), A_block, view(B_block,k,:,:), 1.0, 1.0)
-                    end
+                # For each time point: result[tgt, src](τ) += A[tgt, mid] * B[mid, src](τ)
+                @inbounds for k in 1:n_tau
+                    mul!(view(result_block,k,:,:), A_block, view(B_block,k,:,:), 1.0, 1.0)
                 end
             end
         end
@@ -140,45 +131,36 @@ function _multiplication_32_blockdense!(
         return
     end
 
-    # Get time dimension
+    # Get time dimension and basis
     n_tau = size(first(values(A.blocks)), 1)
+    basis = A.basis
+    n_sectors = length(basis.sectors)
 
     # Result flux is composition of input fluxes
     result_flux = OperatorFlux(combine_qn(A.flux.delta_qn, B.flux.delta_qn))
     @boundscheck @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
 
-    # Index A blocks by their source (mid) sector for efficient lookup
-    A_by_mid = Dict{Int, Vector{Tuple{Int, Array{T, 3}}}}()
-    for ((tgt, mid), A_block) in A.blocks
-        if !haskey(A_by_mid, mid)
-            A_by_mid[mid] = Tuple{Int, Array{T, 3}}[]
-        end
-        push!(A_by_mid[mid], (tgt, A_block))
-    end
-
     # For each result block, compute: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src]
+    # Use direct dict lookups instead of building temporary index structures
     for (result_key, result_block) in temp_buffer.blocks
         (tgt, src) = result_key
 
         # Zero out the buffer block
         fill!(result_block, zero(T))
 
-        # Accumulate contributions from all intermediate sectors
-        for ((mid, B_src), B_block) in B.blocks
-            if B_src != src
-                continue
-            end
+        # Sum over all intermediate sectors with direct O(1) lookups
+        @inbounds for mid in 1:n_sectors
+            A_key = (tgt, mid)
+            B_key = (mid, src)
 
-            if haskey(A_by_mid, mid)
-                for (A_tgt, A_block) in A_by_mid[mid]
-                    if A_tgt != tgt
-                        continue
-                    end
+            # Direct dict lookups - no allocation, O(1) each
+            if haskey(A.blocks, A_key) && haskey(B.blocks, B_key)
+                A_block = A.blocks[A_key]
+                B_block = B.blocks[B_key]
 
-                    # For each time point: result[tgt, src](τ) += A[tgt, mid](τ) * B[mid, src]
-                    @inbounds for k in 1:n_tau
-                        mul!(view(result_block,k,:,:), view(A_block,k,:,:), B_block, 1.0, 1.0)
-                    end
+                # For each time point: result[tgt, src](τ) += A[tgt, mid](τ) * B[mid, src]
+                @inbounds for k in 1:n_tau
+                    mul!(view(result_block,k,:,:), view(A_block,k,:,:), B_block, 1.0, 1.0)
                 end
             end
         end
@@ -221,8 +203,11 @@ function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDensePropaga
             dim = size(block, 2)
             @boundscheck @assert size(block, 3) == dim "Diagonal blocks must be square"
 
+            # Manual diagonal sum is faster than tr(@view ...) for small blocks
             @inbounds for k in 1:n_tau
-                trace_buffer[k] += tr(@view block[k, :, :])
+                for i in 1:dim
+                    trace_buffer[k] += real(block[k, i, i])
+                end
             end
         end
     end
@@ -268,46 +253,37 @@ function _multiplication_33_blockdense!(
         return temp_buffer
     end
 
-    # Get time dimension
+    # Get time dimension and basis
     n_tau = size(first(values(A.blocks)), 1)
+    basis = A.basis
+    n_sectors = length(basis.sectors)
 
     # Result flux is composition of input fluxes
     result_flux = OperatorFlux(combine_qn(A.flux.delta_qn, B.flux.delta_qn))
     @boundscheck @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
 
-    # Index B blocks by their target (mid) sector for efficient lookup
-    B_by_mid = Dict{Int, Vector{Tuple{Int, Array{T, 3}}}}()
-    for ((mid, src), B_block) in B.blocks
-        if !haskey(B_by_mid, mid)
-            B_by_mid[mid] = Tuple{Int, Array{T, 3}}[]
-        end
-        push!(B_by_mid[mid], (src, B_block))
-    end
-
     # For each result block, compute: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src](τ)
+    # Use direct dict lookups instead of building temporary index structures
     for (result_key, result_block) in temp_buffer.blocks
         (tgt, src) = result_key
 
         # Zero out the buffer block
         fill!(result_block, zero(T))
 
-        # Accumulate contributions from all intermediate sectors
-        for ((A_tgt, mid), A_block) in A.blocks
-            if A_tgt != tgt
-                continue
-            end
+        # Sum over all intermediate sectors with direct O(1) lookups
+        @inbounds for mid in 1:n_sectors
+            A_key = (tgt, mid)
+            B_key = (mid, src)
 
-            if haskey(B_by_mid, mid)
-                for (B_src, B_block) in B_by_mid[mid]
-                    if B_src != src
-                        continue
-                    end
+            # Direct dict lookups - no allocation, O(1) each
+            if haskey(A.blocks, A_key) && haskey(B.blocks, B_key)
+                A_block = A.blocks[A_key]
+                B_block = B.blocks[B_key]
 
-                    # For each time point: result[tgt, src](τ) += A[tgt, mid](τ) * B[mid, src](τ)
-                    @inbounds for k in 1:n_tau
-                        mul!(view(result_block,k,:,:), view(A_block,k,:,:),
-                            view(B_block,k,:,:), 1.0, 1.0)
-                    end
+                # For each time point: result[tgt, src](τ) += A[tgt, mid](τ) * B[mid, src](τ)
+                @inbounds for k in 1:n_tau
+                    mul!(view(result_block,k,:,:), view(A_block,k,:,:),
+                        view(B_block,k,:,:), 1.0, 1.0)
                 end
             end
         end

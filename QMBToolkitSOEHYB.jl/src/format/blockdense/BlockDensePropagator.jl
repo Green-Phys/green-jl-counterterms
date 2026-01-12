@@ -90,11 +90,11 @@ Base.:*(A::BlockDensePropagator{T}, alpha::Number) where {T} = alpha * A
 Copy contents of src into dest.
 """
 function Base.copyto!(dest::BlockDensePropagator{T}, src::BlockDensePropagator{T}) where {T}
-    @assert dest.basis === src.basis "Arrays must have same basis"
-    @assert dest.flux.delta_qn == src.flux.delta_qn "Arrays must have same flux"
+    @boundscheck @assert dest.basis === src.basis "Arrays must have same basis"
+    @boundscheck @assert dest.flux.delta_qn == src.flux.delta_qn "Arrays must have same flux"
 
     for (key, src_block) in src.blocks
-        @assert haskey(dest.blocks, key) "Destination missing block $key"
+        @boundscheck @assert haskey(dest.blocks, key) "Destination missing block $key"
         copyto!(dest.blocks[key], src_block)
     end
 
@@ -119,8 +119,8 @@ end
 In-place operation: dest .+= alpha .* src
 """
 function add_scaled!(dest::BlockDensePropagator{T}, alpha::Number, src::BlockDensePropagator{T}) where {T}
-    @assert dest.basis === src.basis "Arrays must have same basis"
-    @assert dest.flux.delta_qn == src.flux.delta_qn "Arrays must have same flux"
+    @boundscheck @assert dest.basis === src.basis "Arrays must have same basis"
+    @boundscheck @assert dest.flux.delta_qn == src.flux.delta_qn "Arrays must have same flux"
 
     if iszero(alpha)
         return dest

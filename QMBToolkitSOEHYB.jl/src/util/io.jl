@@ -70,11 +70,11 @@ function read_input(file_path::String)
 
     # Read Hilbert_space_format (default to "dense" for backward compatibility)
     Hilbert_space_format = get(dict["solver"], "Hilbert_space_format", "dense")
-    @assert Hilbert_space_format in ["dense", "blockdense"] "Hilbert_space_format must be 'dense' or 'blockdense', got: $Hilbert_space_format"
+    @boundscheck @assert Hilbert_space_format in ["dense", "blockdense"] "Hilbert_space_format must be 'dense' or 'blockdense', got: $Hilbert_space_format"
 
     # Read batch_size for diagram evaluation (large default for small problems to behave like non-batched)
     batch_size = get(dict["solver"], "batch_size", 100000)
-    @assert batch_size > 0 "batch_size must be positive, got: $batch_size"
+    @boundscheck @assert batch_size > 0 "batch_size must be positive, got: $batch_size"
 
     solver_params = SolverParams(
         propagator_params,

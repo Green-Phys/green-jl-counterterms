@@ -308,7 +308,7 @@ Linear index `i` maps to:
   - `Tuple{Int,Int,Int,Int}`: (topo_idx, dir_idx, flav_idx, exp_idx), all 1-based
 """
 function linear_to_config_indices(cache::DiagramConfigCache, linear_idx::Int)
-    @assert 1 <= linear_idx <= total_diagrams(cache) "Linear index $linear_idx out of range [1, $(total_diagrams(cache))]"
+    @boundscheck @assert 1 <= linear_idx <= total_diagrams(cache) "Linear index $linear_idx out of range [1, $(total_diagrams(cache))]"
 
     T = cache.n_topologies
     D = cache.n_directions

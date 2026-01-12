@@ -36,8 +36,8 @@ depending on prior operator multiplications in the diagram evaluation.
         temp_buffer::BlockDensePropagator{T}, target::BlockDensePropagator{T},
         hyb::HybridizationState, model_data::ModelData{T, BlockDenseFormat};
         is_reverse::Bool = false) where {T <: Number}
-    @assert temp_buffer.basis === target.basis "Buffer and target must use same basis"
-    @assert temp_buffer.flux.delta_qn == target.flux.delta_qn "Buffer and target must have same flux"
+    @boundscheck @assert temp_buffer.basis === target.basis "Buffer and target must use same basis"
+    @boundscheck @assert temp_buffer.flux.delta_qn == target.flux.delta_qn "Buffer and target must have same flux"
 
     index = hyb.index
     if index != 0  # Not NoHyb

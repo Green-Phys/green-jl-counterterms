@@ -40,11 +40,11 @@ Writes result to dest, which must have the same block structure as prop.
 """
 function tau2dlr_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
         prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T}
-    @assert dest.basis === prop.basis "Destination and source must have same basis"
-    @assert dest.flux.delta_qn == prop.flux.delta_qn "Destination and source must have same flux"
+    @boundscheck @assert dest.basis === prop.basis "Destination and source must have same basis"
+    @boundscheck @assert dest.flux.delta_qn == prop.flux.delta_qn "Destination and source must have same flux"
 
     for ((target, source), block_tau) in prop.blocks
-        @assert haskey(dest.blocks, (target, source)) "Destination missing block ($target, $source)"
+        @boundscheck @assert haskey(dest.blocks, (target, source)) "Destination missing block ($target, $source)"
         # Transform this block: (n_tau, n_row, n_col) -> (r, n_row, n_col)
         block_dlr = QMBToolkitDLR.tau2dlr(dlr_grid, block_tau, tau_grid)
         copyto!(dest.blocks[(target, source)], block_dlr)
@@ -118,7 +118,7 @@ function do_convolution_dlr2tau_blockdense!(
 
     # Compute expected result flux
     flux_result = OperatorFlux(combine_qn(F_dlr.flux.delta_qn, G_dlr.flux.delta_qn))
-    @assert dest.flux.delta_qn == flux_result.delta_qn "Destination has wrong flux"
+    @boundscheck @assert dest.flux.delta_qn == flux_result.delta_qn "Destination has wrong flux"
 
     # Zero out destination blocks
     fill!(dest, zero(T))
@@ -199,7 +199,7 @@ function blockdense_to_dense_single_tau(bda::BlockDensePropagator{T}) where {T}
         col_offset = sum(bda.basis.sectors[k].dim for k in 1:(j - 1); init = 0)
 
         # Extract single time slice (should be at index 1)
-        @assert size(block, 1) == 1 "Expected single time slice"
+        @boundscheck @assert size(block, 1) == 1 "Expected single time slice"
         result[(row_offset + 1):(row_offset + dim_i), (col_offset + 1):(col_offset + dim_j)] = block[1, :, :]
     end
 

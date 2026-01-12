@@ -19,9 +19,11 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Disable OpenBLAS multi-threading to avoid conflicts with MPI processes
 export OPENBLAS_NUM_THREADS=1
+# This prevents all MPI ranks from trying to compile simultaneously
+julia --check-bounds=no --project=${PROJECT_DIR} -e "using QMBToolkitSOEHYB"
 
 # Run with mpiexecjl
-~/.julia/bin/mpiexecjl -n "$NPROCS" julia --project="$PROJECT_DIR" -e "
+~/.julia/bin/mpiexecjl -n "$NPROCS" julia --check-bounds=no --project="$PROJECT_DIR" -e "
 using QMBToolkitSOEHYB
 QMBToolkitSOEHYB.run(\"$INPUT_FILE\")
 "

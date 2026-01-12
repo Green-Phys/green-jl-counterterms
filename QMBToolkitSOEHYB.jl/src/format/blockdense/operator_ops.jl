@@ -42,8 +42,8 @@ For each block (target, source) in the result:
 function _multiplication_23_blockdense!(
         temp_buffer::BlockDensePropagator{T}, A::BlockDenseOperator,
         B::BlockDensePropagator{T}) where {T <: Number}
-    @assert A.basis === B.basis "Operator and array must use same basis"
-    @assert temp_buffer.basis === B.basis "Buffer must use same basis as input"
+    @boundscheck @assert A.basis === B.basis "Operator and array must use same basis"
+    @boundscheck @assert temp_buffer.basis === B.basis "Buffer must use same basis as input"
 
     # Handle empty B case (propagator with no blocks)
     if isempty(B.blocks)
@@ -60,7 +60,7 @@ function _multiplication_23_blockdense!(
 
     # Result flux is composition of input fluxes
     result_flux = OperatorFlux(combine_qn(A.flux.delta_qn, B.flux.delta_qn))
-    @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
+    @boundscheck @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
 
     # Index B blocks by their target (mid) sector for efficient lookup
     B_by_mid = Dict{Int, Vector{Tuple{Int, Array{T, 3}}}}()
@@ -129,8 +129,8 @@ For each block (target, source) in the result:
 function _multiplication_32_blockdense!(
         temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T},
         B::BlockDenseOperator) where {T <: Number}
-    @assert A.basis === B.basis "Array and operator must use same basis"
-    @assert temp_buffer.basis === A.basis "Buffer must use same basis as input"
+    @boundscheck @assert A.basis === B.basis "Array and operator must use same basis"
+    @boundscheck @assert temp_buffer.basis === A.basis "Buffer must use same basis as input"
 
     # Handle empty A case
     if isempty(A.blocks)
@@ -145,7 +145,7 @@ function _multiplication_32_blockdense!(
 
     # Result flux is composition of input fluxes
     result_flux = OperatorFlux(combine_qn(A.flux.delta_qn, B.flux.delta_qn))
-    @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
+    @boundscheck @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
 
     # Index A blocks by their source (mid) sector for efficient lookup
     A_by_mid = Dict{Int, Vector{Tuple{Int, Array{T, 3}}}}()
@@ -210,7 +210,7 @@ function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDensePropaga
 
     # Get time dimension from any block
     n_tau = size(first(values(A.blocks)), 1)
-    @assert length(trace_buffer) == n_tau "Trace buffer must have length n_tau"
+    @boundscheck @assert length(trace_buffer) == n_tau "Trace buffer must have length n_tau"
 
     # Zero out buffer
     fill!(trace_buffer, 0.0)
@@ -219,7 +219,7 @@ function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDensePropaga
     for ((target, source), block) in A.blocks
         if target == source  # Diagonal block
             dim = size(block, 2)
-            @assert size(block, 3) == dim "Diagonal blocks must be square"
+            @boundscheck @assert size(block, 3) == dim "Diagonal blocks must be square"
 
             @inbounds for k in 1:n_tau
                 trace_buffer[k] += tr(@view block[k, :, :])
@@ -257,8 +257,8 @@ For each block (target, source) in the result:
 function _multiplication_33_blockdense!(
         temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T},
         B::BlockDensePropagator{T}) where {T <: Number}
-    @assert A.basis === B.basis "Both arrays must use same basis"
-    @assert temp_buffer.basis === A.basis "Buffer must use same basis as inputs"
+    @boundscheck @assert A.basis === B.basis "Both arrays must use same basis"
+    @boundscheck @assert temp_buffer.basis === A.basis "Buffer must use same basis as inputs"
 
     # Handle empty A or B case
     if isempty(A.blocks) || isempty(B.blocks)
@@ -273,7 +273,7 @@ function _multiplication_33_blockdense!(
 
     # Result flux is composition of input fluxes
     result_flux = OperatorFlux(combine_qn(A.flux.delta_qn, B.flux.delta_qn))
-    @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
+    @boundscheck @assert temp_buffer.flux.delta_qn == result_flux.delta_qn "Buffer flux must match result flux"
 
     # Index B blocks by their target (mid) sector for efficient lookup
     B_by_mid = Dict{Int, Vector{Tuple{Int, Array{T, 3}}}}()

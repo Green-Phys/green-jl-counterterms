@@ -124,7 +124,7 @@ function do_convolution_dlr2tau_blockdense!(
     fill!(dest, zero(T))
 
     # Compute each output block
-    for (target_idx, target_sector) in enumerate(basis.sectors)
+    @inbounds for (target_idx, target_sector) in enumerate(basis.sectors)
         for (source_idx, source_sector) in enumerate(basis.sectors)
             # Check if this output block can exist given the result flux
             if target_sector.qn != combine_qn(source_sector.qn, flux_result.delta_qn)

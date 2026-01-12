@@ -71,7 +71,7 @@ function eval_green_given_order!(
 
             prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
 
-            for ann_index in 1:solver_data.model.n_flavors_physical
+            @inbounds for ann_index in 1:solver_data.model.n_flavors_physical
                 # Apply annihilation operator: ann_opt * contrib_0_to_tau
                 ann_opt = ann_opts[ann_index]
                 ann_product_flux = compute_new_flux(get_flux(contrib_0_to_tau), ann_opt)
@@ -93,7 +93,7 @@ function eval_green_given_order!(
 
     # Compute final Green's function by applying creation operators and taking trace
     cre_product = get_cre_product(buffers)
-    for ann_index in 1:solver_data.model.n_flavors_physical
+    @inbounds for ann_index in 1:solver_data.model.n_flavors_physical
         backbone_flux = get_flux(buffers.backbone_0_to_beta_with_ann[ann_index])
         for cre_index in 1:solver_data.model.n_flavors_physical
             cre_opt = cre_opts[cre_index]

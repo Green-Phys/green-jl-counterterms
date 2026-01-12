@@ -35,15 +35,18 @@ This is a format-agnostic function that uses interface accessors to retrieve
 the appropriate operator (Dense or BlockDense) based on the model_data type.
 
 # Arguments
-- `node::BackBoneNode`: Node containing operator type and indices
-- `model_data::ModelData`: Model data with operators
+
+  - `node::BackBoneNode`: Node containing operator type and indices
+  - `model_data::ModelData`: Model data with operators
 
 # Returns
+
 Appropriate operator based on node type:
-- `:cdag` with bar_index=-1: Creation operator from exact diagonalization
-- `:c` with bar_index=-1: Annihilation operator from exact diagonalization
-- `:cdag` with bar_index≠-1: SOE-transformed creation operator
-- `:c` with bar_index≠-1: SOE-transformed annihilation operator
+
+  - `:cdag` with bar_index=-1: Creation operator from exact diagonalization
+  - `:c` with bar_index=-1: Annihilation operator from exact diagonalization
+  - `:cdag` with bar_index≠-1: SOE-transformed creation operator
+  - `:c` with bar_index≠-1: SOE-transformed annihilation operator
 """
 function get_operator(node::BackBoneNode, model_data::ModelData)
     if node.opt_type == :cdag
@@ -71,43 +74,50 @@ end
 Calculate backbone diagram contribution via multiplication and convolution from right to left.
 
 # Algorithm
+
 Evaluates diagram backbone from right to left:
+
 ```
 |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
 ```
 
 Starting from the rightmost edge, accumulates:
-1. Apply hybridizations attached to edge
-2. Multiply with next node operator
-3. Apply hybridization attached to node
-4. Convolve with next edge's propagator (with its hybridizations)
+
+ 1. Apply hybridizations attached to edge
+ 2. Multiply with next node operator
+ 3. Apply hybridization attached to node
+ 4. Convolve with next edge's propagator (with its hybridizations)
 
 # Arguments
-- `nodes::Vector{BackBoneNode}`: Diagram nodes (length M)
-- `edges::Vector{BackBoneEdge}`: Diagram edges (length M-1)
-- `dlr_grid::DLRGrid`: DLR grid for τ-space operations
-- `model_data::ModelData`: Model data with operators and hybridization
-- `propagator`: Propagator on DLR τ-grid (DensePropagator or BlockDensePropagator)
-- `buffers`: Pre-allocated work buffers (DenseBackboneBuffers or BlockDenseBackboneBuffers)
+
+  - `nodes::Vector{BackBoneNode}`: Diagram nodes (length M)
+  - `edges::Vector{BackBoneEdge}`: Diagram edges (length M-1)
+  - `dlr_grid::DLRGrid`: DLR grid for τ-space operations
+  - `model_data::ModelData`: Model data with operators and hybridization
+  - `propagator`: Propagator on DLR τ-grid (DensePropagator or BlockDensePropagator)
+  - `buffers`: Pre-allocated work buffers (DenseBackboneBuffers or BlockDenseBackboneBuffers)
 
 # Returns
+
 Reference to the result buffer containing diagram contribution on DLR τ-grid.
 
 # Notes
+
 Pre-allocated buffers are reused across all diagram evaluations for efficiency.
 All operations are in-place to minimize allocations.
 
 # Buffer Usage (7 roles)
-- `result`: Accumulates backbone result
-- `hyb_temp`: Scratch for hybridization on result
-- `op_product`: Holds operator multiplication output
-- `conv_operand`: Propagator copy for convolution
-- `conv_hyb_temp`: Scratch for hybridization on conv operand
-- `conv_dlr`: DLR transform of conv operand
-- `result_dlr`: DLR transform of result
+
+  - `result`: Accumulates backbone result
+  - `hyb_temp`: Scratch for hybridization on result
+  - `op_product`: Holds operator multiplication output
+  - `conv_operand`: Propagator copy for convolution
+  - `conv_hyb_temp`: Scratch for hybridization on conv operand
+  - `conv_dlr`: DLR transform of conv operand
+  - `result_dlr`: DLR transform of result
 """
 function multiplication_convolution(
-        nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid,
+        nodes::AbstractVector{BackBoneNode}, edges::AbstractVector{BackBoneEdge}, dlr_grid::DLRGrid,
         model_data::ModelData{T}, propagator, buffers) where {T <: Number}
     length(nodes) == length(edges) + 1 ||
         error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
@@ -123,7 +133,7 @@ function multiplication_convolution(
     hyb_temp = get_hyb_temp(buffers, current_flux)
 
     # Process edges from right to left
-    for i in 1:(length(edges) - 1)
+    @inbounds for i in 1:(length(edges) - 1)
         edge = edges[i]
         if i == 1
             for hyb in edge.attached_hybs
@@ -197,19 +207,22 @@ Calculate backbone diagram contribution via multiplication and convolution from 
 Similar to `multiplication_convolution` but traverses in reverse direction with swapped K± hybridizations.
 
 # Key Differences from Forward Direction
-- Traverses from left to right (indices M down to 1)
-- Uses `is_reverse=true` for node-attached hybridizations (swaps K+ ↔ K-)
-- Uses `multiply_prop_op!` instead of `multiply_op_prop!` for operator multiplication
-- Convolution operand order is reversed: result first, then conv_operand
+
+  - Traverses from left to right (indices M down to 1)
+  - Uses `is_reverse=true` for node-attached hybridizations (swaps K+ ↔ K-)
+  - Uses `multiply_prop_op!` instead of `multiply_op_prop!` for operator multiplication
+  - Convolution operand order is reversed: result first, then conv_operand
 
 # Arguments
+
 Same as `multiplication_convolution`.
 
 # Returns
+
 Reference to the result buffer containing diagram contribution on DLR τ-grid.
 """
 function multiplication_convolution_reverse(
-        nodes::Vector{BackBoneNode}, edges::Vector{BackBoneEdge}, dlr_grid::DLRGrid,
+        nodes::AbstractVector{BackBoneNode}, edges::AbstractVector{BackBoneEdge}, dlr_grid::DLRGrid,
         model_data::ModelData{T}, propagator, buffers) where {T <: Number}
     length(nodes) == length(edges) + 1 ||
         error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
@@ -225,7 +238,7 @@ function multiplication_convolution_reverse(
     hyb_temp = get_hyb_temp(buffers, current_flux)
 
     # Process edges from left to right
-    for i in length(edges):-1:2
+    @inbounds for i in length(edges):-1:2
         edge = edges[i]
         if i == length(edges)
             for hyb in edge.attached_hybs
@@ -303,11 +316,13 @@ This is the format-agnostic implementation that works for both Dense and BlockDe
 Called by `eval_propagator_given_order!`.
 
 # Arguments
-- `diagram::BackBone`: The diagram to evaluate
-- `solver_data::SolverData{T}`: Solver data containing model information
-- `buffers`: Pre-allocated work buffers (format-specific)
+
+  - `diagram::BackBone`: The diagram to evaluate
+  - `solver_data::SolverData{T}`: Solver data containing model information
+  - `buffers`: Pre-allocated work buffers (format-specific)
 
 # Returns
+
 Diagram contribution in imaginary time (format-specific propagator type).
 """
 function eval_propagator_forward_backbone(diagram::BackBone, solver_data::SolverData{T}, buffers) where {T <:
@@ -317,7 +332,7 @@ function eval_propagator_forward_backbone(diagram::BackBone, solver_data::Solver
         diagram.nodes, diagram.edges,
         solver_data.model.dlr_grid, solver_data.model,
         bare_propagator.vals,
-        buffers,
+        buffers
     )
 end
 
@@ -332,24 +347,26 @@ Evaluate forward backbone contribution from node 1 to split_point.
 Format-agnostic: works with both Dense and BlockDense propagators.
 
 # Arguments
-- `diagram::BackBone`: The diagram being evaluated
-- `split_point::Int`: Position of the external annihilation operator
-- `solver_data::SolverData{T}`: Solver data containing model information
-- `propagator`: Propagator to use (DensePropagator or BlockDensePropagator)
-- `buffers`: Evaluation buffers containing forward convolution buffers
+
+  - `diagram::BackBone`: The diagram being evaluated
+  - `split_point::Int`: Position of the external annihilation operator
+  - `solver_data::SolverData{T}`: Solver data containing model information
+  - `propagator`: Propagator to use (DensePropagator or BlockDensePropagator)
+  - `buffers`: Evaluation buffers containing forward convolution buffers
 
 # Returns
+
 Forward backbone contribution on DLR τ-grid.
 """
 function eval_green_forward_backbone(diagram::BackBone, split_point::Int,
         solver_data::SolverData{T}, propagator, buffers) where {T}
     return multiplication_convolution(
-        diagram.nodes[1:split_point],
-        diagram.edges[1:(split_point - 1)],
+        @view(diagram.nodes[1:split_point]),
+        @view(diagram.edges[1:(split_point - 1)]),
         solver_data.model.dlr_grid,
         solver_data.model,
         propagator,
-        buffers.convolution_buffers.fwd_buffers,
+        buffers.convolution_buffers.fwd_buffers
     )
 end
 
@@ -360,23 +377,25 @@ Evaluate reverse backbone contribution from split_point to end.
 Format-agnostic: works with both Dense and BlockDense propagators.
 
 # Arguments
-- `diagram::BackBone`: The diagram being evaluated
-- `split_point::Int`: Position of the external annihilation operator
-- `solver_data::SolverData{T}`: Solver data containing model information
-- `propagator`: Propagator to use (DensePropagator or BlockDensePropagator)
-- `buffers`: Evaluation buffers containing reverse convolution buffers
+
+  - `diagram::BackBone`: The diagram being evaluated
+  - `split_point::Int`: Position of the external annihilation operator
+  - `solver_data::SolverData{T}`: Solver data containing model information
+  - `propagator`: Propagator to use (DensePropagator or BlockDensePropagator)
+  - `buffers`: Evaluation buffers containing reverse convolution buffers
 
 # Returns
+
 Reverse backbone contribution on DLR τ-grid.
 """
 function eval_green_reverse_backbone(diagram::BackBone, split_point::Int,
         solver_data::SolverData{T}, propagator, buffers) where {T}
     return multiplication_convolution_reverse(
-        diagram.nodes[split_point:end],
-        diagram.edges[split_point:end],
+        @view(diagram.nodes[split_point:end]),
+        @view(diagram.edges[split_point:end]),
         solver_data.model.dlr_grid,
         solver_data.model,
         propagator,
-        buffers.convolution_buffers.rev_buffers,
+        buffers.convolution_buffers.rev_buffers
     )
 end

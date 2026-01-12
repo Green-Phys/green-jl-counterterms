@@ -1,51 +1,4 @@
 # Common utility functions for diagram generation
-using MPI
-
-"""
-    gen_diagrams(solver_data, solver_params, diagram_type, comm)
-
-Generate all diagrams for a given diagram type and expansion order.
-
-# Arguments
-- `solver_data::SolverData`: The solver data containing model information
-- `solver_params::SolverParams`: Solver parameters including expansion orders and boldness settings
-- `diagram_type::Symbol`: Type of diagrams to generate (`:propagator_diagram` or `:green_diagram`)
-- `comm::MPI.Comm`: MPI communicator for parallel execution
-
-# Returns
-- `Vector{Array{BackBone,4}}`: Vector of diagram arrays, one for each expansion order
-
-Diagrams are organized by expansion order. For propagator diagrams, generates orders 0 through
-`propagator.expansion_order`. For Green's function diagrams, generates orders 1 through
-`green.expansion_order`.
-"""
-function gen_diagrams(solver_data::SolverData, solver_params::SolverParams, diagram_type::Symbol, comm::MPI.Comm)
-    rank = MPI.Comm_rank(comm)
-    diagrams = Vector{Array{BackBone, 4}}()
-    if diagram_type == :propagator_diagram && !solver_params.propagator.is_bold
-        for order in 0:solver_params.propagator.expansion_order
-            new_diagrams = gen_propagator_given_order(
-                order, solver_data.model.n_flavors, solver_data.model.hyb.exponents)
-            push!(diagrams, new_diagrams)
-            if rank == 0
-                println("Generated ", size(new_diagrams), " propagator diagrams at order ", order)
-            end
-        end
-    elseif diagram_type == :green_diagram
-        for order in 1:solver_params.green.expansion_order
-            new_diagrams = gen_green_given_order(order, solver_data.model.n_flavors,
-                solver_data.model.hyb.exponents, solver_params.green.is_bold)
-            push!(diagrams, new_diagrams)
-            if rank == 0
-                println("Generated ", size(new_diagrams), " Green's function diagrams at order ", order)
-            end
-        end
-    else
-        # Only remaining case: propagator_diagram with is_bold=true
-        error("Bold propagator diagram generation not yet implemented. Set propagator.is_bold=false in the input file.")
-    end
-    return diagrams
-end
 
 """
     process_connected_pair!(i, j, hyb_direction, flavor_index, exponent_index, exponents, nodes, edges, prefactor_Kexps, sign)
@@ -67,7 +20,7 @@ function process_connected_pair!(
         nodes::Vector{BackBoneNode},
         edges::Vector{BackBoneEdge},
         prefactor_Kexps::Vector{Int},
-        sign::Float64,
+        sign::Float64
 )
     # Special case: directly connected nodes (no edge in between)
     # NOTE: This could potentially be optimized by attaching Delta to the edge directly,
@@ -126,52 +79,6 @@ function process_connected_pair!(
         end
     end
     return sign
-end
-
-function gen_diagram_combinations(
-        diagram_type::Symbol,
-        M::Int,
-        connected_pairs::Vector{Tuple{Int, Int}},
-        n_flavors::Int,
-        exponents::Vector{Float64},
-        base_nodes::Vector{BackBoneNode},
-        base_sign::Float64,
-        external_opts_loc::Vector{Int} = Int[],
-)
-    p = length(exponents)
-    L = length(connected_pairs)
-    # diagrams has (2^L, n_flavors^L, p^L) shape
-    diagrams = Array{BackBone, 3}(undef, 2^L, n_flavors^L, p^L)
-
-    ### enumerate 2^L possible forward or backward hybridization lines
-    for (ind_x, hyb_directions) in enumerate(Iterators.product(fill((:forward, :backward), L)...))
-        ### enumerate n_flavors^L possible flavor assignments (one side of the hybridization line contain bar, and the corresponding flavor index is summed over)
-        for (ind_y, flavor_indices) in enumerate(Iterators.product(fill(1:n_flavors, L)...))
-            ### enumerate p^L possible hybridization decompositions exponents
-            for (ind_z, exponent_indices) in enumerate(Iterators.product(fill(1:p, L)...))
-                nodes = copy(base_nodes)
-                edges = [BackBoneEdge([]) for _ in 1:(M - 1)]
-                prefactor_Kexps = zeros(Int, p)
-                sign = base_sign
-                for (idx, (i, j)) in enumerate(connected_pairs)
-                    sign = process_connected_pair!(
-                        i, j,
-                        hyb_directions[idx],
-                        flavor_indices[idx],
-                        exponent_indices[idx],
-                        exponents,
-                        nodes,
-                        edges,
-                        prefactor_Kexps,
-                        sign,
-                    )
-                end
-                diagrams[ind_x, ind_y, ind_z] = BackBone(
-                    diagram_type, sign, prefactor_Kexps, nodes, edges, external_opts_loc)
-            end
-        end
-    end
-    return diagrams
 end
 
 """
@@ -236,4 +143,79 @@ function count_pair_crossings(pairs::Vector{Tuple{Int, Int}})
         end
     end
     return crossings
+end
+
+"""
+    _generate_pairings(N)
+
+Generate all valid pairings for N pairs of points with crossing counts.
+
+# Arguments
+
+  - `N::Int`: Number of hybridization line pairs (expansion order)
+
+# Returns
+
+  - `Vector{Tuple{Vector{Tuple{Int,Int}}, Int}}`: Each element is (pairing, crossing_count)
+
+      + pairing: Vector of node pairs that are connected
+      + crossing_count: Number of line crossings in this pairing
+
+# Algorithm
+
+Points are labeled 2, 3, ..., 2N+1 (excluding boundary nodes 1 and 2N+2).
+Uses recursive enumeration (via `recurse_pairs`) to generate all valid pairings,    # The set of points: 2, 3, ..., 2N+1
+then counts crossings for each (via `count_pair_crossings`).
+"""
+function _generate_pairings(N::Int)
+    # The set of points: 2, 3, ..., 2N+1
+    points = collect(2:(2 * N + 1))
+
+    # Generate all configurations using shared recurse_pairs function
+    all_configs = recurse_pairs(points)
+
+    # Map to (configuration, crossing_count) using shared count_pair_crossings function
+    return map(config -> (config, count_pair_crossings(config)), all_configs)
+end
+
+"""
+    _generate_pairings_with_hole(N)
+
+Generate all valid pairings for N pairs of points with a hole (for Green's function).
+
+# Arguments
+
+  - `N::Int`: Number of hybridization line pairs (expansion order)
+
+# Returns
+
+  - `Vector{Tuple{Vector{Tuple{Int,Int}}, Int, Int}}`: Each element is (pairing, annihilation_pos, crossing_count)
+"""
+function _generate_pairings_with_hole(N::Int)
+    # Points: 2, 3, ..., 2N
+    all_points = collect(2:(2 * N))
+
+    final_output = []
+
+    for annihilation_pos in all_points
+        # Remove the hole from the pool
+        current_pool = filter(x -> x != annihilation_pos, all_points)
+
+        pairings = recurse_pairs(current_pool)
+
+        # External Contribution: Count points smaller than annihilation_pos
+        # Since points are 2, 3... this is simply (annihilation_pos - 2)
+        # But we use a generic count for robustness.
+        external_crossings = count(p -> p < annihilation_pos, all_points)
+
+        for pairs in pairings
+            # Internal crossings (arch vs arch) using shared function
+            internal_crossings = count_pair_crossings(pairs)
+            total_crossings = internal_crossings + external_crossings
+
+            push!(final_output, (pairs, annihilation_pos, total_crossings))
+        end
+    end
+
+    return final_output
 end

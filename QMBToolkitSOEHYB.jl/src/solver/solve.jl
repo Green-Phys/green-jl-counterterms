@@ -6,6 +6,9 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 
+    # Start total program timer
+    t_program_start = MPI.Wtime()
+
     # Validation
     if (solver_params.propagator.is_bold && solver_params.green.is_bold) ||
        (!solver_params.propagator.is_bold && !solver_params.green.is_bold)
@@ -32,24 +35,17 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
         println()
         println("--- Generate and evaluate propagator ---")
         println("Use bold expansion for the propagator: ", solver_params.propagator.is_bold)
+        println("Batch size: ", solver_params.batch_size)
     end
 
     if solver_params.propagator.is_bold
         error("Bold propagator calculation (i.e., bold expansion based on self-energy) not yet implemented.")
-    else
-        # Generate propagator diagrams
-        t_start = MPI.Wtime()
-        diagrams_prop = gen_diagrams(solver_data, solver_params, :propagator_diagram, comm)
-        t_gen_prop_wall = MPI.Wtime() - t_start
-
-        # Evaluate propagator diagrams
-        t_start = MPI.Wtime()
-        eval_diagrams!(solver_data, solver_params, :propagator_diagram, diagrams_prop, comm)
-        t_eval_prop_wall = MPI.Wtime() - t_start
-
-        # Compute total CPU time across all ranks for evaluation
-        t_eval_prop_total = MPI.Reduce(t_eval_prop_wall, MPI.SUM, 0, comm)
     end
+
+    t_start = MPI.Wtime()
+    eval_diagrams!(solver_data, solver_params, :propagator_diagram, comm;
+        batch_size = solver_params.batch_size)
+    t_prop_wall = MPI.Wtime() - t_start
 
     if rank == 0
         println("Partition function Z = ", solver_data.calc.partition_function_by_order[end])
@@ -67,34 +63,37 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
         println("Use bold expansion for the Green's function: ", solver_params.green.is_bold)
     end
 
-    # Generate Green's function diagrams
     t_start = MPI.Wtime()
-    diagrams_green = gen_diagrams(solver_data, solver_params, :green_diagram, comm)
-    t_gen_green_wall = MPI.Wtime() - t_start
-
-    # Evaluate Green's function diagrams
-    t_start = MPI.Wtime()
-    eval_diagrams!(solver_data, solver_params, :green_diagram, diagrams_green, comm)
-    t_eval_green_wall = MPI.Wtime() - t_start
-
-    # Compute total CPU time across all ranks for evaluation
-    t_eval_green_total = MPI.Reduce(t_eval_green_wall, MPI.SUM, 0, comm)
+    eval_diagrams!(solver_data, solver_params, :green_diagram, comm;
+        batch_size = solver_params.batch_size)
+    t_green_wall = MPI.Wtime() - t_start
 
     # === Data Processing and Saving (rank 0 only) ===
     if rank == 0
-        # Calculate total times
-        total_wall_time = t_gen_prop_wall + t_eval_prop_wall + t_gen_green_wall + t_eval_green_wall
-        total_cpu_time = t_eval_prop_total + t_eval_green_total
-
-        save_results(solver_data, solver_params, total_wall_time, total_cpu_time)
+        save_results(solver_data, solver_params)
     end
 
-    # === Print Timing Summary (rank 0 only) ===
+    # Record total wall time (before MPI reduction)
+    total_wall_time = MPI.Wtime() - t_program_start
+
+    # Compute CPU times across all ranks
+    t_prop_cpu = MPI.Reduce(t_prop_wall, MPI.SUM, 0, comm)
+    t_green_cpu = MPI.Reduce(t_green_wall, MPI.SUM, 0, comm)
+    total_cpu_time = MPI.Reduce(total_wall_time, MPI.SUM, 0, comm)
+
+    # === Print Timing Summary and Save Timing Data (rank 0 only) ===
     if rank == 0
+        # Save timing data to file
+        save_timing_data(solver_params,
+            t_prop_wall, t_prop_cpu,
+            t_green_wall, t_green_cpu,
+            total_wall_time, total_cpu_time)
+
         print_shutdown_message(
             nprocs,
-            t_gen_prop_wall, t_eval_prop_wall, t_eval_prop_total,
-            t_gen_green_wall, t_eval_green_wall, t_eval_green_total,
+            t_prop_wall, t_prop_cpu,
+            t_green_wall, t_green_cpu,
+            total_wall_time, total_cpu_time
         )
     end
 end

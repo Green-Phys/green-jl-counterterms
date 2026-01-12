@@ -21,10 +21,10 @@ Pkg.test()
 ```
 
 The test suite runs two test cases comparing against analytical results:
-- `test/bare/` - Dense format test with 1 orbital
+- `test/bare_dense/` - Dense format test with 1 orbital
 - `test/bare_blockdense/` - BlockDense format test with 1 orbital
 
-Both validate partition function and Green's function to 12-digit precision against Mathematica results in `test/bare/analytic.nb`.
+Both validate partition function and Green's function to 12-digit precision against Mathematica results in `test/bare_dense/analytic.nb`.
 
 ### Running the Solver
 
@@ -41,7 +41,7 @@ QMBToolkitSOEHYB.run("path/to/input.toml")
 
 **Direct Julia invocation (for testing):**
 ```bash
-julia --project=. -e 'using QMBToolkitSOEHYB; QMBToolkitSOEHYB.run("test/bare/input.toml")'
+julia --project=. -e 'using QMBToolkitSOEHYB; QMBToolkitSOEHYB.run("test/bare_dense/input.toml")'
 ```
 
 Note: The solver is MPI-enabled and uses `mpiexecjl` internally.
@@ -93,13 +93,24 @@ Diagrams are linear chains of M nodes and M-1 edges:
 - `index > 0`: KPlus(index)
 - `index < 0`: KMinus(-index)
 
-### Generation and Evaluation Pipeline
+### Batched Generation and Evaluation Pipeline
 
-1. `gen_diagrams` (`src/diagram/gen_common.jl`) - Top-level dispatcher
-2. `gen_propagator_given_order` / `gen_green_given_order` - Generate topologies and flavor/SOE combinations
-3. `eval_diagrams!` (`src/diagram/eval_common.jl`) - Format dispatch wrapper
-4. `eval_backbone` (`src/diagram/backbone_eval.jl`) - Unified backbone evaluation using interface
-5. `multiplication_convolution` (`src/format/*/propagator.jl`) - Format-specific core evaluation
+Diagrams are generated and evaluated in batches for memory efficiency and MPI distribution:
+
+1. **Configuration Caching** (`src/diagram/DiagramConfig.jl`):
+   - `build_config_cache()` - Pre-computes all topologies, directions, flavors, exponents
+   - `DiagramConfigCache` - Stores configurations with dimensions `(n_topologies, n_directions, n_flavors_combo, n_exponents_combo)`
+   - `generate_diagram_at_index()` - Generates a single diagram from linear index
+
+2. **Batch Iteration** (`src/util/BatchGeneration.jl`):
+   - `BatchIterator` - Iterates through diagrams in batches with MPI distribution
+   - `batch_iterator()` - Creates iterator for a specific MPI rank's portion
+
+3. **Evaluation** (`src/diagram/eval_*.jl`):
+   - `eval_diagrams!` - Top-level dispatcher by diagram type
+   - `eval_propagator_given_order!` / `eval_green_given_order!` - Iterate batches and accumulate
+   - `eval_backbone` (`src/diagram/backbone_eval.jl`) - Unified backbone evaluation using interface
+   - `multiplication_convolution` (`src/format/*/propagator.jl`) - Format-specific core evaluation
 
 ### Format Interface Pattern
 
@@ -145,19 +156,19 @@ src/
 ├── util/
 │   ├── io.jl                 # TOML parsing, HDF5 output
 │   ├── Params.jl             # Parameter structs
-│   └── init_data.jl          # Model/solver initialization
+│   ├── init_data.jl          # Model/solver initialization
+│   └── BatchGeneration.jl    # Batched diagram generation with MPI distribution
 ├── diagram/
 │   ├── DiagramStructure.jl   # BackBone, BackBoneNode, BackBoneEdge
-│   ├── gen_common.jl         # Common generation infrastructure
-│   ├── gen_propagator.jl     # Propagator diagram generation
-│   ├── gen_green.jl          # Green's function diagram generation
-│   ├── gen_selfenergy.jl     # Stub (not implemented)
-│   ├── eval_common.jl        # Format-independent evaluation
-│   ├── eval_propagator.jl    # Propagator evaluation
-│   ├── eval_green.jl         # Green's function evaluation
-│   ├── eval_selfenergy.jl    # Stub (not implemented)
+│   ├── DiagramConfig.jl      # Configuration caching for batched generation
+│   ├── gen_common.jl         # Pairing generation utilities
+│   ├── eval_common.jl        # Top-level eval_diagrams! dispatcher
+│   ├── eval_propagator.jl    # Propagator evaluation with batching
+│   ├── eval_green.jl         # Green's function evaluation with batching
 │   ├── backbone_eval.jl      # Unified backbone evaluation (uses interface)
-│   └── print_diagram.jl      # Visualization
+│   ├── print_diagram.jl      # Visualization utilities
+│   ├── eval_selfenergy.jl    # Stub (not implemented)
+│   └── eval_dyson.jl         # Stub (not implemented)
 └── format/                   # Format-specific implementations
     ├── interface.jl          # Abstract interface for format-agnostic operations
     ├── dense/                # Dense matrix operations
@@ -180,7 +191,7 @@ Two formats (`src/solver/HilbertSpaceFormat.jl`):
 - **DenseFormat**: Full dense matrices in Fock space (default)
 - **BlockDenseFormat**: Block-sparse exploiting particle number conservation
 
-Set via `format = "dense"` or `format = "blockdense"` in `[solver]` section.
+Set via `Hilbert_space_format = "dense"` or `Hilbert_space_format = "blockdense"` in `[solver]` section.
 
 ### Input File Format
 
@@ -194,6 +205,11 @@ interaction_file = "Uijkl.txt"
 hybridization_poles_file = "hyb_poles.txt"
 hybridization_weights_file = "hyb_weights.txt"
 
+[solver]
+output_path = "."
+Hilbert_space_format = "dense"            # or "blockdense"
+batch_size = 100000                       # Diagrams per batch (default: 100000)
+
 [solver.propagator]
 is_bold = false
 expansion_order = 2
@@ -206,10 +222,6 @@ save_linear_size = 1001                   # Output grid points
 [solver.dlr]
 rtol = 1e-14
 Euv = 500.0
-
-[solver]
-output_path = "."
-format = "dense"                          # or "blockdense"
 ```
 
 ### Data File Formats
@@ -260,8 +272,8 @@ Saved to `<output_path>/sim.h5`:
 - MPI parallelization for diagram evaluation
 
 **Not Yet Implemented**:
-- Bold propagator calculation (error at `solve.jl:37`)
-- Self-energy diagram evaluation (`gen_selfenergy.jl` and `eval_selfenergy.jl` are stubs)
+- Bold propagator calculation (error at `solve.jl:42`)
+- Self-energy diagram evaluation (`eval_selfenergy.jl` and `eval_dyson.jl` are stubs)
 
 ## Dependencies
 

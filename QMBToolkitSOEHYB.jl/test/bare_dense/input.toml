@@ -8,6 +8,8 @@ hybridization_weights_file = "hyb_weights.txt"
 
 [solver]
 output_path = "."  
+Hilbert_space_format = "dense"
+batch_size = 5000000
 
 [solver.propagator]
 is_bold = false

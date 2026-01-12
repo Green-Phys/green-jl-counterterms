@@ -19,6 +19,8 @@ include("solver/solve.jl")
 include("diagram/DiagramStructure.jl")
 include("diagram/print_diagram.jl")
 include("diagram/gen_common.jl")
+include("diagram/DiagramConfig.jl")
+include("util/BatchGeneration.jl")
 
 # Dense format operations
 include("format/dense/dlr.jl")
@@ -36,11 +38,8 @@ include("format/blockdense/propagator.jl")
 include("diagram/backbone_eval.jl")
 
 include("diagram/eval_common.jl")
-include("diagram/gen_propagator.jl")
 include("diagram/eval_propagator.jl")
-include("diagram/gen_green.jl")
 include("diagram/eval_green.jl")
-include("diagram/gen_selfenergy.jl")
 include("diagram/eval_selfenergy.jl")
 
 export run

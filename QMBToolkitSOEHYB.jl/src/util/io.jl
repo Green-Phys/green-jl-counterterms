@@ -72,12 +72,17 @@ function read_input(file_path::String)
     Hilbert_space_format = get(dict["solver"], "Hilbert_space_format", "dense")
     @assert Hilbert_space_format in ["dense", "blockdense"] "Hilbert_space_format must be 'dense' or 'blockdense', got: $Hilbert_space_format"
 
+    # Read batch_size for diagram evaluation (large default for small problems to behave like non-batched)
+    batch_size = get(dict["solver"], "batch_size", 100000)
+    @assert batch_size > 0 "batch_size must be positive, got: $batch_size"
+
     solver_params = SolverParams(
         propagator_params,
         green_params,
         dlr_params,
         output_path,
-        Hilbert_space_format
+        Hilbert_space_format,
+        batch_size
     )
 
     return Params(model_params, solver_params)
@@ -101,6 +106,7 @@ function print_parameters(params::Params)
     println(" [solver]")
     println("   output_path: ", params.solver.output_path)
     println("   Hilbert_space_format: ", params.solver.Hilbert_space_format)
+    println("   batch_size: ", params.solver.batch_size)
     println("  [expansion]")
     println("    is_bold: ", params.solver.propagator.is_bold)
     println("    expansion_order: ", params.solver.propagator.expansion_order)
@@ -133,9 +139,9 @@ function print_init_data(solver_data::SolverData)
 end
 
 """
-    save_data(model_data, calc_data, file_path, total_wall_time, total_cpu_time)
+    save_data(model_data, calc_data, file_path)
 
-Save all calculation results to an HDF5 file.
+Save all calculation results to an HDF5 file (without timing data).
 
 Saves data in organized groups:
 
@@ -146,17 +152,13 @@ Saves data in organized groups:
   - /green/dlr_grid/coeffs: DLR expansion coefficients
   - /model/E_shift: Energy shift applied to Hamiltonian
   - /model/beta: Inverse temperature
-  - /calculation/partition_function: Final partition function
-  - /calculation/partition_function_by_order: Partition function after each expansion order
-  - /timing/total_wall_time: Total wall clock time in seconds
-  - /timing/total_cpu_time: Total CPU time across all MPI ranks in seconds
+  - /partition_function/partition_function: Final partition function
+  - /partition_function/partition_function_by_order: Partition function after each expansion order
 """
 function save_data(
         model_data::ModelData,
         calc_data::CalculationData,
-        file_path::String,
-        total_wall_time::Float64,
-        total_cpu_time::Float64
+        file_path::String
 )
     h5open(file_path, "w") do file
         # Save Green's function - linear grid
@@ -195,22 +197,18 @@ function save_data(
                                        calc_data.partition_function_by_order[end] /
                                        model_data.Z_counterterms
         calc_group["partition_function_corrected"] = partition_function_corrected
-
-        # Save timing information
-        timing_group = create_group(file, "timing")
-        timing_group["total_wall_time"] = total_wall_time
-        timing_group["total_cpu_time"] = total_cpu_time
     end
 end
 
 """
-    save_results(solver_data::SolverData, solver_params::SolverParams, total_wall_time::Float64, total_cpu_time::Float64)
+    save_results(solver_data, solver_params)
 
 Process Green's function data and save to HDF5 file. Returns nothing.
 Prints summary information about the results.
+
+Note: Timing data is saved separately via save_timing_data after MPI reduction.
 """
-function save_results(solver_data::SolverData, solver_params::SolverParams,
-        total_wall_time::Float64, total_cpu_time::Float64)
+function save_results(solver_data::SolverData, solver_params::SolverParams)
     println()
     println("--- Post-processing and saving data ---")
 
@@ -232,63 +230,91 @@ function save_results(solver_data::SolverData, solver_params::SolverParams,
     println(solver_data.calc.green_linear_grid.data[1, 1, 1] +
             solver_data.calc.green_linear_grid.data[end, 1, 1])
 
-    # Save all data
+    # Save all data (without timing)
     output_file = joinpath(solver_params.output_path, "sim.h5")
-    save_data(solver_data.model, solver_data.calc, output_file, total_wall_time, total_cpu_time)
+    save_data(solver_data.model, solver_data.calc, output_file)
     println("Saved results to: ", output_file)
 end
 
 """
-    print_shutdown_message(nprocs, t_gen_prop_wall, t_eval_prop_wall, t_eval_prop_total,
-                        t_gen_green_wall, t_eval_green_wall, t_eval_green_total)
+    save_timing_data(solver_params, t_prop_wall, t_prop_cpu, t_green_wall, t_green_cpu,
+                     total_wall_time, total_cpu_time)
 
-Print a formatted timing summary table showing wall times, percentages, and CPU times
-for diagram generation and evaluation operations.
+Append timing data to an existing HDF5 file.
+
+Saves timing in /timing group:
+
+  - propagator_wall_time, propagator_cpu_time
+  - green_wall_time, green_cpu_time
+  - total_wall_time, total_cpu_time
+"""
+function save_timing_data(
+        solver_params::SolverParams,
+        t_prop_wall::Float64,
+        t_prop_cpu::Float64,
+        t_green_wall::Float64,
+        t_green_cpu::Float64,
+        total_wall_time::Float64,
+        total_cpu_time::Float64
+)
+    output_file = joinpath(solver_params.output_path, "sim.h5")
+    h5open(output_file, "r+") do file
+        timing_group = create_group(file, "timing")
+        timing_group["propagator_wall_time"] = t_prop_wall
+        timing_group["propagator_cpu_time"] = t_prop_cpu
+        timing_group["green_wall_time"] = t_green_wall
+        timing_group["green_cpu_time"] = t_green_cpu
+        timing_group["total_wall_time"] = total_wall_time
+        timing_group["total_cpu_time"] = total_cpu_time
+    end
+end
+
+"""
+    print_shutdown_message(nprocs, t_prop_wall, t_prop_cpu, t_green_wall, t_green_cpu,
+                           total_wall_time, total_cpu_time)
+
+Print a formatted timing summary table showing wall times, percentages, and CPU times.
 """
 function print_shutdown_message(
         nprocs::Int,
-        t_gen_prop_wall::Float64,
-        t_eval_prop_wall::Float64,
-        t_eval_prop_total::Float64,
-        t_gen_green_wall::Float64,
-        t_eval_green_wall::Float64,
-        t_eval_green_total::Float64
+        t_prop_wall::Float64,
+        t_prop_cpu::Float64,
+        t_green_wall::Float64,
+        t_green_cpu::Float64,
+        total_wall_time::Float64,
+        total_cpu_time::Float64
 )
     println()
     println("--- TIMING SUMMARY ---")
     println("Number of MPI processes: $nprocs")
     println()
 
-    # Calculate total time
-    total_wall = t_gen_prop_wall + t_eval_prop_wall + t_gen_green_wall + t_eval_green_wall
+    # Calculate other time (I/O, initialization within solve, etc.)
+    t_other_wall = total_wall_time - t_prop_wall - t_green_wall
+    t_other_cpu = total_cpu_time - t_prop_cpu - t_green_cpu
 
     # Print table header
-    println("Operation                              | Wall Time (s) | % Total | CPU Time (s)")
-    println("---------------------------------------+---------------+---------+-------------")
+    println("Operation                    | Wall Time (s) | % Total | CPU Time (s)")
+    println("-----------------------------+---------------+---------+-------------")
 
-    # Propagator generation
-    prop_gen_pct = 100.0 * t_gen_prop_wall / total_wall
-    @printf("Propagator diagram generation          | %13.3f | %6.1f%% | %s\n",
-        t_gen_prop_wall, prop_gen_pct, "-")
+    # Propagator computation
+    prop_pct = 100.0 * t_prop_wall / total_wall_time
+    @printf("Propagator computation       | %13.3f | %6.1f%% | %11.3f\n",
+        t_prop_wall, prop_pct, t_prop_cpu)
 
-    # Propagator evaluation
-    prop_eval_pct = 100.0 * t_eval_prop_wall / total_wall
-    @printf("Propagator diagram evaluation          | %13.3f | %6.1f%% | %11.3f\n",
-        t_eval_prop_wall, prop_eval_pct, t_eval_prop_total)
+    # Green's function computation
+    green_pct = 100.0 * t_green_wall / total_wall_time
+    @printf("Green's function computation | %13.3f | %6.1f%% | %11.3f\n",
+        t_green_wall, green_pct, t_green_cpu)
 
-    # Green's function generation
-    green_gen_pct = 100.0 * t_gen_green_wall / total_wall
-    @printf("Green's function diagram generation    | %13.3f | %6.1f%% | %s\n",
-        t_gen_green_wall, green_gen_pct, "-")
+    # Other time
+    other_pct = 100.0 * t_other_wall / total_wall_time
+    @printf("Other (I/O, post-processing) | %13.3f | %6.1f%% | %11.3f\n",
+        t_other_wall, other_pct, t_other_cpu)
 
-    # Green's function evaluation
-    green_eval_pct = 100.0 * t_eval_green_wall / total_wall
-    @printf("Green's function diagram evaluation    | %13.3f | %6.1f%% | %11.3f\n",
-        t_eval_green_wall, green_eval_pct, t_eval_green_total)
-
-    println("---------------------------------------+---------------+---------+-------------")
-    @printf("TOTAL                                  | %13.3f | %6.1f%% | %11.3f\n",
-        total_wall, 100.0, t_eval_prop_total + t_eval_green_total)
+    println("-----------------------------+---------------+---------+-------------")
+    @printf("TOTAL                        | %13.3f | %6.1f%% | %11.3f\n",
+        total_wall_time, 100.0, total_cpu_time)
 
     println()
 

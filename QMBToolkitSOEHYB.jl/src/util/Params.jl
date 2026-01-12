@@ -40,6 +40,7 @@ struct SolverParams
     dlr::DLRParams
     output_path::String
     Hilbert_space_format::String  # "dense" or "blockdense"
+    batch_size::Int               # batch size for diagram evaluation (default: 100000)
 end
 
 """

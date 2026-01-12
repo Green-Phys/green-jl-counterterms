@@ -1,18 +1,20 @@
-# Propagator diagram evaluation for bare expansion
+# Propagator diagram evaluation using batched generation
 using MPI
 
 """
-    eval_propagator_given_order!(solver_data, diagrams, comm)
+    eval_propagator_given_order!(solver_data, order, comm; batch_size=100000)
 
-Evaluate all propagator diagrams at a given order and accumulate into solver_data.
+Evaluate all propagator diagrams at a given order using batched generation.
 
-Uses format-agnostic interface functions for MPI-parallel evaluation.
+Memory-efficient version that generates and evaluates diagrams in batches,
+avoiding storing all diagrams in memory simultaneously.
 
 # Arguments
 
   - `solver_data::SolverData{T, Format}`: Solver data containing model and calculation results
-  - `diagrams::Array{BackBone,4}`: All diagrams for this order
+  - `order::Int`: Expansion order
   - `comm::MPI.Comm`: MPI communicator for parallel evaluation
+  - `batch_size::Int`: Number of diagrams per batch (default: 100000)
 
 # Side Effects
 
@@ -20,40 +22,39 @@ Uses format-agnostic interface functions for MPI-parallel evaluation.
 
 # Parallelization
 
-  - Diagrams are distributed across MPI ranks in round-robin fashion
-  - Each rank evaluates its assigned diagrams and accumulates locally
+  - Diagrams are distributed across MPI ranks in contiguous chunks
+  - Each rank generates and evaluates its assigned diagrams in batches
   - Results are summed across all ranks using MPI.Allreduce
-  - The global sum is added to the existing propagator values
 """
 function eval_propagator_given_order!(
-        solver_data::SolverData{T, Format}, diagrams::Array{BackBone, 4},
-        comm::MPI.Comm) where {T <: Number, Format <: HilbertSpaceFormat}
+        solver_data::SolverData{T, Format}, order::Int,
+        comm::MPI.Comm; batch_size::Int = 100000) where {T <: Number, Format <: HilbertSpaceFormat}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 
+    # Build configuration cache (cheap - only stores configs, not diagrams)
+    cache = build_config_cache(order, solver_data.model.n_flavors,
+        solver_data.model.hyb.exponents, :propagator_diagram)
+
     propagator = get_propagator(solver_data.calc)
-
-    # Use vec() instead of vcat() for type stability
-    diagrams_flat = vec(diagrams)
-    n_diagrams = length(diagrams_flat)
-
     local_result = zeros_like(propagator.vals)
 
-    # Compute expansion order from diagram structure: order = (M - 2) / 2
-    # where M is the number of nodes in a propagator diagram
-    first_diagram = diagrams_flat[1]
-    expansion_order = (length(first_diagram.nodes) - 2) ÷ 2
+    # Allocate evaluation buffers once
+    buffers = allocate_propagator_buffers(solver_data, order)
 
-    buffers = allocate_propagator_buffers(solver_data, expansion_order)
+    # Create batch iterator for this rank's portion
+    iter = batch_iterator(cache, batch_size, rank, nprocs)
 
-    my_diagrams = (rank + 1):nprocs:n_diagrams
-
-    for i in my_diagrams
-        diagram = diagrams_flat[i]
-        contribution = eval_propagator_forward_backbone(diagram, solver_data, buffers)
-        prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
-        add_scaled!(local_result, prefactor, contribution)
+    # Process batches
+    for (indices, diagrams) in iter
+        for diagram in diagrams
+            contribution = eval_propagator_forward_backbone(diagram, solver_data, buffers)
+            prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
+            add_scaled!(local_result, prefactor, contribution)
+        end
+        # Batch is discarded after this iteration, freeing memory
     end
 
+    # Sum results from all ranks
     mpi_reduce_and_add!(propagator, local_result, comm)
 end

@@ -3,37 +3,39 @@ using MPI
 using LinearAlgebra
 
 """
-    eval_diagrams!(solver_data, solver_params, diagram_type, diagrams, comm)
+    eval_diagrams!(solver_data, solver_params, diagram_type, comm; batch_size=100000)
 
-Evaluate all diagrams for a given diagram type and accumulate results into solver_data.
-Format-agnostic implementation using interface functions.
+Evaluate diagrams for a given type using memory-efficient batched generation.
+
+Generates and evaluates diagrams in batches rather than storing all diagrams in memory.
+Memory usage is O(batch_size) instead of O(total_diagrams).
 
 # Arguments
 
-  - `solver_data::SolverData{T, Format}`: The solver data containing model information and calculation results
-  - `solver_params::SolverParams`: Solver parameters including expansion orders and boldness settings
-  - `diagram_type::Symbol`: Type of diagrams to evaluate (`:propagator_diagram`, `:green_diagram`, or `:selfenergy_diagram`)
-  - `diagrams::Vector{Array{BackBone,4}}`: Vector of diagram arrays organized by expansion order
-  - `comm::MPI.Comm`: MPI communicator for parallel execution
-
-For propagator diagrams, updates propagator and partition_function.
-For Green's function diagrams, updates green.
+  - `solver_data::SolverData{T, Format}`: The solver data
+  - `solver_params::SolverParams`: Solver parameters
+  - `diagram_type::Symbol`: Type of diagrams (`:propagator_diagram` or `:green_diagram`)
+  - `comm::MPI.Comm`: MPI communicator
+  - `batch_size::Int`: Number of diagrams per batch (default: 100000)
 """
 function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::SolverParams,
-        diagram_type::Symbol, diagrams::Vector{Array{BackBone, 4}},
-        comm::MPI.Comm) where {T, Format <: HilbertSpaceFormat}
+        diagram_type::Symbol, comm::MPI.Comm;
+        batch_size::Int = 100000) where {T, Format <: HilbertSpaceFormat}
     rank = MPI.Comm_rank(comm)
-    propagator = get_propagator(solver_data.calc)  # Caching the variable, it will be updated during calculation
+    propagator = get_propagator(solver_data.calc)
 
-    if diagram_type == :propagator_diagram &&
-       !solver_params.propagator.is_bold
+    if diagram_type == :propagator_diagram && !solver_params.propagator.is_bold
         empty!(solver_data.calc.partition_function_by_order)
 
         for order in 0:(solver_params.propagator.expansion_order)
             if rank == 0
-                println("Evaluating propagator diagrams at order ", order)
+                cache = build_config_cache(order, solver_data.model.n_flavors,
+                    solver_data.model.hyb.exponents, :propagator_diagram)
+                dims = config_dimensions(cache)
+                println("Evaluating ", dims, " = ", total_diagrams(cache), " propagator diagrams at order ", order)
             end
-            eval_propagator_given_order!(solver_data, diagrams[order + 1], comm)
+
+            eval_propagator_given_order!(solver_data, order, comm; batch_size = batch_size)
 
             propagator_at_beta = extract_at_tau(
                 propagator.vals, solver_data.model.beta, solver_data.model.dlr_grid)
@@ -43,25 +45,30 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
 
         propagator.coeffs = tau2dlr(
             solver_data.model.dlr_grid, propagator.vals, solver_data.model.dlr_grid.τ)
-    elseif diagram_type == :green_diagram &&
-           !solver_params.green.is_bold
+
+    elseif diagram_type == :green_diagram && !solver_params.green.is_bold
         empty!(solver_data.calc.green_numerator_by_order)
         empty!(solver_data.calc.green_by_order)
+
         for order in 1:(solver_params.green.expansion_order)
             if rank == 0
-                println("Evaluating Green's function diagrams at order ", order)
+                cache = build_config_cache(order, solver_data.model.n_flavors,
+                    solver_data.model.hyb.exponents, :green_diagram; is_bold = false)
+                dims = config_dimensions(cache)
+                println("Evaluating ", dims, " = ", total_diagrams(cache), " Green's function diagrams at order ", order)
             end
-            eval_green_given_order!(solver_data, diagrams[order], solver_params.green.is_bold, comm)
+
+            eval_green_given_order!(solver_data, order, solver_params.green.is_bold, comm;
+                batch_size = batch_size)
 
             push!(solver_data.calc.green_numerator_by_order,
                 DensePropagator{T}(copy(solver_data.calc.green.vals.data)))
         end
 
         # Compute Green's function by order (numerator / Z)
-        # Green's function order i uses partition function from propagator order i-1
         for green_order in 1:(solver_params.green.expansion_order)
-            propagator_index = green_order  # e.g. 0th order propagator
-            green_index = green_order # e.g. 1st order green
+            propagator_index = green_order
+            green_index = green_order
             green_at_order_data = solver_data.calc.green_numerator_by_order[green_index].data ./
                                   solver_data.calc.partition_function_by_order[propagator_index]
             push!(solver_data.calc.green_by_order, DensePropagator{T}(green_at_order_data))
@@ -69,11 +76,10 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
 
         # Update final Green's function
         copyto!(solver_data.calc.green.vals, solver_data.calc.green_by_order[end])
-        # Green's function coefficients (Green's function is always stored as DensePropagator)
         solver_data.calc.green.coeffs = tau2dlr(
             solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.τ)
     else
-        error("Unknown diagram type: $diagram_type. Supported types are: :propagator_diagram, :green_diagram, :selfenergy_diagram")
+        error("Unknown or unsupported diagram type: $diagram_type")
     end
 end
 

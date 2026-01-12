@@ -36,6 +36,7 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
         println("--- Generate and evaluate propagator ---")
         println("Use bold expansion for the propagator: ", solver_params.propagator.is_bold)
         println("Batch size: ", solver_params.batch_size)
+        @boundscheck println("Boundscheck is enabled.")
     end
 
     if solver_params.propagator.is_bold

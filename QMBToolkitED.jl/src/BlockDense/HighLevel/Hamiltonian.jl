@@ -61,8 +61,8 @@ H_block, c_block = build_hamiltonian_blockdense(basis, "hopping.txt", "coulomb.t
 """
 function build_hamiltonian_blockdense(
     basis::BlockDenseBasis,
-    hopping_matrix_input::Union{String, IO},
-    coulomb_tensor_input::Union{String, IO}
+    hopping_matrix_input::Union{String,IO},
+    coulomb_tensor_input::Union{String,IO},
 )
     # Read input files
     hopping_lines = readlines(hopping_matrix_input)
@@ -109,7 +109,7 @@ function build_hamiltonian_blockdense(
     H_hop = BlockDenseOperator(
         basis,
         OperatorFlux(zero_qn(QN_type)),
-        Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
+        Dict{Tuple{Int,Int},Matrix{ComplexF64}}(),
     )
 
     if !isempty(hopping_lines)
@@ -119,6 +119,11 @@ function build_hamiltonian_blockdense(
             j = parse(Int, parts[2]) + 1
             val = parse(Float64, parts[3]) + im * parse(Float64, parts[4])
 
+            # Skip zero hopping terms to avoid flux mismatch in BlockDense mode
+            if iszero(val)
+                continue
+            end
+
             H_hop = H_hop + val * (c[i]' * c[j])
         end
     end
@@ -127,7 +132,7 @@ function build_hamiltonian_blockdense(
     H_int = BlockDenseOperator(
         basis,
         OperatorFlux(zero_qn(QN_type)),
-        Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
+        Dict{Tuple{Int,Int},Matrix{ComplexF64}}(),
     )
 
     if length(coulomb_lines) > 1
@@ -138,6 +143,11 @@ function build_hamiltonian_blockdense(
             fl_k = parse(Int, parts[4]) + 1
             fl_l = parse(Int, parts[5]) + 1
             val = parse(Float64, parts[6]) + im * parse(Float64, parts[7])
+
+            # Skip zero interaction terms to avoid flux mismatch in BlockDense mode
+            if iszero(val)
+                continue
+            end
 
             H_int = H_int + 0.5 * val * (c[fl_i]' * c[fl_j]' * c[fl_k] * c[fl_l])
         end

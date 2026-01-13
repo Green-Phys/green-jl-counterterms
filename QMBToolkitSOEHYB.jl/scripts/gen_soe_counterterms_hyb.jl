@@ -220,108 +220,78 @@ function _inf_error(green::Array{Float64, 3}, reconstructed_green::Array{Float64
     return maximum(abs.(green .- reconstructed_green))
 end
 
+#! format: off
 function parse_commandline()
     s = ArgParseSettings()
     @add_arg_table s begin
-        """
-        --beta
-        """
+        "--beta"
         help = "inverse temperature"
         arg_type = Float64
         required = true
-        """
-        --n_spin_impurity
-        """
+        "--n_spin_impurity"
         help = "number of spin flavors for the impurity"
         arg_type = Int
         required = true
-        """
-        --n_orbital_impurity
-        """
+        "--n_orbital_impurity"
         help = "number of orbitals for the impurity"
         arg_type = Int
         required = true
-        """
-        --n_tau
-        """
+        "--n_tau"
         help = "number of tau points for fitting"
         arg_type = Int
         required = true
-        """
-        --n_matsubara
-        """
+        "--n_matsubara"
         help = "number of Matsubara frequencies for fitting"
         arg_type = Int
         required = true
-        """
-        --dlr_eps_counterterms
-        """
+        "--dlr_eps_counterterms"
         help = "DLR epsilon for counterterms fitting (only used if SOE subroutine is DLR)"
         arg_type = Float64
         default = 1e-14
-        """
-        --dlr_eps_hybridization
-        """
+        "--dlr_eps_hybridization"
         help = "DLR epsilon for hybridization fitting (only used if SOE subroutine is DLR)"
         arg_type = Float64
         default = 1e-14
-        """
-        --hyb_type
-        """
+        "--hyb_type"
         help = "type of hybridization function: 'SemiCircular' or 'DiscretePoles'"
         arg_type = String
         required = true
-        """
-        --hopping_file
-        """
+        "--hopping_file"
         help = "file name for the hopping matrix to be modified"
         arg_type = String
         required = true
-        """
-        --soe_subroutine_counterterms
-        """
+        "--soe_subroutine_counterterms"
         help = "Type of SOE subroutine for counterterms: 'ESPRIT' or 'ADAPOL' or 'DLR'"
         arg_type = String
         required = true
-        """
-        --n_soe_counterterms
-        """
+        "--n_soe_counterterms"
         help = "Number of SOE terms for counterterms"
         arg_type = Int
         required = true
-        """
-        --soe_subroutine_hybridization
-        """
+        "--soe_subroutine_hybridization"
         help = "Type of SOE subroutine for hybridization: 'ESPRIT' or 'ADAPOL'"
         arg_type = String
         required = true
-        """
-        --n_soe_hybridization
-        """
+        "--n_soe_hybridization"
         help = "Number of SOE terms for hybridization"
         arg_type = Int
         required = true
-        """
-        --output_dir
-        """
+        "--output_dir"
         help = "Output directory for generated files"
         arg_type = String
         required = true
-        """
-        --do_subtraction_trick
-        """
+        "--do_subtraction_trick"
         help = "Whether to do subtraction trick (For ESPRIT or ADAPOL, the remaining hybrdization is not well fitted, but one can fit the original data at different precision, the remaining hybridizaiotn function is a sum of them with the high precision part has negative coefficients)"
         arg_type = Bool
         default = false
-        """
-        --off_diagonal_prefactor
-        """
+        "--off_diagonal_prefactor"
         help = "Prefactor for off-diagonal elements of hybridization function"
         arg_type = Float64
         default = 0.0
     end
     return parse_args(s)
 end
+#! format: on
 
 function print_input(args)
     println("--- Input parameters ---")

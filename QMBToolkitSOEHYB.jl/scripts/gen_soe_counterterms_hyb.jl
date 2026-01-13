@@ -285,6 +285,10 @@ function parse_commandline()
         help = "Whether to do subtraction trick (For ESPRIT or ADAPOL, the remaining hybrdization is not well fitted, but one can fit the original data at different precision, the remaining hybridizaiotn function is a sum of them with the high precision part has negative coefficients)"
         arg_type = Bool
         default = false
+        "--off_diagonal_prefactor"
+        help = "Prefactor for off-diagonal elements of hybridization function"
+        arg_type = Float64
+        default = 0.0
     end
     return parse_args(s)
 end
@@ -298,6 +302,7 @@ function print_input(args)
     @printf("SOE subroutine for counterterms: %s\n", args["soe_subroutine_counterterms"])
     @printf("SOE subroutine for hybridization: %s\n", args["soe_subroutine_hybridization"])
     @printf("Output directory: %s\n", args["output_dir"])
+    @printf("Prefactor for off-diagonal elements: %f\n", args["off_diagonal_prefactor"])
 end
 
 struct GData
@@ -307,7 +312,7 @@ struct GData
     wn_grid::Vector{Float64}
 end
 
-function gen_hyb(n_tau::Int, n_matsubara::Int, beta::Float64, n_spin_impurity::Int, n_orbital_impurity::Int, hyb_type::String)
+function gen_hyb(n_tau::Int, n_matsubara::Int, beta::Float64, n_spin_impurity::Int, n_orbital_impurity::Int, hyb_type::String; off_diagonal_prefactor ::Float64=0.0)
     tau_grid = collect(LinRange(0.0, beta, n_tau))
     n_grid = collect(0:n_matsubara)
     wn_grid  = pi / beta * (2.0 .* n_grid .+ 1.0)
@@ -322,9 +327,25 @@ function gen_hyb(n_tau::Int, n_matsubara::Int, beta::Float64, n_spin_impurity::I
     G_tau_tensor = zeros(Float64, n_tau, n_flavors, n_flavors)
     G_iwn_tensor = zeros(ComplexF64, n_matsubara+1, n_flavors, n_flavors)
     # Construct the G_tau and G_iwn tensors of shape (n_tau, n_falvors, n_flavors) and (n_matsubara, n_falvors, n_flavors), only diagonal elements are non-zero
-    for f in 1:n_flavors
-        G_tau_tensor[:, f, f] = G_tau
-        G_iwn_tensor[:, f, f] = G_iwn
+    # off-diagonal elements are multiplied by off_diagonal_prefactor  for the same spin flavors, 0 otherwise
+    #         upindex = (o - 1) * n_spin_impurity + 1
+    #        downindex = (o - 1) * n_spin_impurity + 2
+    for o1 in 1:n_orbital_impurity
+        for s1 in 1:n_spin_impurity
+            index1 = (o1 - 1) * n_spin_impurity + s1
+            for o2 in 1:n_orbital_impurity
+                for s2 in 1:n_spin_impurity
+                    index2 = (o2 - 1) * n_spin_impurity + s2
+                    if index1 == index2
+                        G_tau_tensor[:, index1, index2] = G_tau
+                        G_iwn_tensor[:, index1, index2] = G_iwn
+                    elseif s1 == s2
+                        G_tau_tensor[:, index1, index2] = off_diagonal_prefactor  * G_tau
+                        G_iwn_tensor[:, index1, index2] = off_diagonal_prefactor  * G_iwn
+                    end
+                end
+            end
+        end
     end
     return GData(G_tau_tensor, tau_grid, G_iwn_tensor, wn_grid)
 end
@@ -393,7 +414,7 @@ function main()
     println("=== Generating SOE for counterterms and hybridization function ===")
     args = parse_commandline()
     print_input(args)
-    G_data = gen_hyb(args["n_tau"], args["n_matsubara"], args["beta"], args["n_spin_impurity"], args["n_orbital_impurity"], args["hyb_type"])
+    G_data = gen_hyb(args["n_tau"], args["n_matsubara"], args["beta"], args["n_spin_impurity"], args["n_orbital_impurity"], args["hyb_type"], off_diagonal_prefactor =args["off_diagonal_prefactor"])
     poles, weights, error = gen_soe(args["beta"], G_data, args["soe_subroutine_counterterms"], args["n_soe_counterterms"], args["dlr_eps_counterterms"])
     println("--- Counterterms SOE ---")
     println("Max hybridization: ", maximum(abs.(G_data.G_tau)))

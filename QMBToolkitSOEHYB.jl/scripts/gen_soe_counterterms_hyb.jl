@@ -354,10 +354,21 @@ end
     _clean_small_values!(arr, tol=1e-15)
 
 Set values with absolute value less than `tol` to exactly zero.
-Modifies the array in-place.
+Modifies the array in-place. Works for both real and complex arrays.
 """
-function _clean_small_values!(arr::AbstractArray, tol::Float64 = 1e-15)
+function _clean_small_values!(arr::AbstractArray{<:Real}, tol::Float64 = 1e-15)
     @. arr = ifelse(abs(arr) < tol, zero(eltype(arr)), arr)
+    return arr
+end
+
+function _clean_small_values!(arr::AbstractArray{<:Complex}, tol::Float64 = 1e-15)
+    for i in eachindex(arr)
+        re = real(arr[i])
+        im = imag(arr[i])
+        re = abs(re) < tol ? zero(re) : re
+        im = abs(im) < tol ? zero(im) : im
+        arr[i] = complex(re, im)
+    end
     return arr
 end
 
@@ -435,6 +446,8 @@ function main()
     println("SOE inf-norm error: ", @sprintf("%.6e", error))
     println("--- Obtaining counterterms ---")
     counterterms_energy, counterterms_hyb = _obtain_hyb(poles, weights)
+    # Clean up very small numerical noise in counterterms_hyb
+    _clean_small_values!(counterterms_hyb)
     println("Shape of counterterms_energy: ", size(counterterms_energy))
     println("Shape of counterterms_hyb: ", size(counterterms_hyb))
     counterterms_contribution = _reconstruct_green_hyb(counterterms_energy, counterterms_hyb, G_data.tau_grid, args["beta"])

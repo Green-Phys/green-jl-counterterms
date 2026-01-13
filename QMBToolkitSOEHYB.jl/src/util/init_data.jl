@@ -1,13 +1,122 @@
 using QMBToolkitED: make_basis, build_hamiltonian, solve_hamiltonian
 using QMBToolkitED.Dense: DenseBasis, DenseOperator, DenseDiagonalOperator
 using QMBToolkitED.BlockDense: BlockDenseBasis, BlockDenseOperator, BlockDenseDiagonalOperator,
-                               OperatorFlux, QN_N, zero_qn
+                               OperatorFlux, QN_N, QN_NSz, zero_qn
 using DelimitedFiles
 using QMBToolkitDLR
 using LinearAlgebra
 
 # Constants for file format validation
 const HYB_WEIGHTS_EXPECTED_COLS = 4  # Expected columns: ind_poles, orb_1, orb_2, weights
+
+#=============================================================================
+# Spin conservation helpers
+=============================================================================#
+
+"""
+    _get_spin(flavor::Int) -> Int
+
+Extract spin index from flavor index (0-indexed).
+Convention: flavor = 2*orbital + spin, where spin ∈ {0=up, 1=down}.
+Returns 0 for spin-up, 1 for spin-down.
+"""
+_get_spin(flavor::Int) = flavor % 2
+
+"""
+    _check_spin_conservation(hopping_path::String, interaction_path::String) -> Bool
+
+Check if the Hamiltonian conserves spin based on hopping and Coulomb interaction terms.
+
+Returns `true` if spin is conserved (all terms satisfy spin selection rules).
+Returns `false` if:
+
+  - Number of flavors is odd (no spin structure possible with 2 spins per orbital)
+  - Any hopping term violates spin conservation (t[i,j] != 0 with spin(i) != spin(j))
+  - Any Coulomb term violates spin conservation (U[i,j,k,l] != 0 with spin(i)+spin(j) != spin(k)+spin(l))
+
+When spin conservation is violated, a warning is logged.
+"""
+function _check_spin_conservation(hopping_path::String, interaction_path::String)
+    # Step 1: Read hopping file and determine n_flavors
+    hopping_data = readdlm(hopping_path)
+    n_flavors = Int(maximum(hopping_data[:, 1:2])) + 1
+
+    # Step 2: Check for odd number of flavors (no spin structure with 2 spins per orbital)
+    if n_flavors % 2 != 0
+        @warn "Odd number of flavors ($n_flavors): spin conservation not applicable, using QN_N"
+        return false
+    end
+
+    # Step 3: Check hopping terms for spin conservation
+    # Hopping conserves spin if: t[i,j] != 0 => spin(i) == spin(j)
+    for row_idx in 1:size(hopping_data, 1)
+        i = Int(hopping_data[row_idx, 1])  # 0-indexed flavor
+        j = Int(hopping_data[row_idx, 2])  # 0-indexed flavor
+        re = hopping_data[row_idx, 3]
+        im = hopping_data[row_idx, 4]
+
+        # Skip zero entries
+        if re == 0.0 && im == 0.0
+            continue
+        end
+
+        # Check spin conservation
+        if _get_spin(i) != _get_spin(j)
+            @warn "Spin conservation violated in hopping: t[$i,$j] != 0 but spins differ (spin($i)=$(_get_spin(i)) vs spin($j)=$(_get_spin(j))), using QN_N"
+            return false
+        end
+    end
+
+    # Step 4: Read and check interaction file
+    interaction_lines = readlines(interaction_path)
+
+    # First line is the count of interaction terms
+    if isempty(interaction_lines)
+        # No interaction file content - spin is conserved by default
+        return true
+    end
+
+    n_terms = parse(Int, strip(interaction_lines[1]))
+    if n_terms == 0
+        # No interaction terms - spin is conserved
+        return true
+    end
+
+    # Check each Coulomb term: U[i,j,k,l] c†_i c†_j c_k c_l
+    # Spin conservation: spin(i) + spin(j) == spin(k) + spin(l)
+    for line_idx in 2:length(interaction_lines)
+        line = strip(interaction_lines[line_idx])
+        if isempty(line)
+            continue
+        end
+
+        parts = split(line)
+        # Format: idx i j k l Re(U) Im(U)
+        fl_i = parse(Int, parts[2])  # 0-indexed
+        fl_j = parse(Int, parts[3])  # 0-indexed
+        fl_k = parse(Int, parts[4])  # 0-indexed
+        fl_l = parse(Int, parts[5])  # 0-indexed
+        re = parse(Float64, parts[6])
+        im = parse(Float64, parts[7])
+
+        # Skip zero entries
+        if re == 0.0 && im == 0.0
+            continue
+        end
+
+        # Check spin conservation: spin(i) + spin(j) == spin(k) + spin(l)
+        spin_in = _get_spin(fl_i) + _get_spin(fl_j)
+        spin_out = _get_spin(fl_k) + _get_spin(fl_l)
+
+        if spin_in != spin_out
+            @warn "Spin conservation violated in Coulomb: U[$fl_i,$fl_j,$fl_k,$fl_l] != 0 but spin change is $(spin_in - spin_out), using QN_N"
+            return false
+        end
+    end
+
+    # All checks passed - spin is conserved
+    return true
+end
 
 #=============================================================================
 # Main initialization function (unified for both formats)
@@ -19,18 +128,20 @@ const HYB_WEIGHTS_EXPECTED_COLS = 4  # Expected columns: ind_poles, orb_1, orb_2
 Initialize a `ModelData` object from input parameters.
 
 # Arguments
-- `model_params::ModelParams`: Model parameters from TOML file
-- `dlr_params::DLRParams`: DLR parameters from TOML file
-- `format::Type{<:HilbertSpaceFormat}`: Either `DenseFormat` or `BlockDenseFormat`
+
+  - `model_params::ModelParams`: Model parameters from TOML file
+  - `dlr_params::DLRParams`: DLR parameters from TOML file
+  - `format::Type{<:HilbertSpaceFormat}`: Either `DenseFormat` or `BlockDenseFormat`
 
 # Returns
-- `ModelData{T, format}`: Initialized model data with appropriate format-specific storage
+
+  - `ModelData{T, format}`: Initialized model data with appropriate format-specific storage
 """
 function init_model_data(model_params::ModelParams, dlr_params::DLRParams,
         ::Type{Format}) where {Format <: HilbertSpaceFormat}
     # Load Hamiltonian paths and build basis
     hopping_path, interaction_path = _load_hamiltonian_paths(model_params)
-    basis = _build_basis(hopping_path, Format)
+    basis = _build_basis(hopping_path, interaction_path, Format)
 
     # Build and solve Hamiltonian
     H, ann_opts_raw = build_hamiltonian(hopping_path, interaction_path; method = ed_method(Format), basis = basis)
@@ -98,7 +209,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams,
         kernel_cache,
         convolution_workspace,
         # Format-specific storage
-        format_data,
+        format_data
     )
 end
 
@@ -109,7 +220,7 @@ Initialize a `SolverData` object from the `ModelData`.
 Dispatches based on the format type to create appropriate storage.
 """
 function init_solver_data(model_data::ModelData{T, Format,
-        Storage,}) where {T <: Number, Format <: HilbertSpaceFormat, Storage <: ModelDataStorage{T}}
+        Storage}) where {T <: Number, Format <: HilbertSpaceFormat, Storage <: ModelDataStorage{T}}
     r = model_data.dlr_grid.size
     n_phys = model_data.n_flavors_physical
 
@@ -124,7 +235,7 @@ function init_solver_data(model_data::ModelData{T, Format,
         Vector{DensePropagator{T}}(),  # green numerator by order
         Vector{DensePropagator{T}}(),  # green by order
         zeros(DensePropagator{T}, 0, n_phys, n_phys),  # green_linear_grid
-        Float64[],  # tau_linear_grid
+        Float64[]  # tau_linear_grid
     )
     return SolverData(model_data, calculation_data)
 end
@@ -139,7 +250,7 @@ function _create_calculation_storage(model_data::ModelData, ::Type{T}, ::Type{De
     n_fock = model_data.n_fock
     return DenseCalculationDataStorage{T}(
         DenseDLRPropagator{T}(r, n_fock, n_fock),  # propagator
-        DenseDLRPropagator{T}(r, n_fock, n_fock),   # selfenergy
+        DenseDLRPropagator{T}(r, n_fock, n_fock)   # selfenergy
     )
 end
 
@@ -155,7 +266,7 @@ function _create_calculation_storage(model_data::ModelData, ::Type{T}, ::Type{Bl
     r = model_data.dlr_grid.size
     return BlockDenseCalculationDataStorage{T}(
         BlockDenseDLRPropagator{T}(basis, flux, r),  # propagator
-        BlockDenseDLRPropagator{T}(basis, flux, r),   # selfenergy
+        BlockDenseDLRPropagator{T}(basis, flux, r)   # selfenergy
     )
 end
 
@@ -177,26 +288,38 @@ function _load_hamiltonian_paths(model_params::ModelParams)
 end
 
 """
-    _build_basis(hopping_path::String, ::Type{DenseFormat})
+    _build_basis(hopping_path::String, interaction_path::String, ::Type{DenseFormat})
 
 Build a DenseBasis from the hopping file by inferring the number of orbitals.
+The interaction_path is accepted for API consistency but not used.
 """
-function _build_basis(hopping_path::String, ::Type{DenseFormat})
+function _build_basis(hopping_path::String, interaction_path::String, ::Type{DenseFormat})
     hopping_data = readdlm(hopping_path)
     n_flavors = Int(maximum(hopping_data[:, 1:2])) + 1
     return make_basis(n_flavors)
 end
 
 """
-    _build_basis(hopping_path::String, ::Type{BlockDenseFormat})
+    _build_basis(hopping_path::String, interaction_path::String, ::Type{BlockDenseFormat})
 
-Build a BlockDenseBasis from the hopping file by inferring the number of orbitals.
-Assumes particle number conservation (QN_N quantum number).
+Build a BlockDenseBasis from the hopping and interaction files.
+
+If the Hamiltonian conserves spin (and n_flavors is even), uses QN_NSz quantum numbers
+for more efficient block structure. Otherwise falls back to QN_N (particle number only).
 """
-function _build_basis(hopping_path::String, ::Type{BlockDenseFormat})
+function _build_basis(hopping_path::String, interaction_path::String, ::Type{BlockDenseFormat})
     hopping_data = readdlm(hopping_path)
-    n_orbitals = Int(maximum(hopping_data[:, 1:2])) + 1
-    qns = [QN_N(1) for _ in 1:n_orbitals]
+    n_flavors = Int(maximum(hopping_data[:, 1:2])) + 1
+
+    if _check_spin_conservation(hopping_path, interaction_path)
+        # Spin conserved: use QN_NSz
+        # Convention: flavor f = 2*orbital + spin, spin=0->sz=+1, spin=1->sz=-1
+        qns = [QN_NSz(1, _get_spin(f) == 0 ? 1 : -1) for f in 0:(n_flavors - 1)]
+    else
+        # Spin not conserved: use QN_N only
+        qns = [QN_N(1) for _ in 1:n_flavors]
+    end
+
     return make_basis(qns)
 end
 
@@ -321,7 +444,7 @@ end
 Build BlockDense bare propagator on tau grid from eigenvalues.
 
 The propagator is diagonal in the eigenbasis:
-    G[sector](τ) = diag(exp(-τ * (E - E_shift)))
+G[sector](τ) = diag(exp(-τ * (E - E_shift)))
 
 No eigenvector transformation is needed since we work in the eigenbasis.
 """
@@ -445,8 +568,9 @@ end
 Compute the inverse of K(τ=0, ω) for each SOE exponent.
 
 For the kernel K(τ, ω) = exp(-ωτ) / (1 + exp(-βω)):
-- K(0, ω) = 1 / (1 + exp(-βω)) for ω > 0
-- K(0, ω) = 1 / (1 + exp(βω))  for ω ≤ 0
+
+  - K(0, ω) = 1 / (1 + exp(-βω)) for ω > 0
+  - K(0, ω) = 1 / (1 + exp(βω))  for ω ≤ 0
 
 Returns vector of K(0, ω)^{-1} values, all in range [1, 2].
 """
@@ -516,7 +640,7 @@ function _create_model_storage(
         cre_opts,
         ann_opts_bar,
         cre_opts_bar,
-        bare_propagator_wrapped,
+        bare_propagator_wrapped
     )
 end
 
@@ -535,7 +659,7 @@ function _create_model_storage(
         cre_opts,
         ann_opts_bar,
         cre_opts_bar,
-        bare_propagator_wrapped,
+        bare_propagator_wrapped
     )
 end
 
@@ -549,13 +673,15 @@ end
 Generate barred operators for Dense format.
 
 coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation
-- For creation: c̄†_{o,l} = Σ_{o'} Δ_{l,o',o} c†_{o'}
-- For annihilation: c̄_{o,l} = Σ_{o'} Δ_{l,o,o'} c_{o'}
+
+  - For creation: c̄†_{o,l} = Σ_{o'} Δ_{l,o',o} c†_{o'}
+  - For annihilation: c̄_{o,l} = Σ_{o'} Δ_{l,o,o'} c_{o'}
 
 # Arguments
-- `opts`: Vector of operators (creation or annihilation)
-- `coeffs`: SOE coefficients array
-- `opt_type`: Either `:creation` or `:annihilation`
+
+  - `opts`: Vector of operators (creation or annihilation)
+  - `coeffs`: SOE coefficients array
+  - `opt_type`: Either `:creation` or `:annihilation`
 """
 function _gen_opts_bar(opts::Vector{DenseOperator}, coeffs::Array{Float64, 3}, opt_type::Symbol)
     opt_type in (:creation, :annihilation) ||
@@ -593,13 +719,15 @@ end
 Generate barred operators for BlockDense format.
 
 coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation
-- For creation: c̄†_{o,l} = Σ_{o'} Δ_{l,o',o} c†_{o'}
-- For annihilation: c̄_{o,l} = Σ_{o'} Δ_{l,o,o'} c_{o'}
+
+  - For creation: c̄†_{o,l} = Σ_{o'} Δ_{l,o',o} c†_{o'}
+  - For annihilation: c̄_{o,l} = Σ_{o'} Δ_{l,o,o'} c_{o'}
 
 # Arguments
-- `opts`: Vector of operators (creation or annihilation)
-- `coeffs`: SOE coefficients array
-- `opt_type`: Either `:creation` or `:annihilation`
+
+  - `opts`: Vector of operators (creation or annihilation)
+  - `coeffs`: SOE coefficients array
+  - `opt_type`: Either `:creation` or `:annihilation`
 """
 function _gen_opts_bar(opts::Vector{BlockDenseOperator}, coeffs::Array{Float64, 3}, opt_type::Symbol)
     opt_type in (:creation, :annihilation) ||
@@ -645,11 +773,13 @@ Transform a vector of Dense operators to the eigenbasis.
 For each operator, performs U' * op * U, where U contains the eigenvectors.
 
 # Arguments
-- `ops::Vector{DenseOperator}`: Operators in the original basis
-- `evecs::DenseOperator`: Eigenvector operator (unitary)
+
+  - `ops::Vector{DenseOperator}`: Operators in the original basis
+  - `evecs::DenseOperator`: Eigenvector operator (unitary)
 
 # Returns
-- `Vector{DenseOperator}`: Operators transformed to eigenbasis
+
+  - `Vector{DenseOperator}`: Operators transformed to eigenbasis
 """
 function _transform_to_eigenbasis(ops::Vector{DenseOperator}, evecs::DenseOperator)
     U = evecs.data
@@ -673,11 +803,13 @@ For each operator, performs U' * op * U block-by-block, where U contains the eig
 This is analogous to the dense transformation: evecs' * op * evecs.
 
 # Arguments
-- `ops::Vector{BlockDenseOperator}`: Operators in the original basis
-- `evecs::BlockDenseOperator`: Eigenvector operator (block-diagonal, each block is unitary)
+
+  - `ops::Vector{BlockDenseOperator}`: Operators in the original basis
+  - `evecs::BlockDenseOperator`: Eigenvector operator (block-diagonal, each block is unitary)
 
 # Returns
-- `Vector{BlockDenseOperator}`: Operators transformed to eigenbasis
+
+  - `Vector{BlockDenseOperator}`: Operators transformed to eigenbasis
 """
 function _transform_to_eigenbasis(ops::Vector{BlockDenseOperator}, evecs::BlockDenseOperator)
     transformed_ops = Vector{BlockDenseOperator}(undef, length(ops))
@@ -713,7 +845,7 @@ Calculate the partition function contribution from counter-term (unphysical) orb
 
 When n_flavors > n_flavors_physical, the extra orbitals are counter-terms with diagonal
 hopping (on-site energies). Their partition function contribution is:
-    Z = ∏_i (1 + exp(-β * E_i))
+Z = ∏_i (1 + exp(-β * E_i))
 
 Returns 1.0 if there are no counter-term orbitals.
 """

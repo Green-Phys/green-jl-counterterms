@@ -444,7 +444,7 @@ end
 Build BlockDense bare propagator on tau grid from eigenvalues.
 
 The propagator is diagonal in the eigenbasis:
-G[sector](τ) = diag(exp(-τ * (E - E_shift)))
+G[sector](%CF%84) = diag(exp(-τ * (E - E_shift)))
 
 No eigenvector transformation is needed since we work in the eigenbasis.
 """
@@ -742,17 +742,49 @@ function _gen_opts_bar(opts::Vector{BlockDenseOperator}, coeffs::Array{Float64, 
     opts_bar = Matrix{BlockDenseOperator}(undef, n_flavors, p)
     for o in 1:n_flavors
         for l in 1:p
-            # Start with zero operator (same structure as opts[1])
-            result = coeffs[l, 1, 1] * opts[1]  # Initialize with scaled first operator
-            result = result - result  # Set to zero (preserves structure)
-
+            # Find first non-zero coefficient to initialize result
+            # This avoids adding operators with incompatible occupancy ranges
+            first_nonzero_idx = 0
             if opt_type == :creation
                 for o_prime in 1:n_flavors
-                    result = result + coeffs[l, o_prime, o] * opts[o_prime]
+                    if coeffs[l, o_prime, o] != 0.0
+                        first_nonzero_idx = o_prime
+                        break
+                    end
                 end
             else
                 for o_prime in 1:n_flavors
-                    result = result + coeffs[l, o, o_prime] * opts[o_prime]
+                    if coeffs[l, o, o_prime] != 0.0
+                        first_nonzero_idx = o_prime
+                        break
+                    end
+                end
+            end
+
+            if first_nonzero_idx == 0
+                # All coefficients are zero, use this flavor's operator to preserve correct flux
+                result = 0.0 * opts[o]
+            else
+                # Initialize with the first non-zero term
+                if opt_type == :creation
+                    result = coeffs[l, first_nonzero_idx, o] * opts[first_nonzero_idx]
+                else
+                    result = coeffs[l, o, first_nonzero_idx] * opts[first_nonzero_idx]
+                end
+
+                # Add remaining non-zero terms
+                if opt_type == :creation
+                    for o_prime in (first_nonzero_idx + 1):n_flavors
+                        if coeffs[l, o_prime, o] != 0.0
+                            result = result + coeffs[l, o_prime, o] * opts[o_prime]
+                        end
+                    end
+                else
+                    for o_prime in (first_nonzero_idx + 1):n_flavors
+                        if coeffs[l, o, o_prime] != 0.0
+                            result = result + coeffs[l, o, o_prime] * opts[o_prime]
+                        end
+                    end
                 end
             end
             opts_bar[o, l] = result

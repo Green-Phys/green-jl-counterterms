@@ -82,15 +82,22 @@ end
     enumerate_possible_flux(::Type{QN_NSz}, max_order::Int)
 
 Enumerate all possible flux values for QN_NSz (particle number + spin).
-For expansion order N, both n and sz can range from -N to +N,
-but only combinations where |sz| <= |n| and (n + sz) is even are valid.
+For expansion order N with 2N operators, both n and sz can range from -2N to +2N.
+We include all combinations where (n + sz) is even (parity constraint from operators).
+
+Note: During intermediate steps of diagram evaluation, fluxes outside the final
+physical constraint |sz| <= |n| can occur. We must allocate buffers for all
+such intermediate fluxes to avoid KeyError during evaluation.
 """
 function enumerate_possible_flux(::Type{QN_NSz}, max_order::Int)
     fluxes = QN_NSz[]
-    for delta_n in (-max_order):max_order
-        for delta_sz in (-max_order):max_order
-            # Valid only if |delta_sz| <= |delta_n| and same parity
-            if abs(delta_sz) <= abs(delta_n) && (delta_n + delta_sz) % 2 == 0
+    # 2N operators means n and sz can each range from -2N to +2N
+    max_val = 2 * max_order
+    for delta_n in (-max_val):max_val
+        for delta_sz in (-max_val):max_val
+            # Only parity constraint: each operator contributes (±1, ±1)
+            # so (n + sz) must be even
+            if (delta_n + delta_sz) % 2 == 0
                 push!(fluxes, QN_NSz(delta_n, delta_sz))
             end
         end

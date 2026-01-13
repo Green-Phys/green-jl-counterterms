@@ -83,9 +83,14 @@ function build_hamiltonian_blockdense(
     # Extract nflavors from coulomb file
     max_flavor_coul = 0
     if !isempty(coulomb_lines)
-        # First line is nflavors
-        if length(coulomb_lines) >= 1
-            max_flavor_coul = parse(Int, coulomb_lines[1]) - 1  # Convert to 0-indexed max
+        # First line is the number of non-zero flavors, skip it
+        for line in coulomb_lines[2:end]
+            parts = split(line)
+            fl_i = parse(Int, parts[2])
+            fl_j = parse(Int, parts[3])
+            fl_k = parse(Int, parts[4])
+            fl_l = parse(Int, parts[5])
+            max_flavor_coul = max(max_flavor_coul, fl_i, fl_j, fl_k, fl_l)
         end
     end
 

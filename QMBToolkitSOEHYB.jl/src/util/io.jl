@@ -124,11 +124,12 @@ end
 
 Print the contents of a `SolverData` object.
 """
-function print_init_data(solver_data::SolverData)
+function print_init_data(solver_data::SolverData{T, Format}) where {T, Format}
     println()
     println("--- Model Data ---")
     println(" n_flavors: ", solver_data.model.n_flavors)
     println(" n_fock: ", solver_data.model.n_fock)
+    _print_sector_info(solver_data, Format)
     println(" n_flavors_physical: ", solver_data.model.n_flavors_physical)
     println(" # of SOE for hybridization function: ", length(solver_data.model.hyb.exponents))
     println(" E_shift applied to Hamiltonian: ", solver_data.model.E_shift)
@@ -136,6 +137,18 @@ function print_init_data(solver_data::SolverData)
     println("--- DLR Data ---")
     println(" # of DLR coefficients: ", solver_data.model.dlr_grid.size)
     println(" Maximum reconstruction error in bare propagator: ", solver_data.model.bare_propagator_err)
+end
+
+# Helper to print sector info for blockdense format
+_print_sector_info(::SolverData, ::Type{DenseFormat}) = nothing
+
+function _print_sector_info(solver_data::SolverData, ::Type{BlockDenseFormat})
+    basis = solver_data.model.format_data.eigenvalues.basis
+    sectors = basis.sectors
+    println(" n_sectors: ", length(sectors))
+    # Print sector dimensions in a compact format
+    dims = [s.dim for s in sectors]
+    println(" sector_dims: ", dims)
 end
 
 """

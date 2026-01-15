@@ -210,32 +210,22 @@ end
 # Interface Implementations
 =============================================================================#
 
-# DLR transformations - interface versions
-function tau2dlr(dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T}
-    tau2dlr_blockdense(dlr_grid, prop, tau_grid)
-end
-function tau2dlr!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
-        prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T}
-    tau2dlr_blockdense!(dest, dlr_grid, prop, tau_grid)
-end
-function dlr2tau(dlr_grid::DLRGrid, prop_dlr::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T}
-    dlr2tau_blockdense(dlr_grid, prop_dlr, tau_grid)
-end
+# DLR transformations - interface versions (dispatch to format-specific implementations)
+tau2dlr(dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T} = tau2dlr_blockdense(dlr_grid, prop, tau_grid)
+
+tau2dlr!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
+    prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T} = tau2dlr_blockdense!(dest, dlr_grid, prop, tau_grid)
+
+dlr2tau(dlr_grid::DLRGrid, prop_dlr::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T} = dlr2tau_blockdense(dlr_grid, prop_dlr, tau_grid)
 
 # Reflection (in-place only)
-function do_reflection_tau2tau!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
-        prop_tau::BlockDensePropagator{T}) where {T}
-    do_reflection_tau2tau_blockdense!(dest, dlr_grid, prop_tau)
-end
+do_reflection_tau2tau!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
+    prop_tau::BlockDensePropagator{T}) where {T} = do_reflection_tau2tau_blockdense!(dest, dlr_grid, prop_tau)
 
 # Extract at tau
-function extract_at_tau(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where {T}
-    extract_at_tau_blockdense(propagator, tau, dlr_grid)
-end
+extract_at_tau(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where {T} = extract_at_tau_blockdense(propagator, tau, dlr_grid)
 
 # Convolution
-function do_convolution_dlr2tau!(dest::BlockDensePropagator{T}, workspace::ConvolutionWorkspace{T},
-        dlr_grid::DLRGrid, kernel_cache::KernelCache,
-        F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where {T}
-    do_convolution_dlr2tau_blockdense!(dest, workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)
-end
+do_convolution_dlr2tau!(dest::BlockDensePropagator{T}, workspace::ConvolutionWorkspace{T},
+    dlr_grid::DLRGrid, kernel_cache::KernelCache,
+    F_dlr::BlockDensePropagator{T}, G_dlr::BlockDensePropagator{T}) where {T} = do_convolution_dlr2tau_blockdense!(dest, workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)

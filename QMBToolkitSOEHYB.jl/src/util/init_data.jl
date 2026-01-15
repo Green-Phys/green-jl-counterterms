@@ -409,14 +409,7 @@ _get_E_shift(eigenvalues::DenseDiagonalOperator) = minimum(eigenvalues.diag)
 Get the energy shift (minimum eigenvalue) from a BlockDenseDiagonalOperator.
 """
 function _get_E_shift(eigenvalues::BlockDenseDiagonalOperator)
-    min_eval = Inf
-    for (_, sector_evals) in eigenvalues.sector_diags
-        sector_min = minimum(sector_evals)
-        if sector_min < min_eval
-            min_eval = sector_min
-        end
-    end
-    return min_eval
+    minimum(minimum(sector_evals) for (_, sector_evals) in eigenvalues.sector_diags)
 end
 
 """

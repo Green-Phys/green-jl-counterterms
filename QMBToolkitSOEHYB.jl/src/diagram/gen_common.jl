@@ -122,27 +122,13 @@ v_small < v_large < u_small
 where pairs[i] = (u_large, v_large) and pairs[j] = (u_small, v_small) with i < j.
 """
 function count_pair_crossings(pairs::Vector{Tuple{Int, Int}})
-    crossings = 0
     n = length(pairs)
-    for i in 1:n
-        for j in (i + 1):n
-            # pairs[i] is the "outer" pair (larger start index)
-            # pairs[j] is the "inner" pair (smaller start index)
-            # We know pairs[i][1] > pairs[j][1] because the list is sorted by descending first element
-
-            v_large = pairs[i][2]
-            u_small = pairs[j][1]
-            v_small = pairs[j][2]
-
-            # Condition for crossing:
-            # The endpoint of the larger "arch" (v_large) falls inside
-            # the smaller "arch" (between v_small and u_small).
-            if v_small < v_large < u_small
-                crossings += 1
-            end
-        end
-    end
-    return crossings
+    # Count crossings: for each pair (i,j) with i<j, check if v_small < v_large < u_small
+    # pairs[i] is the "outer" pair (larger start index), pairs[j] is the "inner" pair
+    count(
+        pairs[j][2] < pairs[i][2] < pairs[j][1]
+    for i in 1:n for j in (i + 1):n
+    )
 end
 
 """

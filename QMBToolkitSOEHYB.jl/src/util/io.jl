@@ -10,11 +10,7 @@ If the path is absolute, return it as-is.
 If the path is relative, join it with the input file directory.
 """
 function resolve_path(path::String, input_file_dir::String)
-    if isabspath(path)
-        return path
-    else
-        return joinpath(input_file_dir, path)
-    end
+    isabspath(path) ? path : joinpath(input_file_dir, path)
 end
 
 """

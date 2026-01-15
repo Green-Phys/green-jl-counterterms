@@ -26,14 +26,20 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
 
     if diagram_type == :propagator_diagram && !solver_params.propagator.is_bold
         empty!(solver_data.calc.partition_function_by_order)
+        empty!(solver_data.calc.propagator_diagram_info)
 
         for order in 0:(solver_params.propagator.expansion_order)
+            cache = build_config_cache(order, solver_data.model.n_flavors,
+                solver_data.model.hyb.exponents, :propagator_diagram)
+            dims = config_dimensions(cache)
+            n_total = total_diagrams(cache)
+
             if rank == 0
-                cache = build_config_cache(order, solver_data.model.n_flavors,
-                    solver_data.model.hyb.exponents, :propagator_diagram)
-                dims = config_dimensions(cache)
-                println("Evaluating ", dims, " = ", total_diagrams(cache), " propagator diagrams at order ", order)
+                println("Evaluating ", dims, " = ", n_total, " propagator diagrams at order ", order)
             end
+
+            # Store diagram info: (n_topologies, n_directions, n_flavors_combo, n_exponents_combo, total)
+            push!(solver_data.calc.propagator_diagram_info, (dims..., n_total))
 
             eval_propagator_given_order!(solver_data, order, comm; batch_size = batch_size)
 
@@ -49,14 +55,20 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
     elseif diagram_type == :green_diagram && !solver_params.green.is_bold
         empty!(solver_data.calc.green_numerator_by_order)
         empty!(solver_data.calc.green_by_order)
+        empty!(solver_data.calc.green_diagram_info)
 
         for order in 1:(solver_params.green.expansion_order)
+            cache = build_config_cache(order, solver_data.model.n_flavors,
+                solver_data.model.hyb.exponents, :green_diagram; is_bold = false)
+            dims = config_dimensions(cache)
+            n_total = total_diagrams(cache)
+
             if rank == 0
-                cache = build_config_cache(order, solver_data.model.n_flavors,
-                    solver_data.model.hyb.exponents, :green_diagram; is_bold = false)
-                dims = config_dimensions(cache)
-                println("Evaluating ", dims, " = ", total_diagrams(cache), " Green's function diagrams at order ", order)
+                println("Evaluating ", dims, " = ", n_total, " Green's function diagrams at order ", order)
             end
+
+            # Store diagram info: (n_topologies, n_directions, n_flavors_combo, n_exponents_combo, total)
+            push!(solver_data.calc.green_diagram_info, (dims..., n_total))
 
             eval_green_given_order!(solver_data, order, solver_params.green.is_bold, comm;
                 batch_size = batch_size)

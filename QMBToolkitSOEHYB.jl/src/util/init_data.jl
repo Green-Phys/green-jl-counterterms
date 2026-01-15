@@ -235,7 +235,9 @@ function init_solver_data(model_data::ModelData{T, Format,
         Vector{DensePropagator{T}}(),  # green numerator by order
         Vector{DensePropagator{T}}(),  # green by order
         zeros(DensePropagator{T}, 0, n_phys, n_phys),  # green_linear_grid
-        Float64[]  # tau_linear_grid
+        Float64[],  # tau_linear_grid
+        NTuple{5, Int}[],  # propagator_diagram_info
+        NTuple{5, Int}[]   # green_diagram_info
     )
     return SolverData(model_data, calculation_data)
 end

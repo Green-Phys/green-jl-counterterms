@@ -210,6 +210,18 @@ function save_data(
                                        calc_data.partition_function_by_order[end] /
                                        model_data.Z_counterterms
         calc_group["partition_function_corrected"] = partition_function_corrected
+
+        # Save diagram count information
+        # Format: each row is [n_topologies, n_directions, n_flavors_combo, n_exponents_combo, total]
+        diagram_group = create_group(file, "diagram_info")
+        if !isempty(calc_data.propagator_diagram_info)
+            propagator_info = collect(reduce(hcat, [[t...] for t in calc_data.propagator_diagram_info])')
+            diagram_group["propagator_by_order"] = propagator_info
+        end
+        if !isempty(calc_data.green_diagram_info)
+            green_info = collect(reduce(hcat, [[t...] for t in calc_data.green_diagram_info])')
+            diagram_group["green_by_order"] = green_info
+        end
     end
 end
 

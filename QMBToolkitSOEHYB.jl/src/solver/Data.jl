@@ -171,6 +171,11 @@ mutable struct CalculationData{
     green_by_order::Vector{DensePropagator{T}}
     green_linear_grid::DensePropagator{T}
     tau_linear_grid::Vector{Float64}
+
+    # Diagram count information: (n_topologies, n_directions, n_flavors_combo, n_exponents_combo, total)
+    # Index corresponds to expansion order (propagator: 0-based stored at index order+1, green: 1-based)
+    propagator_diagram_info::Vector{NTuple{5, Int}}
+    green_diagram_info::Vector{NTuple{5, Int}}
 end
 
 #=============================================================================

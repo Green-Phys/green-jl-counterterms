@@ -212,16 +212,14 @@ function save_data(
         calc_group["partition_function_corrected"] = partition_function_corrected
 
         # Save diagram count information
-        # Format: each row is [n_topologies, n_directions, n_flavors_combo, n_exponents_combo, total]
+        # Format: each column is [n_topologies, n_directions, n_flavors_combo, n_exponents_combo, total]
         # Note: HDF5 uses row-major (C) order, so we don't transpose to get {n_orders, 5} in HDF5
         diagram_group = create_group(file, "diagram_info")
         if !isempty(calc_data.propagator_diagram_info)
-            propagator_info = reduce(hcat, [[t...] for t in calc_data.propagator_diagram_info])
-            diagram_group["propagator_by_order"] = propagator_info
+            diagram_group["propagator_by_order"] = stack([[t...] for t in calc_data.propagator_diagram_info])
         end
         if !isempty(calc_data.green_diagram_info)
-            green_info = reduce(hcat, [[t...] for t in calc_data.green_diagram_info])
-            diagram_group["green_by_order"] = green_info
+            diagram_group["green_by_order"] = stack([[t...] for t in calc_data.green_diagram_info])
         end
     end
 end

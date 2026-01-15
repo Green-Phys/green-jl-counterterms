@@ -6,7 +6,7 @@ using MPI
 # - src/format/blockdense/propagator.jl
 
 """
-    eval_green_given_order!(solver_data, order, is_bold, comm; batch_size=100000)
+    eval_green_given_order!(solver_data, cache, is_bold, comm; batch_size=100000)
 
 Evaluate all Green's function diagrams at a given order using batched generation.
 
@@ -15,7 +15,7 @@ Memory-efficient version that generates and evaluates diagrams in batches.
 # Arguments
 
   - `solver_data::SolverData{T, Format}`: Solver data containing model and calculation results
-  - `order::Int`: Expansion order
+  - `cache::DiagramConfigCache`: Pre-built configuration cache for this order
   - `is_bold::Bool`: Whether to use bold expansion
   - `comm::MPI.Comm`: MPI communicator for parallel evaluation
   - `batch_size::Int`: Number of diagrams per batch (default: 100000)
@@ -31,14 +31,10 @@ Memory-efficient version that generates and evaluates diagrams in batches.
   - Results are summed across all ranks using MPI.Allreduce
 """
 function eval_green_given_order!(
-        solver_data::SolverData{T, Format}, order::Int, is_bold::Bool,
+        solver_data::SolverData{T, Format}, cache::DiagramConfigCache, is_bold::Bool,
         comm::MPI.Comm; batch_size::Int = 100000) where {T <: Number, Format <: HilbertSpaceFormat}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
-
-    # Build configuration cache (cheap - only stores configs, not diagrams)
-    cache = build_config_cache(order, solver_data.model.n_flavors,
-        solver_data.model.hyb.exponents, :green_diagram; is_bold = is_bold)
 
     propagator = is_bold ? get_propagator(solver_data.calc).vals :
                  get_bare_propagator(solver_data.model).vals
@@ -49,7 +45,7 @@ function eval_green_given_order!(
     local_result = zeros_like(solver_data.calc.green.vals)
 
     # Allocate evaluation buffers once
-    buffers = allocate_green_buffers(solver_data, order)
+    buffers = allocate_green_buffers(solver_data, cache.order)
 
     # Create batch iterator for this rank's portion
     iter = batch_iterator(cache, batch_size, rank, nprocs)

@@ -41,7 +41,7 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
             # Store diagram info: (n_topologies, n_directions, n_flavors_combo, n_exponents_combo, total)
             push!(solver_data.calc.propagator_diagram_info, (dims..., n_total))
 
-            eval_propagator_given_order!(solver_data, order, comm; batch_size = batch_size)
+            eval_propagator_given_order!(solver_data, cache, comm; batch_size = batch_size)
 
             propagator_at_beta = extract_at_tau(
                 propagator.vals, solver_data.model.beta, solver_data.model.dlr_grid)
@@ -70,7 +70,7 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
             # Store diagram info: (n_topologies, n_directions, n_flavors_combo, n_exponents_combo, total)
             push!(solver_data.calc.green_diagram_info, (dims..., n_total))
 
-            eval_green_given_order!(solver_data, order, solver_params.green.is_bold, comm;
+            eval_green_given_order!(solver_data, cache, solver_params.green.is_bold, comm;
                 batch_size = batch_size)
 
             push!(solver_data.calc.green_numerator_by_order,

@@ -2,7 +2,7 @@
 using MPI
 
 """
-    eval_propagator_given_order!(solver_data, order, comm; batch_size=100000)
+    eval_propagator_given_order!(solver_data, cache, comm; batch_size=100000)
 
 Evaluate all propagator diagrams at a given order using batched generation.
 
@@ -12,7 +12,7 @@ avoiding storing all diagrams in memory simultaneously.
 # Arguments
 
   - `solver_data::SolverData{T, Format}`: Solver data containing model and calculation results
-  - `order::Int`: Expansion order
+  - `cache::DiagramConfigCache`: Pre-built configuration cache for this order
   - `comm::MPI.Comm`: MPI communicator for parallel evaluation
   - `batch_size::Int`: Number of diagrams per batch (default: 100000)
 
@@ -27,20 +27,16 @@ avoiding storing all diagrams in memory simultaneously.
   - Results are summed across all ranks using MPI.Allreduce
 """
 function eval_propagator_given_order!(
-        solver_data::SolverData{T, Format}, order::Int,
+        solver_data::SolverData{T, Format}, cache::DiagramConfigCache,
         comm::MPI.Comm; batch_size::Int = 100000) where {T <: Number, Format <: HilbertSpaceFormat}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
-
-    # Build configuration cache (cheap - only stores configs, not diagrams)
-    cache = build_config_cache(order, solver_data.model.n_flavors,
-        solver_data.model.hyb.exponents, :propagator_diagram)
 
     propagator = get_propagator(solver_data.calc)
     local_result = zeros_like(propagator.vals)
 
     # Allocate evaluation buffers once
-    buffers = allocate_propagator_buffers(solver_data, order)
+    buffers = allocate_propagator_buffers(solver_data, cache.order)
 
     # Create batch iterator for this rank's portion
     iter = batch_iterator(cache, batch_size, rank, nprocs)

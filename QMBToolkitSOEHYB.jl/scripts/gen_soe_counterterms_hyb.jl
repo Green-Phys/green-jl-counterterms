@@ -162,6 +162,69 @@ function _obtain_hyb(poles, weights; svdtol = 1e-7)
     return real.(counterterms_energy), real.(counterterms_hyb)
 end
 
+function _obtain_hyb_general(poles, weights; svdtol = 1e-7, separate_spins = false)
+    # Wrapper for _obtain_hyb that handles separate_spins option
+    # When separate_spins=true, process spin-up and spin-down separately and interleave results
+    # Input format when separate_spins=true:
+    #   poles: [up_1, dn_1, up_2, dn_2, ...] (alternating)
+    #   weights: block-diagonal with spin-up at odd indices, spin-down at even indices
+    # Output format when separate_spins=true:
+    #   counterterms_energy: [up_1, dn_1, up_2, dn_2, ...] (alternating)
+    #   counterterms_hyb: coupling vectors with spin structure preserved
+
+    if !separate_spins
+        return _obtain_hyb(poles, weights; svdtol = svdtol)
+    end
+
+    n_flavors = size(weights, 2)
+    n_poles = length(poles)
+
+    if n_poles == 0
+        return Float64[], Array{Float64, 2}(undef, 0, n_flavors)
+    end
+
+    # Extract spin-up and spin-down poles/weights
+    # Spin-up: odd indices (1, 3, 5, ...)
+    # Spin-down: even indices (2, 4, 6, ...)
+    up_indices = 1:2:n_poles
+    dn_indices = 2:2:n_poles
+    flavor_indices_up = collect(1:2:n_flavors)
+    flavor_indices_dn = collect(2:2:n_flavors)
+
+    poles_up = poles[up_indices]
+    poles_dn = poles[dn_indices]
+    # Extract the spin-up block (only the spin-up flavors)
+    weights_up = weights[up_indices, flavor_indices_up, flavor_indices_up]
+    weights_dn = weights[dn_indices, flavor_indices_dn, flavor_indices_dn]
+
+    # Process each spin sector separately
+    energy_up, hyb_up = _obtain_hyb(poles_up, weights_up; svdtol = svdtol)
+    energy_dn, hyb_dn = _obtain_hyb(poles_dn, weights_dn; svdtol = svdtol)
+
+    @assert length(energy_up) == length(energy_dn) "Spin up and spin down must have the same number of bath orbitals"
+
+    n_bath = length(energy_up)
+    if n_bath == 0
+        return Float64[], Array{Float64, 2}(undef, 0, n_flavors)
+    end
+
+    # Interleave results: [up_1, dn_1, up_2, dn_2, ...]
+    counterterms_energy = zeros(Float64, 2 * n_bath)
+    counterterms_hyb = zeros(Float64, 2 * n_bath, n_flavors)
+
+    for i in 1:n_bath
+        # Spin-up bath orbital at odd index
+        counterterms_energy[2*i - 1] = energy_up[i]
+        counterterms_hyb[2*i - 1, flavor_indices_up] = hyb_up[i, :]
+
+        # Spin-down bath orbital at even index
+        counterterms_energy[2*i] = energy_dn[i]
+        counterterms_hyb[2*i, flavor_indices_dn] = hyb_dn[i, :]
+    end
+
+    return counterterms_energy, counterterms_hyb
+end
+
 function _kernel_tau(tau, omega, beta)
     tau=Float64(tau)
     omega=Float64(omega)
@@ -269,7 +332,7 @@ function parse_commandline()
         help = "Number of SOE terms for counterterms"
         arg_type = Int
         required = true
-        "--soe_subroutine_hybridization"
+        "--soe_subroutine_hyb"
         help = "Type of SOE subroutine for hybridization: 'ESPRIT' or 'ADAPOL'"
         arg_type = String
         required = true
@@ -297,6 +360,10 @@ function parse_commandline()
         help = "Initial DLR Euv parameter for reading hybridization from file (only used if hyb_type='from_seet')"
         arg_type = Float64
         default = 2.0
+        "--separate_spins"
+        help = "Whether to fit spin up and spin down separately (only supported for ESPRIT)"
+        arg_type = Bool
+        default = false
     end
     return parse_args(s)
 end
@@ -304,13 +371,22 @@ end
 
 function print_input(args)
     println("--- Input parameters ---")
+    @printf("Beta: %.6f\n", args["beta"])
     @printf("Number of spin flavors for impurity: %d\n", args["n_spin_impurity"])
     @printf("Number of orbitals for impurity: %d\n", args["n_orbital_impurity"])
+    @printf("Number of tau points: %d\n", args["n_tau"])
+    @printf("Number of Matsubara frequencies: %d\n", args["n_matsubara"])
     @printf("Type of hybridization function: %s\n", args["hyb_type"])
     @printf("Hopping file to be modified: %s\n", args["hopping_file"])
     @printf("SOE subroutine for counterterms: %s\n", args["soe_subroutine_counterterms"])
-    @printf("SOE subroutine for hybridization: %s\n", args["soe_subroutine_hybridization"])
+    @printf("Number of SOE terms for counterterms: %d\n", args["n_soe_counterterms"])
+    @printf("DLR epsilon for counterterms: %.6e\n", args["dlr_eps_counterterms"])
+    @printf("SOE subroutine for hybridization: %s\n", args["soe_subroutine_hyb"])
+    @printf("Number of SOE terms for hybridization: %d\n", args["n_soe_hybridization"])
+    @printf("DLR epsilon for hybridization: %.6e\n", args["dlr_eps_hybridization"])
     @printf("Output directory: %s\n", args["output_dir"])
+    @printf("Do subtraction trick: %s\n", args["do_subtraction_trick"])
+    @printf("Separate spins: %s\n", args["separate_spins"])
     @printf("Prefactor for off-diagonal elements: %f\n", args["off_diagonal_prefactor"])
     if args["hyb_file"] != ""
         @printf("Hybridization file: %s\n", args["hyb_file"])
@@ -432,20 +508,62 @@ function _clean_small_values!(arr::AbstractArray{<:Complex}, tol::Float64 = 1e-1
     return arr
 end
 
-function gen_soe(beta::Float64, G_data::GData, soe_subroutine::String, n_soe::Int, dlr_eps::Float64)
+function gen_soe(beta::Float64, G_data::GData, soe_subroutine::String, n_soe::Int, dlr_eps::Float64; separate_spins::Bool = false)
     if n_soe == 0
         return Float64[], Array{Float64, 3}(undef, 0, size(G_data.G_tau, 2), size(G_data.G_tau, 3)), maximum(abs.(G_data.G_tau))
     end
     if soe_subroutine == "ESPRIT"
-        solution = solve(G_data.G_tau, G_data.tau_grid, ESPRIT(M = n_soe), LeastSquaresEquilibration(), is_Euclidian_Fermi = true)
-        poles = -1.0*solution.s
-        weights = solution.R
-        error = _inf_error(G_data.G_tau, _reconstruct_green(poles, weights, G_data.tau_grid, beta))
+        if !separate_spins
+            solution = solve(G_data.G_tau, G_data.tau_grid, ESPRIT(M = n_soe), LeastSquaresEquilibration(), is_Euclidian_Fermi = true)
+            poles = -1.0*solution.s
+            weights = solution.R
+            error = _inf_error(G_data.G_tau, _reconstruct_green(poles, weights, G_data.tau_grid, beta))
+        else
+            n_flavors = size(G_data.G_tau, 2)
+            poles_list = []
+            weights_list = []
+            max_error = 0.0
+            for s in 1:2
+                flavor_indices = collect(s:2:n_flavors)
+                G_tau_spin = G_data.G_tau[:, flavor_indices, flavor_indices]
+                solution = solve(G_tau_spin, G_data.tau_grid, ESPRIT(M = n_soe), LeastSquaresEquilibration(), is_Euclidian_Fermi = true)
+                poles_s = -1.0*solution.s
+                weights_s = solution.R
+                error_s = _inf_error(G_tau_spin, _reconstruct_green(poles_s, weights_s, G_data.tau_grid, beta))
+                max_error = max(max_error, error_s)
+                push!(poles_list, poles_s)
+                push!(weights_list, weights_s)
+            end
+            # restore the order, spin runs faster
+            @assert length(poles_list[1]) == length(poles_list[2]) "Spin up and spin down must have the same number of poles"
+            flavor_indices_up = collect(1:2:n_flavors)
+            flavor_indices_dn = collect(2:2:n_flavors)
+            n_poles_per_spin = length(poles_list[1])
+            n_total_poles = 2 * n_poles_per_spin
+            poles = zeros(Float64, n_total_poles)
+            weights = zeros(Float64, n_total_poles, n_flavors, n_flavors)
+            # Interleave: [up_1, dn_1, up_2, dn_2, ...]
+            for i in 1:n_poles_per_spin
+                # Spin-up at odd index
+                poles[2*i - 1] = poles_list[1][i]
+                weights[2*i - 1, flavor_indices_up, flavor_indices_up] = weights_list[1][i, :, :]
+                # Spin-down at even index
+                poles[2*i] = poles_list[2][i]
+                weights[2*i, flavor_indices_dn, flavor_indices_dn] = weights_list[2][i, :, :]
+            end
+            error = max_error
+        end
     elseif soe_subroutine == "ADAPOL"
+        if separate_spins
+            error("separate_spins is not yet implemented for ADAPOL")
+        end
         poles, weights, _ = apapol_fitting(G_data.G_iwn, G_data.wn_grid, Ns = n_soe)
         weights = real.(-1.0 * weights)
         error = _inf_error(G_data.G_tau, _reconstruct_green(poles, weights, G_data.tau_grid, beta))
     elseif soe_subroutine == "DLR"
+        if separate_spins
+            error("separate_spins is not yet implemented for DLR")
+        end
         dlr = DLRGrid(2.0, beta, dlr_eps, true)
         G_dlr = tau2dlr(dlr, G_data.G_tau, G_data.tau_grid)
         poles = dlr.ω
@@ -499,13 +617,13 @@ function main()
     args = parse_commandline()
     print_input(args)
     G_data = gen_hyb(args["n_tau"], args["n_matsubara"], args["beta"], args["n_spin_impurity"], args["n_orbital_impurity"], args["hyb_type"], off_diagonal_prefactor = args["off_diagonal_prefactor"], file_name = args["hyb_file"], init_dlr_euv = args["init_dlr_euv"])
-    poles, weights, error = gen_soe(args["beta"], G_data, args["soe_subroutine_counterterms"], args["n_soe_counterterms"], args["dlr_eps_counterterms"])
+    poles, weights, error = gen_soe(args["beta"], G_data, args["soe_subroutine_counterterms"], args["n_soe_counterterms"], args["dlr_eps_counterterms"], separate_spins = args["separate_spins"])
     println("--- Counterterms SOE ---")
     println("Max hybridization: ", maximum(abs.(G_data.G_tau)))
     println("# of SOE terms: ", length(poles))
     println("SOE inf-norm error: ", @sprintf("%.6e", error))
     println("--- Obtaining counterterms ---")
-    counterterms_energy, counterterms_hyb = _obtain_hyb(poles, weights)
+    counterterms_energy, counterterms_hyb = _obtain_hyb_general(poles, weights, separate_spins = args["separate_spins"])
     # Clean up very small numerical noise in counterterms_hyb
     _clean_small_values!(counterterms_hyb)
     println("Shape of counterterms_energy: ", size(counterterms_energy))
@@ -519,17 +637,18 @@ function main()
     println("--- Remaining hybridziation SOE ---")
     remaining_G_data = gen_remaining_hyb(G_data.tau_grid, G_data.G_tau, counterterms_contribution, args["n_matsubara"], args["beta"])
     if !args["do_subtraction_trick"]
-        poles_remain, weights_remain, error_remain = gen_soe(args["beta"], remaining_G_data, args["soe_subroutine_hybridization"], args["n_soe_hybridization"], args["dlr_eps_hybridization"])
+        poles_remain, weights_remain, error_remain = gen_soe(args["beta"], remaining_G_data, args["soe_subroutine_hyb"], args["n_soe_hybridization"], args["dlr_eps_hybridization"], separate_spins = false)
     else
         if args["dlr_eps_hybridization"]>=args["dlr_eps_counterterms"] || args["n_soe_hybridization"]<=args["n_soe_counterterms"]
             error("For subtraction trick, dlr_eps_hybridization must be smaller than dlr_eps_counterterms and n_soe_hybridization must be larger than n_soe_counterterms")
         end
         println("Using subtraction trick for remaining hybridization SOE fitting...")
-        poles_precise, weights_precise, error_precise = gen_soe(args["beta"], G_data, args["soe_subroutine_hybridization"], args["n_soe_hybridization"], args["dlr_eps_hybridization"])
+        poles_original, weights_original, error_original = gen_soe(args["beta"], G_data, args["soe_subroutine_counterterms"], args["n_soe_counterterms"], args["dlr_eps_counterterms"], separate_spins = false)
+        poles_precise, weights_precise, error_precise = gen_soe(args["beta"], G_data, args["soe_subroutine_hyb"], args["n_soe_hybridization"], args["dlr_eps_hybridization"], separate_spins = false)
         # Now the remaining hybridization is the difference between the two SOE fits
         println("The number of precise SOE terms: ", length(poles_precise))
-        poles_remain = vcat(poles_precise, poles)
-        weights_remain = vcat(weights_precise, -1.0*weights)
+        poles_remain = vcat(poles_precise, poles_original)
+        weights_remain = vcat(weights_precise, -1.0*weights_original)
         error_remain = _inf_error(remaining_G_data.G_tau, _reconstruct_green(poles_remain, weights_remain, remaining_G_data.tau_grid, args["beta"]))
     end
     println("Max remain hybridization: ", maximum(abs.(remaining_G_data.G_tau)))

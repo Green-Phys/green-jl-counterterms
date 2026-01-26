@@ -26,7 +26,7 @@ n_soe_hybridization=7
 do_subtraction_trick=true
 
 # Extract the exponent from dlr_eps_hybridization (e.g., 1e-12 -> 12)
-dlr_eps_hyb_exp=$(echo $dlr_eps_hybridization | sed 's/1e-//')
+# dlr_eps_hyb_exp=$(echo $dlr_eps_hybridization | sed 's/1e-//')
 
 # output_dir="../examples/spinless_semicircular/beta${beta}/ESPRIT${n_soe_counterterms}_DLR-${dlr_eps_hyb_exp}"
 n_soe_total=$((n_soe_hybridization + n_soe_counterterms))

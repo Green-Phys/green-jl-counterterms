@@ -404,7 +404,7 @@ function gen_hyb(n_tau::Int, n_matsubara::Int, beta::Float64, n_spin_impurity::I
         dlr = matfreq2dlr(dlrGrid::DLRGrid, delta_iw, matsubara_indices)
         G_tau_tensor = dlr2tau(dlrGrid, dlr, tau_grid)
         G_iwn_tensor = dlr2matfreq(dlrGrid, dlr, n_grid)
-        return GData(G_tau_tensor, tau_grid, G_iwn_tensor, wn_grid)
+        return GData(real(G_tau_tensor), tau_grid, G_iwn_tensor, wn_grid)
     else
         error("Unsupported hybridization type: $hyb_type")
     end

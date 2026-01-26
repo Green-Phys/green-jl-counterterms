@@ -2,6 +2,7 @@ using ArgParse
 using Printf
 using LinearAlgebra
 using DelimitedFiles
+using HDF5
 
 using PyCall
 println("Python version info (to use adapol library):")
@@ -288,6 +289,14 @@ function parse_commandline()
         help = "Prefactor for off-diagonal elements of hybridization function"
         arg_type = Float64
         default = 0.0
+        "--hyb_file"
+        help = "Path to HDF5 file containing hybridization function (required for hyb_type='from_seet')"
+        arg_type = String
+        default = ""
+        "--init_dlr_euv"
+        help = "Initial DLR Euv parameter for reading hybridization from file (only used if hyb_type='from_seet')"
+        arg_type = Float64
+        default = 2.0
     end
     return parse_args(s)
 end
@@ -303,6 +312,10 @@ function print_input(args)
     @printf("SOE subroutine for hybridization: %s\n", args["soe_subroutine_hybridization"])
     @printf("Output directory: %s\n", args["output_dir"])
     @printf("Prefactor for off-diagonal elements: %f\n", args["off_diagonal_prefactor"])
+    if args["hyb_file"] != ""
+        @printf("Hybridization file: %s\n", args["hyb_file"])
+        @printf("Initial DLR Euv: %f\n", args["init_dlr_euv"])
+    end
 end
 
 struct GData
@@ -312,42 +325,89 @@ struct GData
     wn_grid::Vector{Float64}
 end
 
-function gen_hyb(n_tau::Int, n_matsubara::Int, beta::Float64, n_spin_impurity::Int, n_orbital_impurity::Int, hyb_type::String; off_diagonal_prefactor::Float64 = 0.0)
+function _from_spin_orbital_to_flavor(f_so)
+    # Assuming f_so has shape (n, n_spin, n_orb, n_orb)
+    n, n_spin, n_orb, _ = size(f_so)
+    n_flavor = n_spin * n_orb
+
+    f = zeros(ComplexF64, n, n_flavor, n_flavor)
+
+    # spin runs faster
+    for spin in 1:n_spin
+        for orb1 in 1:n_orb
+            for orb2 in 1:n_orb
+                flavor1 = n_spin * (orb1 - 1) + spin
+                flavor2 = n_spin * (orb2 - 1) + spin
+                f[:, flavor1, flavor2] = f_so[:, spin, orb1, orb2]
+            end
+        end
+    end
+
+    return f
+end
+
+function _freq_to_matsubara_index(freq, β)
+    return @. round(Int, (freq * β / π - 1) / 2)
+end
+
+function _read_delta_iw_from_seet(filename, beta)
+    h5open(filename, "r") do f
+        freq = read(f, "freq")
+        # Reverse dimensions to match Python convention: (n_freq, n_spin, n_orb, n_orb)
+        delta_iw_in = permutedims(read(f, "Delta/data_in"), (4, 3, 2, 1))
+        delta_iw = _from_spin_orbital_to_flavor(delta_iw_in)
+        matsubara_indices = _freq_to_matsubara_index(freq, beta)
+        return matsubara_indices, delta_iw
+    end
+end
+
+
+function gen_hyb(n_tau::Int, n_matsubara::Int, beta::Float64, n_spin_impurity::Int, n_orbital_impurity::Int, hyb_type::String; off_diagonal_prefactor::Float64 = 0.0, file_name::String = "", init_dlr_euv::Float64 = 2.0)
     tau_grid = collect(LinRange(0.0, beta, n_tau))
     n_grid = collect(0:n_matsubara)
     wn_grid = pi / beta * (2.0 .* n_grid .+ 1.0)
     if hyb_type == "SemiCircular"
-        dlr = DLRGrid(2.0, beta, 1e-14, true)
-        G_tau = -1 * 2/pi * Sample.SemiCircle(dlr, :τ, tau_grid)
-        G_iwn = -1 * 2/pi * Sample.SemiCircle(dlr, :n, n_grid)
-    else
-        error("Unsupported hybridization type: $hyb_type")
-    end
-    n_flavors = n_spin_impurity * n_orbital_impurity
-    G_tau_tensor = zeros(Float64, n_tau, n_flavors, n_flavors)
-    G_iwn_tensor = zeros(ComplexF64, n_matsubara+1, n_flavors, n_flavors)
-    # Construct the G_tau and G_iwn tensors of shape (n_tau, n_falvors, n_flavors) and (n_matsubara, n_falvors, n_flavors), only diagonal elements are non-zero
-    # off-diagonal elements are multiplied by off_diagonal_prefactor  for the same spin flavors, 0 otherwise
-    #         upindex = (o - 1) * n_spin_impurity + 1
-    #        downindex = (o - 1) * n_spin_impurity + 2
-    for o1 in 1:n_orbital_impurity
-        for s1 in 1:n_spin_impurity
-            index1 = (o1 - 1) * n_spin_impurity + s1
-            for o2 in 1:n_orbital_impurity
-                for s2 in 1:n_spin_impurity
-                    index2 = (o2 - 1) * n_spin_impurity + s2
-                    if index1 == index2
-                        G_tau_tensor[:, index1, index2] = G_tau
-                        G_iwn_tensor[:, index1, index2] = G_iwn
-                    elseif s1 == s2
-                        G_tau_tensor[:, index1, index2] = off_diagonal_prefactor * G_tau
-                        G_iwn_tensor[:, index1, index2] = off_diagonal_prefactor * G_iwn
+        dlrGrid = DLRGrid(2.0, beta, 1e-14, true)
+        G_tau = -1 * 2/pi * Sample.SemiCircle(dlrGrid, :τ, tau_grid)
+        G_iwn = -1 * 2/pi * Sample.SemiCircle(dlrGrid, :n, n_grid)
+        n_flavors = n_spin_impurity * n_orbital_impurity
+        G_tau_tensor = zeros(Float64, n_tau, n_flavors, n_flavors)
+        G_iwn_tensor = zeros(ComplexF64, n_matsubara+1, n_flavors, n_flavors)
+        # Construct the G_tau and G_iwn tensors of shape (n_tau, n_falvors, n_flavors) and (n_matsubara, n_falvors, n_flavors), only diagonal elements are non-zero
+        # off-diagonal elements are multiplied by off_diagonal_prefactor  for the same spin flavors, 0 otherwise
+        #         upindex = (o - 1) * n_spin_impurity + 1
+        #        downindex = (o - 1) * n_spin_impurity + 2
+        for o1 in 1:n_orbital_impurity
+            for s1 in 1:n_spin_impurity
+                index1 = (o1 - 1) * n_spin_impurity + s1
+                for o2 in 1:n_orbital_impurity
+                    for s2 in 1:n_spin_impurity
+                        index2 = (o2 - 1) * n_spin_impurity + s2
+                        if index1 == index2
+                            G_tau_tensor[:, index1, index2] = G_tau
+                            G_iwn_tensor[:, index1, index2] = G_iwn
+                        elseif s1 == s2
+                            G_tau_tensor[:, index1, index2] = off_diagonal_prefactor * G_tau
+                            G_iwn_tensor[:, index1, index2] = off_diagonal_prefactor * G_iwn
+                        end
                     end
                 end
             end
         end
+        return GData(G_tau_tensor, tau_grid, G_iwn_tensor, wn_grid)
+    elseif hyb_type == "from_seet" && file_name != ""
+        matsubara_indices, delta_iw = _read_delta_iw_from_seet(file_name, beta)
+        n_flavors_expected = n_spin_impurity * n_orbital_impurity
+        n_flavors_read = size(delta_iw, 2)
+        @assert n_flavors_read == n_flavors_expected "Dimension mismatch: n_spin_impurity * n_orbital_impurity = $n_flavors_expected but delta_iw has $n_flavors_read flavors"
+        dlrGrid = DLRGrid(init_dlr_euv, beta, 1e-14, true)
+        dlr = matfreq2dlr(dlrGrid::DLRGrid, delta_iw, matsubara_indices)
+        G_tau_tensor = dlr2tau(dlrGrid, dlr, tau_grid)
+        G_iwn_tensor = dlr2matfreq(dlrGrid, dlr, n_grid)
+        return GData(G_tau_tensor, tau_grid, G_iwn_tensor, wn_grid)
+    else
+        error("Unsupported hybridization type: $hyb_type")
     end
-    return GData(G_tau_tensor, tau_grid, G_iwn_tensor, wn_grid)
 end
 
 """
@@ -438,7 +498,7 @@ function main()
     println("=== Generating SOE for counterterms and hybridization function ===")
     args = parse_commandline()
     print_input(args)
-    G_data = gen_hyb(args["n_tau"], args["n_matsubara"], args["beta"], args["n_spin_impurity"], args["n_orbital_impurity"], args["hyb_type"], off_diagonal_prefactor = args["off_diagonal_prefactor"])
+    G_data = gen_hyb(args["n_tau"], args["n_matsubara"], args["beta"], args["n_spin_impurity"], args["n_orbital_impurity"], args["hyb_type"], off_diagonal_prefactor = args["off_diagonal_prefactor"], file_name = args["hyb_file"], init_dlr_euv = args["init_dlr_euv"])
     poles, weights, error = gen_soe(args["beta"], G_data, args["soe_subroutine_counterterms"], args["n_soe_counterterms"], args["dlr_eps_counterterms"])
     println("--- Counterterms SOE ---")
     println("Max hybridization: ", maximum(abs.(G_data.G_tau)))

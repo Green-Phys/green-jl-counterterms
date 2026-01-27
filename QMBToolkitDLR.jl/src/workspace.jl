@@ -35,6 +35,13 @@ Supports non-square matrix convolutions: F (d1 × d2 × r) * G (d2 × d3 × r) -
 - `term1_result`: Result buffer for term1 * G (d1 × d3)
 - `term2_result`: Result buffer for F * term2 (d1 × d3)
 - `temp_FG`: Temporary buffer for F[j] * G[j] matrix multiplication (d1 × d3)
+- `H1_tau`: Buffer for first tau-space term (d1 × d3 × n_tau)
+- `H2_tau`: Buffer for second tau-space term (d1 × d3 × n_tau)
+- `H_tau`: Buffer for final result (d1 × d3 × n_tau)
+- `dlr_workspace`: Workspace for in-place DLR transformations
+- `view_dlr_buffer1`, `view_dlr_buffer2`: Contiguous linear buffers for view-path DLR data
+- `view_tau_buffer1`, `view_tau_buffer2`, `view_tau_result`: Contiguous linear buffers for view-path tau data
+- `τ_reflected`: Pre-computed β - τ for reflection operations (avoids allocation in hot loops)
 """
 struct ConvolutionWorkspace{T<:Number}
     H1_dlr::Array{T,3}
@@ -44,48 +51,62 @@ struct ConvolutionWorkspace{T<:Number}
     term1_result::Array{T,2}
     term2_result::Array{T,2}
     temp_FG::Array{T,2}
+    # Fields for in-place tau transforms (direct path)
+    H1_tau::Array{T,3}
+    H2_tau::Array{T,3}
+    H_tau::Array{T,3}
+    dlr_workspace::DLRWorkspace{T}
+    # Contiguous linear buffers for view-path (avoid allocations when dimensions vary)
+    view_dlr_buffer1::Vector{T}
+    view_dlr_buffer2::Vector{T}
+    view_tau_buffer1::Vector{T}
+    view_tau_buffer2::Vector{T}
+    view_tau_result::Vector{T}
+    # Pre-computed reflected tau grid for reflection operations
+    τ_reflected::Vector{Float64}
 end
 
 """
-    ConvolutionWorkspace(r::Int, o1::Int, o2::Int, n_tau::Int)
+    ConvolutionWorkspace(dlr_grid::DLRGrid, o1::Int, o2::Int)
 
 Create a workspace for square matrix convolution operations (defaults to Float64).
 Layout: (dim1, dim2, r) for contiguous BLAS access.
 For F (o1 × o2 × r) * G (o2 × o2 × r) -> H (o1 × o2 × n_tau).
 
 # Arguments
-- `r`: DLR rank (number of DLR coefficients)
+- `dlr_grid`: DLR grid (provides r, n_tau, and τ for reflection)
 - `o1`: First orbital dimension
 - `o2`: Second orbital dimension (same as intermediate and output dimension)
-- `n_tau`: Number of tau grid points
 """
-function ConvolutionWorkspace(r::Int, o1::Int, o2::Int, n_tau::Int)
-    return ConvolutionWorkspace{Float64}(r, o1, o2, o2, n_tau)
+function ConvolutionWorkspace(dlr_grid::DLRGrid, o1::Int, o2::Int)
+    return ConvolutionWorkspace{Float64}(dlr_grid, o1, o2, o2)
 end
 
 """
-    ConvolutionWorkspace{T}(r::Int, d1::Int, d2::Int, d3::Int, n_tau::Int) where T<:Number
+    ConvolutionWorkspace{T}(dlr_grid::DLRGrid, d1::Int, d2::Int, d3::Int) where T<:Number
 
 Create a workspace for non-square matrix convolution with specified numeric type.
 Layout: (dim1, dim2, r) for contiguous BLAS access.
 For F (d1 × d2 × r) * G (d2 × d3 × r) -> H (d1 × d3 × n_tau).
 
 # Arguments
-- `r`: DLR rank (number of DLR coefficients)
+- `dlr_grid`: DLR grid (provides r, n_tau, and τ for reflection)
 - `d1`: Output row dimension (target dimension)
 - `d2`: Intermediate dimension
 - `d3`: Output column dimension (source dimension)
-- `n_tau`: Number of tau grid points
 """
 function ConvolutionWorkspace{T}(
-    r::Int,
+    dlr_grid::DLRGrid,
     d1::Int,
     d2::Int,
     d3::Int,
-    n_tau::Int,
 ) where {T<:Number}
-    # n_tau is kept for API compatibility but not used for workspace allocation
-    # Layout: (d1, d3, r) for contiguous matrix slices
+    r = length(dlr_grid.ω)
+    n_tau = length(dlr_grid.τ)
+    max_dlr_size = d1 * d3 * r
+    max_tau_size = d1 * d3 * n_tau
+    # Pre-compute reflected tau grid: β - τ
+    τ_reflected = dlr_grid.β .- dlr_grid.τ
     return ConvolutionWorkspace{T}(
         zeros(T, d1, d3, r),        # H1_dlr
         zeros(T, d1, d3, r),        # H2_dlr
@@ -94,24 +115,34 @@ function ConvolutionWorkspace{T}(
         zeros(T, d1, d3),           # term1_result (term1 * G)
         zeros(T, d1, d3),           # term2_result (F * term2)
         zeros(T, d1, d3),           # temp_FG (F[j] * G[j] result)
+        zeros(T, d1, d3, n_tau),    # H1_tau
+        zeros(T, d1, d3, n_tau),    # H2_tau
+        zeros(T, d1, d3, n_tau),    # H_tau (final result)
+        DLRWorkspace(T, r, d1 * d3),  # dlr_workspace for in-place transforms
+        # Contiguous linear buffers for view-path (can be reshaped for any dimensions)
+        zeros(T, max_dlr_size),     # view_dlr_buffer1
+        zeros(T, max_dlr_size),     # view_dlr_buffer2
+        zeros(T, max_tau_size),     # view_tau_buffer1
+        zeros(T, max_tau_size),     # view_tau_buffer2
+        zeros(T, max_tau_size),     # view_tau_result
+        τ_reflected,                # Pre-computed β - τ for reflection
     )
 end
 
 """
-    ConvolutionWorkspace{T}(r::Int, o1::Int, o2::Int, n_tau::Int) where T<:Number
+    ConvolutionWorkspace{T}(dlr_grid::DLRGrid, o1::Int, o2::Int) where T<:Number
 
 Create a workspace for square matrix convolution with specified numeric type.
 Layout: (dim1, dim2, r) for contiguous BLAS access.
 For F (o1 × o2 × r) * G (o2 × o2 × r) -> H (o1 × o2 × n_tau).
 
 # Arguments
-- `r`: DLR rank (number of DLR coefficients)
+- `dlr_grid`: DLR grid (provides r, n_tau, and τ for reflection)
 - `o1`: First orbital dimension
 - `o2`: Second orbital dimension (same as intermediate and output dimension)
-- `n_tau`: Number of tau grid points
 """
-function ConvolutionWorkspace{T}(r::Int, o1::Int, o2::Int, n_tau::Int) where {T<:Number}
-    return ConvolutionWorkspace{T}(r, o1, o2, o2, n_tau)
+function ConvolutionWorkspace{T}(dlr_grid::DLRGrid, o1::Int, o2::Int) where {T<:Number}
+    return ConvolutionWorkspace{T}(dlr_grid, o1, o2, o2)
 end
 
 """

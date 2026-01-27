@@ -19,8 +19,7 @@ using Printf
     G_dlr = tau2dlr(dlr_grid, G, tau_grid)
 
     # Create workspace and kernel cache
-    r = length(dlr_grid.ω)
-    workspace = ConvolutionWorkspace(r, 1, 1, length(tau_grid))
+    workspace = ConvolutionWorkspace(dlr_grid, 1, 1)
     kernel_cache = compute_kernel_cache(dlr_grid)
 
     # New layout: (d1, d2, r) = (1, 1, r)
@@ -89,8 +88,7 @@ end
     G_dlr = reshape(G_coeffs, (2, 2, 1)) .* reshape(g_dlr, (1, 1, :))
 
     # Create workspace and kernel cache
-    r = length(dlr_grid.ω)
-    workspace = ConvolutionWorkspace(r, 2, 2, length(tau_grid))
+    workspace = ConvolutionWorkspace(dlr_grid, 2, 2)
     kernel_cache = compute_kernel_cache(dlr_grid)
 
     H_tau = do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)

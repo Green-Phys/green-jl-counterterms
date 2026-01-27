@@ -76,6 +76,7 @@ end
 """
 Direct convolution implementation - workspace dimensions match exactly.
 Layout: (d1, d3, r) for workspace buffers, (d1, d3, n_tau) for output.
+Uses in-place dlr2tau! for efficient tau-space transformation.
 """
 function _do_convolution_direct!(
     workspace::ConvolutionWorkspace{T},
@@ -103,12 +104,12 @@ function _do_convolution_direct!(
         fill!(workspace.term1, zero(T))
         fill!(workspace.term2, zero(T))
 
-        # Accumulate terms without broadcasting allocations
+        # Accumulate terms using axpy! to avoid broadcast temporaries
         for k = 1:r
             if k != j
                 coeff = kernel_cache.values[k] / (dlr_grid.ω[k] - dlr_grid.ω[j])
-                workspace.term1 .+= coeff .* @view(F_dlr[:, :, k])
-                workspace.term2 .+= coeff .* @view(G_dlr[:, :, k])
+                axpy!(coeff, @view(F_dlr[:, :, k]), workspace.term1)
+                axpy!(coeff, @view(G_dlr[:, :, k]), workspace.term2)
             end
         end
 
@@ -118,22 +119,31 @@ function _do_convolution_direct!(
         @view(workspace.H2_dlr[:, :, j]) .= workspace.term1_result .+ workspace.term2_result
     end
 
-    # Transform to tau space with axis=3 for new layout
-    H1_tau = dlr2tau(dlr_grid, workspace.H1_dlr, dlr_grid.τ; axis = 3)
-    H2_tau = dlr2tau(dlr_grid, workspace.H2_dlr, dlr_grid.τ; axis = 3)
+    # Transform to tau space in-place using dlr2tau!
+    dlr2tau!(workspace.H1_tau, dlr_grid, workspace.H1_dlr, workspace.dlr_workspace)
+    dlr2tau!(workspace.H2_tau, dlr_grid, workspace.H2_dlr, workspace.dlr_workspace)
 
-    # Compute final result: tau broadcasts along 3rd dimension
-    # Reshape tau to (1, 1, n_tau) for broadcasting with (d1, d3, n_tau)
+    # Compute final result in-place: H_tau = tau * H1_tau + H2_tau
     n_tau = length(dlr_grid.τ)
-    tau_reshaped = reshape(dlr_grid.τ, 1, 1, n_tau)
-    H_tau = tau_reshaped .* H1_tau .+ H2_tau
-    return H_tau
+    @inbounds for k = 1:n_tau
+        tau_k = dlr_grid.τ[k]
+        for j = 1:d3
+            @simd for i = 1:d1
+                workspace.H_tau[i, j, k] =
+                    tau_k * workspace.H1_tau[i, j, k] + workspace.H2_tau[i, j, k]
+            end
+        end
+    end
+    return workspace.H_tau
 end
 
 """
 View-based convolution implementation - workspace can be larger than needed.
 Uses views into workspace buffers based on actual dimensions.
 Layout: (d1, d3, r) for workspace buffers, (d1, d3, n_tau) for output.
+
+Uses pre-allocated contiguous linear buffers to avoid allocations in hot loops.
+Returns a reshaped view of workspace.view_tau_result - caller should copy if needed.
 """
 function _do_convolution_view!(
     workspace::ConvolutionWorkspace{T},
@@ -171,11 +181,12 @@ function _do_convolution_view!(
         fill!(term1_view, zero(T))
         fill!(term2_view, zero(T))
 
+        # Accumulate terms using axpy! to avoid broadcast temporaries
         for k = 1:r
             if k != j
                 coeff = kernel_cache.values[k] / (dlr_grid.ω[k] - dlr_grid.ω[j])
-                term1_view .+= coeff .* @view(F_dlr[:, :, k])
-                term2_view .+= coeff .* @view(G_dlr[:, :, k])
+                axpy!(coeff, @view(F_dlr[:, :, k]), term1_view)
+                axpy!(coeff, @view(G_dlr[:, :, k]), term2_view)
             end
         end
 
@@ -184,14 +195,34 @@ function _do_convolution_view!(
         @view(H2_dlr_view[:, :, j]) .= term1_result_view .+ term2_result_view
     end
 
-    # Transform to tau space with axis=3
-    # Need to collect to contiguous arrays as strided views are slower with dlr2tau
-    H1_tau = dlr2tau(dlr_grid, collect(H1_dlr_view), dlr_grid.τ; axis = 3)
-    H2_tau = dlr2tau(dlr_grid, collect(H2_dlr_view), dlr_grid.τ; axis = 3)
-
-    # Compute final result: tau broadcasts along 3rd dimension
+    # Transform to tau space using pre-allocated contiguous buffers
     n_tau = length(dlr_grid.τ)
-    tau_reshaped = reshape(dlr_grid.τ, 1, 1, n_tau)
-    H_tau = tau_reshaped .* H1_tau .+ H2_tau
+    dlr_size = d1 * d3 * r
+    tau_size = d1 * d3 * n_tau
+
+    # Reshape contiguous buffers to 3D arrays for the actual dimensions
+    H1_dlr_cont = reshape(@view(workspace.view_dlr_buffer1[1:dlr_size]), d1, d3, r)
+    H2_dlr_cont = reshape(@view(workspace.view_dlr_buffer2[1:dlr_size]), d1, d3, r)
+    H1_tau = reshape(@view(workspace.view_tau_buffer1[1:tau_size]), d1, d3, n_tau)
+    H2_tau = reshape(@view(workspace.view_tau_buffer2[1:tau_size]), d1, d3, n_tau)
+    H_tau = reshape(@view(workspace.view_tau_result[1:tau_size]), d1, d3, n_tau)
+
+    # Copy from non-contiguous views to contiguous buffers
+    copyto!(H1_dlr_cont, H1_dlr_view)
+    copyto!(H2_dlr_cont, H2_dlr_view)
+
+    # Use in-place transforms with existing workspace
+    dlr2tau!(H1_tau, dlr_grid, H1_dlr_cont, workspace.dlr_workspace)
+    dlr2tau!(H2_tau, dlr_grid, H2_dlr_cont, workspace.dlr_workspace)
+
+    # Compute final result in-place
+    @inbounds for k = 1:n_tau
+        tau_k = dlr_grid.τ[k]
+        for j = 1:d3
+            @simd for i = 1:d1
+                H_tau[i, j, k] = tau_k * H1_tau[i, j, k] + H2_tau[i, j, k]
+            end
+        end
+    end
     return H_tau
 end

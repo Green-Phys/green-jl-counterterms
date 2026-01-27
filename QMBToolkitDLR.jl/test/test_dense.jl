@@ -23,21 +23,44 @@ using Printf
     workspace = ConvolutionWorkspace(r, 1, 1, length(tau_grid))
     kernel_cache = compute_kernel_cache(dlr_grid)
 
-    H_tau = do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, reshape(F_dlr, :, 1, 1), reshape(G_dlr, :, 1, 1))
-    H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.τ)
+    # New layout: (d1, d2, r) = (1, 1, r)
+    H_tau = do_convolution_dlr2tau!(
+        workspace,
+        dlr_grid,
+        kernel_cache,
+        reshape(F_dlr, 1, 1, :),
+        reshape(G_dlr, 1, 1, :),
+    )
+    H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.τ; axis = 3)
 
     ### calculate error on an equidistant grid
     tau_grid_test = collect(LinRange(0.0, beta, 10000))
     H_reconstructed_test = dlr2tau(dlr_grid, reshape(H_dlr, :), tau_grid_test)
-    H_analytical_test = [ (kernel_tau(tau, omega_G, beta)*kernel_tau(0.0, omega_F, beta) - kernel_tau(tau, omega_F, beta)*kernel_tau(0.0, omega_G, beta)) / (omega_F - omega_G) for tau in tau_grid_test]
+    H_analytical_test = [
+        (
+            kernel_tau(tau, omega_G, beta)*kernel_tau(0.0, omega_F, beta) -
+            kernel_tau(tau, omega_F, beta)*kernel_tau(0.0, omega_G, beta)
+        ) / (omega_F - omega_G) for tau in tau_grid_test
+    ]
     err_inf = maximum(abs.(H_reconstructed_test .- H_analytical_test))
-    err_l2 = sqrt(sum(abs.(H_reconstructed_test .- H_analytical_test).^2) / length(tau_grid_test))
-    
+    err_l2 = sqrt(
+        sum(abs.(H_reconstructed_test .- H_analytical_test) .^ 2) / length(tau_grid_test),
+    )
+
     max_ind = findmax(abs.(H_analytical_test))[2]
     println("="^40)
     println("Scalar Convolution DLR Test")
-    @printf("Max value of H analytical: %.3e at tau=%.3e with error %.3e\n", H_analytical_test[max_ind], tau_grid_test[max_ind], abs(H_reconstructed_test[max_ind] - H_analytical_test[max_ind]))
-    @printf("Scalar convolution DLR test: ||error||_inf = %.3e, ||error||_2 = %.3e\n", err_inf, err_l2)
+    @printf(
+        "Max value of H analytical: %.3e at tau=%.3e with error %.3e\n",
+        H_analytical_test[max_ind],
+        tau_grid_test[max_ind],
+        abs(H_reconstructed_test[max_ind] - H_analytical_test[max_ind])
+    )
+    @printf(
+        "Scalar convolution DLR test: ||error||_inf = %.3e, ||error||_2 = %.3e\n",
+        err_inf,
+        err_l2
+    )
     @test err_inf < rtol*100
     @test err_l2 < rtol*100
 end
@@ -61,8 +84,9 @@ end
     f_dlr = tau2dlr(dlr_grid, f_tau, tau_grid)
     g_dlr = tau2dlr(dlr_grid, g_tau, tau_grid)
 
-    F_dlr = f_dlr .* reshape(F_coeffs, (1, 2, 2))
-    G_dlr = g_dlr .* reshape(G_coeffs, (1, 2, 2))
+    # New layout: (d1, d2, r) = (2, 2, r)
+    F_dlr = reshape(F_coeffs, (2, 2, 1)) .* reshape(f_dlr, (1, 1, :))
+    G_dlr = reshape(G_coeffs, (2, 2, 1)) .* reshape(g_dlr, (1, 1, :))
 
     # Create workspace and kernel cache
     r = length(dlr_grid.ω)
@@ -70,30 +94,52 @@ end
     kernel_cache = compute_kernel_cache(dlr_grid)
 
     H_tau = do_convolution_dlr2tau!(workspace, dlr_grid, kernel_cache, F_dlr, G_dlr)
-    H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.τ)
+    H_dlr = tau2dlr(dlr_grid, H_tau, dlr_grid.τ; axis = 3)
 
 
     tau_grid_test = collect(LinRange(0.0, beta, 10000))
-    H_reconstructed_test = dlr2tau(dlr_grid, H_dlr, tau_grid_test)
+    H_reconstructed_test = dlr2tau(dlr_grid, H_dlr, tau_grid_test; axis = 3)
 
-    h_analytical_scalar = [ (kernel_tau(tau, omega_G, beta)*kernel_tau(0.0, omega_F, beta) - kernel_tau(tau, omega_F, beta)*kernel_tau(0.0, omega_G, beta)) / (omega_F - omega_G) for tau in tau_grid_test]
-    
+    h_analytical_scalar = [
+        (
+            kernel_tau(tau, omega_G, beta)*kernel_tau(0.0, omega_F, beta) -
+            kernel_tau(tau, omega_F, beta)*kernel_tau(0.0, omega_G, beta)
+        ) / (omega_F - omega_G) for tau in tau_grid_test
+    ]
+
     H_coeffs = F_coeffs * G_coeffs
-    H_analytical_test = h_analytical_scalar .* reshape(H_coeffs, (1, 2, 2))
+    # New layout: (d1, d2, n_tau) = (2, 2, n_tau)
+    H_analytical_test =
+        reshape(H_coeffs, (2, 2, 1)) .* reshape(h_analytical_scalar, (1, 1, :))
 
     err_inf = maximum(abs.(H_reconstructed_test .- H_analytical_test))
-    err_l2 = sqrt(sum(abs.(H_reconstructed_test .- H_analytical_test).^2) / length(H_analytical_test))
-    
-    # find the max_ind for the matrix case
+    err_l2 = sqrt(
+        sum(abs.(H_reconstructed_test .- H_analytical_test) .^ 2) /
+        length(H_analytical_test),
+    )
+
+    # find the max_ind for the matrix case - now layout is (d1, d2, n_tau)
     max_ind = findmax(abs.(H_analytical_test))[2]
-    tau_indx = max_ind[1]
+    tau_indx = max_ind[3]
     # nice printout
     println("="^40)
     println("Matrix Convolution DLR Test")
-    @printf("Max value of H analytical: %.3e at tau=%.3e with error %.3e\n", H_analytical_test[tau_indx, max_ind[2], max_ind[3]], tau_grid_test[tau_indx], abs(H_reconstructed_test[tau_indx, max_ind[2], max_ind[3]] - H_analytical_test[tau_indx, max_ind[2], max_ind[3]]))
-    @printf("Matrix Convolution DLR test: ||error||_inf = %.3e, ||error||_2 = %.3e\n", err_inf, err_l2)
-    @test err_inf < rtol*100 * maximum(abs.(F_coeffs)) * maximum(abs.(G_coeffs))
-    @test err_l2 < rtol*100 * maximum(abs.(F_coeffs)) * maximum(abs.(G_coeffs))
+    @printf(
+        "Max value of H analytical: %.3e at tau=%.3e with error %.3e\n",
+        H_analytical_test[max_ind[1], max_ind[2], tau_indx],
+        tau_grid_test[tau_indx],
+        abs(
+            H_reconstructed_test[max_ind[1], max_ind[2], tau_indx] -
+            H_analytical_test[max_ind[1], max_ind[2], tau_indx],
+        )
+    )
+    @printf(
+        "Matrix Convolution DLR test: ||error||_inf = %.3e, ||error||_2 = %.3e\n",
+        err_inf,
+        err_l2
+    )
+    @test err_inf < rtol * 100 * maximum(abs.(F_coeffs)) * maximum(abs.(G_coeffs))
+    @test err_l2 < rtol * 100 * maximum(abs.(F_coeffs)) * maximum(abs.(G_coeffs))
 end
 
 @testset "reflection DLR" begin
@@ -107,50 +153,69 @@ end
     tau_grid = dlr_grid.τ
     r = length(dlr_grid.ω)
 
-    H_dlr = zeros(Float64, r, 2, 2)
-    for i in 1:2
-        for j in 1:2
-            h_tau = [exp(-omega_matrix[i,j] * tau) for tau in tau_grid]
-            H_dlr[:, i, j] = tau2dlr(dlr_grid, h_tau, tau_grid)
+    # New layout: (d1, d2, r) = (2, 2, r)
+    H_dlr = zeros(Float64, 2, 2, r)
+    for i = 1:2
+        for j = 1:2
+            h_tau = [exp(-omega_matrix[i, j] * tau) for tau in tau_grid]
+            H_dlr[i, j, :] = tau2dlr(dlr_grid, h_tau, tau_grid)
         end
     end
-    
-    H_tau = dlr2tau(dlr_grid, H_dlr, dlr_grid.τ)
+
+    H_tau = dlr2tau(dlr_grid, H_dlr, dlr_grid.τ; axis = 3)
     G_tau = do_reflection_tau2tau(dlr_grid, H_tau)
-    G_dlr = tau2dlr(dlr_grid, G_tau, dlr_grid.τ)
+    G_dlr = tau2dlr(dlr_grid, G_tau, dlr_grid.τ; axis = 3)
 
     tau_grid_test = collect(LinRange(0.0, beta, 10000))
-    G_reconstructed_test = dlr2tau(dlr_grid, G_dlr, tau_grid_test)
-    
-    G_analytical_test = zeros(Float64, length(tau_grid_test), 2, 2)
-    for i in 1:2
-        for j in 1:2
-            G_analytical_test[:, i, j] = [exp(-omega_matrix[i,j] * (beta - tau)) for tau in tau_grid_test]
+    G_reconstructed_test = dlr2tau(dlr_grid, G_dlr, tau_grid_test; axis = 3)
+
+    # New layout: (d1, d2, n_tau) = (2, 2, n_tau)
+    G_analytical_test = zeros(Float64, 2, 2, length(tau_grid_test))
+    for i = 1:2
+        for j = 1:2
+            G_analytical_test[i, j, :] =
+                [exp(-omega_matrix[i, j] * (beta - tau)) for tau in tau_grid_test]
         end
     end
 
     err_inf = maximum(abs.(G_reconstructed_test .- G_analytical_test))
-    err_l2 = sqrt(sum(abs.(G_reconstructed_test .- G_analytical_test).^2) / length(G_analytical_test))
+    err_l2 = sqrt(
+        sum(abs.(G_reconstructed_test .- G_analytical_test) .^ 2) /
+        length(G_analytical_test),
+    )
 
+    # Now layout is (d1, d2, n_tau)
     max_ind = findmax(abs.(G_analytical_test))[2]
-    tau_indx = max_ind[1]
+    tau_indx = max_ind[3]
     println("="^40)
     println("Reflection DLR Test")
-    @printf("Max value of G analytical: %.3e at tau=%.3e with error %.3e\n", G_analytical_test[tau_indx, max_ind[2], max_ind[3]], tau_grid_test[tau_indx], abs(G_reconstructed_test[tau_indx, max_ind[2], max_ind[3]] - G_analytical_test[tau_indx, max_ind[2], max_ind[3]]))
-    @printf("Reflection DLR test: ||error||_inf = %.3e, ||error||_2 = %.3e\n", err_inf, err_l2)
-    @test err_inf < rtol*100 * maximum(abs.(G_analytical_test))
-    @test err_l2 < rtol*100 * maximum(abs.(G_analytical_test))
+    @printf(
+        "Max value of G analytical: %.3e at tau=%.3e with error %.3e\n",
+        G_analytical_test[max_ind[1], max_ind[2], tau_indx],
+        tau_grid_test[tau_indx],
+        abs(
+            G_reconstructed_test[max_ind[1], max_ind[2], tau_indx] -
+            G_analytical_test[max_ind[1], max_ind[2], tau_indx],
+        )
+    )
+    @printf(
+        "Reflection DLR test: ||error||_inf = %.3e, ||error||_2 = %.3e\n",
+        err_inf,
+        err_l2
+    )
+    @test err_inf < rtol * 100 * maximum(abs.(G_analytical_test))
+    @test err_l2 < rtol * 100 * maximum(abs.(G_analytical_test))
 end
 
 @testset "kernel_tau" begin
     beta = 10.0
     tau = 2.0
-    
+
     # Test case 1: omega > 0
     omega1 = 1.5
     expected1 = exp(-tau * omega1) / (1 + exp(-beta * omega1))
     @test kernel_tau(tau, omega1, beta) ≈ expected1
-    
+
     # Test case 2: omega < 0
     omega2 = -1.5
     expected2 = exp(-(tau - beta) * omega2) / (1 + exp(beta * omega2))

@@ -18,7 +18,9 @@ include("sample/sample.jl")
 export Sample
 
 include("operation.jl")
-export tau2dlr, dlr2tau, matfreq2dlr, dlr2matfreq, tau2matfreq, matfreq2tau, tau2tau, matfreq2matfreq
+export tau2dlr,
+    dlr2tau, matfreq2dlr, dlr2matfreq, tau2matfreq, matfreq2tau, tau2tau, matfreq2matfreq
+export tau2dlr!, dlr2tau!, DLRWorkspace, ensure_kernel_τ_lu!
 
 ##################### precompile #######################
 # precompile as the final step of the module definition:
@@ -26,7 +28,7 @@ if ccall(:jl_generating_output, Cint, ()) == 1   # if we're precompiling the pac
     let
         #cover data type and symmetry
         # Float32, :none
-        dlr = DLRGrid(1.0, 1.0, 1e-6, true, :none; dtype=Float32)
+        dlr = DLRGrid(1.0, 1.0, 1e-6, true, :none; dtype = Float32)
         g = Sample.SemiCircle(dlr, :τ, dlr.τ)
         coeff = tau2dlr(dlr, g)
         _g = dlr2tau(dlr, coeff)
@@ -39,7 +41,7 @@ if ccall(:jl_generating_output, Cint, ()) == 1   # if we're precompiling the pac
 
 
         # Float32, :pha
-        dlr = DLRGrid(1.0, 1.0, 1e-6, true, :pha; dtype=Float32)
+        dlr = DLRGrid(1.0, 1.0, 1e-6, true, :pha; dtype = Float32)
         g = Sample.SemiCircle(dlr, :τ, dlr.τ)
         coeff = tau2dlr(dlr, g)
         _g = dlr2tau(dlr, coeff)
@@ -51,7 +53,7 @@ if ccall(:jl_generating_output, Cint, ()) == 1   # if we're precompiling the pac
         _g = matfreq2matfreq(dlr, g, dlr.n)
 
         # Float32, :ph
-        dlr = DLRGrid(1.0, 1.0, 1e-6, true, :ph; dtype=Float32)
+        dlr = DLRGrid(1.0, 1.0, 1e-6, true, :ph; dtype = Float32)
         g = Sample.SemiCircle(dlr, :τ, dlr.τ)
         coeff = tau2dlr(dlr, g)
         _g = dlr2tau(dlr, coeff)
@@ -63,7 +65,7 @@ if ccall(:jl_generating_output, Cint, ()) == 1   # if we're precompiling the pac
         _g = matfreq2matfreq(dlr, g, dlr.n)
 
         # Float64, :none
-        dlr = DLRGrid(1.0, 1.0, 1e-6, true, :none; dtype=Float64)
+        dlr = DLRGrid(1.0, 1.0, 1e-6, true, :none; dtype = Float64)
         g = Sample.SemiCircle(dlr, :τ, dlr.τ)
         coeff = tau2dlr(dlr, g)
         _g = dlr2tau(dlr, coeff)
@@ -75,7 +77,7 @@ if ccall(:jl_generating_output, Cint, ()) == 1   # if we're precompiling the pac
         _g = matfreq2matfreq(dlr, g, dlr.n)
 
         # Float64, :pha
-        dlr = DLRGrid(1.0, 1.0, 1e-6, true, :pha; dtype=Float64)
+        dlr = DLRGrid(1.0, 1.0, 1e-6, true, :pha; dtype = Float64)
         g = Sample.SemiCircle(dlr, :τ, dlr.τ)
         coeff = tau2dlr(dlr, g)
         _g = dlr2tau(dlr, coeff)
@@ -87,7 +89,7 @@ if ccall(:jl_generating_output, Cint, ()) == 1   # if we're precompiling the pac
         _g = matfreq2matfreq(dlr, g, dlr.n)
 
         # Float64, :ph
-        dlr = DLRGrid(1.0, 1.0, 1e-6, true, :ph; dtype=Float64)
+        dlr = DLRGrid(1.0, 1.0, 1e-6, true, :ph; dtype = Float64)
         g = Sample.SemiCircle(dlr, :τ, dlr.τ)
         coeff = tau2dlr(dlr, g)
         _g = dlr2tau(dlr, coeff)

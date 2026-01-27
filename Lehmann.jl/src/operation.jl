@@ -42,14 +42,18 @@
 
 #replace one of the tuple elements. See https://discourse.julialang.org/t/computing-tuple-replacements/69581/10
 @generated function _reset_tuple(t::NTuple{N,Int}, x, i) where {N}
-    Expr(:tuple, (:(ifelse($j == i, x, t[$j])) for j in 1:N)...)
+    Expr(:tuple, (:(ifelse($j == i, x, t[$j])) for j = 1:N)...)
 end
 
 # @generated function _remove_tuple(t::NTuple{N,Int}, x, i) where {N}
 #     Expr(:tuple, (:(ifelse($j == i, x, t[$j])) for j in 1:N)...)
 # end
 
-function _matrix_tensor_dot(mat::AbstractMatrix{TC}, tensor::AbstractArray{T,N}, axis::Int) where {T,TC,N}
+function _matrix_tensor_dot(
+    mat::AbstractMatrix{TC},
+    tensor::AbstractArray{T,N},
+    axis::Int,
+) where {T,TC,N}
     #calculate \sum_j mat[i, j]*tensor[..., j, ...]  where j is the axis-th dimension of tensor
     @assert 0 < axis <= N
     _n, _m = size(mat)
@@ -58,7 +62,7 @@ function _matrix_tensor_dot(mat::AbstractMatrix{TC}, tensor::AbstractArray{T,N},
     _target_size = _reset_tuple(size(tensor), _n, axis)
 
     if axis == 1
-        _r = reduce(*, _size[axis+1:end])
+        _r = reduce(*, _size[(axis+1):end])
         _tensor = reshape(tensor, (_m, _r))
         res = mat * _tensor
 
@@ -66,13 +70,13 @@ function _matrix_tensor_dot(mat::AbstractMatrix{TC}, tensor::AbstractArray{T,N},
         return reshape(res, _target_size)
     elseif axis == N
         # _target_size = (_size[1:end-1]..., _n)::NTuple{N,Int}
-        _l = reduce(*, _size[1:axis-1])
+        _l = reduce(*, _size[1:(axis-1)])
         _tensor = reshape(tensor, (_l, _m))
         res = _tensor * transpose(mat)
         return reshape(res, _target_size)
     else
-        _l = reduce(*, _size[1:axis-1])
-        _r = reduce(*, _size[axis+1:end])
+        _l = reduce(*, _size[1:(axis-1)])
+        _r = reduce(*, _size[(axis+1):end])
         _tensor = reshape(tensor, (_l, _m, _r))
         res = zeros(promote_type(T, TC), _l, _n, _r)
         @inbounds for j = 1:_r
@@ -98,7 +102,7 @@ function _tensor2matrix(tensor::AbstractArray{T,N}, ::Val{axis}) where {T,N,axis
     # internal function to move the axis dim to the first index, then reshape the tensor into a matrix
     _size = size(tensor)
     n1 = _size[axis]
-    partialsize = (_size[1:axis-1]..., _size[axis+1:end]...) # the size of the tensor except the axis-th dimension
+    partialsize = (_size[1:(axis-1)]..., _size[(axis+1):end]...) # the size of the tensor except the axis-th dimension
     n2 = reduce(*, partialsize)
 
     if axis == 1 #no need to permutate the axis
@@ -107,7 +111,7 @@ function _tensor2matrix(tensor::AbstractArray{T,N}, ::Val{axis}) where {T,N,axis
         _tensor = reshape(tensor, (n2, n1))
         return transpose(_tensor), partialsize  #transpose do not create copy
     else
-        permu = (axis, 2:axis-1..., 1, axis+1:N...)
+        permu = (axis, 2:(axis-1)..., 1, (axis+1):N...)
         _tensor = permutedims(tensor, permu) # permutate the axis-th and the 1st dim, a copy of the tensor is created 
         # ntensor = nocopy ? PermutedDimsArray(tensor, permu) : permutedims(tensor, permu) # permutate the axis-th and the 1st dim
         ntensor = reshape(_tensor, (n1, n2)) # no copy is created
@@ -115,11 +119,19 @@ function _tensor2matrix(tensor::AbstractArray{T,N}, ::Val{axis}) where {T,N,axis
     end
 end
 
-function _matrix2tensor(mat::AbstractMatrix{T}, partialsize::Nothing, ::Val{axis}) where {T,axis}
+function _matrix2tensor(
+    mat::AbstractMatrix{T},
+    partialsize::Nothing,
+    ::Val{axis},
+) where {T,axis}
     return reshape(mat, length(mat))
 end
 
-function _matrix2tensor(mat::AbstractMatrix{T}, partialsize::NTuple{dim,Int}, ::Val{axis}) where {T,dim,axis}
+function _matrix2tensor(
+    mat::AbstractMatrix{T},
+    partialsize::NTuple{dim,Int},
+    ::Val{axis},
+) where {T,dim,axis}
     # internal function to reshape matrix to a tensor, then swap the first index with the axis-th dimension
     n1, n2 = size(mat)
     @assert n2 == reduce(*, partialsize) # total number of elements of mat and the tensor must match
@@ -136,7 +148,7 @@ function _matrix2tensor(mat::AbstractMatrix{T}, partialsize::NTuple{dim,Int}, ::
     else
         # permu = [i for i = 1:dim]
         # permu[1], permu[axis] = axis, 1
-        permu = (axis, 2:axis-1..., 1, axis+1:N...)
+        permu = (axis, 2:(axis-1)..., 1, (axis+1):N...)
         tsize = (n1, partialsize...)
         tensor = reshape(mat, tsize)
         return permutedims(tensor, permu) # permutate the axis-th and the 1st dim, a copy of the tensor is created
@@ -157,13 +169,13 @@ function _weightedLeastSqureFit(dlrGrid, Gτ, error, kernel, sumrule)
 
         kernel_m0 = kernel[:, M]
         # kernel = kernel[:, 1:Nω-1] #a copy of kernel submatrix will be created
-        kernel = hcat(kernel[:, 1:M-1], kernel[:, M+1:end])
+        kernel = hcat(kernel[:, 1:(M-1)], kernel[:, (M+1):end])
 
-        for i in 1:Nτ
+        for i = 1:Nτ
             Gτ[i, :] .-= kernel_m0[i] * sumrule
         end
 
-        for i = 1:Nω-1
+        for i = 1:(Nω-1)
             kernel[:, i] .-= kernel_m0
         end
         # kernel = view(kernel, :, 1:Nω-1)
@@ -189,14 +201,14 @@ function _weightedLeastSqureFit(dlrGrid, Gτ, error, kernel, sumrule)
 
     if isnothing(sumrule) == false
         #make sure Gτ doesn't get modified after the linear fitting
-        for i in 1:Nτ
+        for i = 1:Nτ
             Gτ[i, :] .+= kernel_m0[i] * sumrule
         end
         #add back the coeff that are fixed by the sum rule
-        coeffmore = sumrule' .- sum(coeff, dims=1)
+        coeffmore = sumrule' .- sum(coeff, dims = 1)
         cnew = zeros(eltype(coeff), size(coeff)[1] + 1, size(coeff)[2])
-        cnew[1:M-1, :] .= coeff[1:M-1, :]
-        cnew[M+1:end, :] .= coeff[M:end, :]
+        cnew[1:(M-1), :] .= coeff[1:(M-1), :]
+        cnew[(M+1):end, :] .= coeff[M:end, :]
         # println(size(coeffmore), ", ", size(cnew))
         # println(coeffmore)
         cnew[M, :] = coeffmore #broadcast cnew[M, :] .= coeffmore doesn't work for Julia 1.6
@@ -220,18 +232,35 @@ imaginary-time domain to DLR representation
 - `sumrule`  : enforce the sum rule 
 - `verbose`  : true to print warning information
 """
-function tau2dlr(dlrGrid::DLRGrid{T,S}, green::AbstractArray{TC,N}, τGrid=dlrGrid.τ; error=nothing, axis=1, sumrule=nothing, verbose=true) where {T,S,TC,N}
+function tau2dlr(
+    dlrGrid::DLRGrid{T,S},
+    green::AbstractArray{TC,N},
+    τGrid = dlrGrid.τ;
+    error = nothing,
+    axis = 1,
+    sumrule = nothing,
+    verbose = true,
+) where {T,S,TC,N}
     @assert length(size(green)) >= axis "dimension of the Green's function should be larger than axis!"
     @assert size(green)[axis] == length(τGrid)
     ωGrid = dlrGrid.ω
 
-    if length(τGrid) == length(dlrGrid.τ) && isapprox(τGrid, dlrGrid.τ; rtol=10 * eps(T))
+    if length(τGrid) == length(dlrGrid.τ) && isapprox(τGrid, dlrGrid.τ; rtol = 10 * eps(T))
         if length(dlrGrid.kernel_τ) == 1
-            dlrGrid.kernel_τ = Spectral.kernelT(T, Val(dlrGrid.isFermi), Val(S), τGrid, ωGrid, dlrGrid.β, true)
+            dlrGrid.kernel_τ = Spectral.kernelT(
+                T,
+                Val(dlrGrid.isFermi),
+                Val(S),
+                τGrid,
+                ωGrid,
+                dlrGrid.β,
+                true,
+            )
         end
         kernel = dlrGrid.kernel_τ
     else
-        kernel = Spectral.kernelT(T, Val(dlrGrid.isFermi), Val(S), τGrid, ωGrid, dlrGrid.β, true)
+        kernel =
+            Spectral.kernelT(T, Val(dlrGrid.isFermi), Val(S), τGrid, ωGrid, dlrGrid.β, true)
     end
     g, partialsize = _tensor2matrix(green, Val(axis))
 
@@ -252,14 +281,22 @@ function tau2dlr(dlrGrid::DLRGrid{T,S}, green::AbstractArray{TC,N}, τGrid=dlrGr
     coeff = _weightedLeastSqureFit(dlrGrid, g, error, kernel, sumrule)
 
     if verbose && all(x -> abs(x) < 1e16, coeff) == false
-        @warn("Some of the DLR coefficients are larger than 1e16. The quality of DLR fitting could be bad.")
+        @warn(
+            "Some of the DLR coefficients are larger than 1e16. The quality of DLR fitting could be bad."
+        )
     end
 
     if isnothing(sumrule) == false
         #check how exact is the sum rule
-        coeffsum = sum(coeff, dims=1) .- sumrule
-        if verbose && all(x -> abs(x) < 1000 * dlrGrid.rtol * max(maximum(abs.(green)), 1.0), coeffsum) == false
-            @warn("Sumrule error $(maximum(abs.(coeffsum))) is larger than the DLRGrid error threshold.")
+        coeffsum = sum(coeff, dims = 1) .- sumrule
+        if verbose &&
+           all(
+            x -> abs(x) < 1000 * dlrGrid.rtol * max(maximum(abs.(green)), 1.0),
+            coeffsum,
+        ) == false
+            @warn(
+                "Sumrule error $(maximum(abs.(coeffsum))) is larger than the DLRGrid error threshold."
+            )
         end
     end
 
@@ -278,20 +315,35 @@ DLR representation to imaginary-time representation
 - `axis`     : imaginary-time axis in the data `dlrcoeff`
 - `verbose`  : true to print warning information
 """
-function dlr2tau(dlrGrid::DLRGrid{T,S}, dlrcoeff::AbstractArray{TC,N}, τGrid=dlrGrid.τ; axis=1, verbose=true) where {T,S,TC,N}
+function dlr2tau(
+    dlrGrid::DLRGrid{T,S},
+    dlrcoeff::AbstractArray{TC,N},
+    τGrid = dlrGrid.τ;
+    axis = 1,
+    verbose = true,
+) where {T,S,TC,N}
     @assert length(size(dlrcoeff)) >= axis "dimension of the dlr coefficients should be larger than axis!"
     @assert size(dlrcoeff)[axis] == length(dlrGrid)
 
     β = dlrGrid.β
     ωGrid = dlrGrid.ω
 
-    if length(τGrid) == length(dlrGrid.τ) && isapprox(τGrid, dlrGrid.τ; rtol=10 * eps(T))
+    if length(τGrid) == length(dlrGrid.τ) && isapprox(τGrid, dlrGrid.τ; rtol = 10 * eps(T))
         if length(dlrGrid.kernel_τ) == 1
-            dlrGrid.kernel_τ = Spectral.kernelT(T, Val(dlrGrid.isFermi), Val(S), τGrid, ωGrid, dlrGrid.β, true)
+            dlrGrid.kernel_τ = Spectral.kernelT(
+                T,
+                Val(dlrGrid.isFermi),
+                Val(S),
+                τGrid,
+                ωGrid,
+                dlrGrid.β,
+                true,
+            )
         end
         kernel = dlrGrid.kernel_τ
     else
-        kernel = Spectral.kernelT(T, Val(dlrGrid.isFermi), Val(S), τGrid, ωGrid, dlrGrid.β, true)
+        kernel =
+            Spectral.kernelT(T, Val(dlrGrid.isFermi), Val(S), τGrid, ωGrid, dlrGrid.β, true)
     end
 
     # G = kernel * coeff # tensor dot product: \sum_i kernel[..., i]*coeff[i, ...]
@@ -313,29 +365,71 @@ Matsubara-frequency representation to DLR representation
 - `sumrule`  : enforce the sum rule 
 - `verbose`  : true to print warning information
 """
-function matfreq2dlr(dlrGrid::DLRGrid{T,S}, green::AbstractArray{TC,N}, nGrid=dlrGrid.n; error=nothing, axis=1, sumrule=nothing, verbose=true) where {T,S,TC,N}
+function matfreq2dlr(
+    dlrGrid::DLRGrid{T,S},
+    green::AbstractArray{TC,N},
+    nGrid = dlrGrid.n;
+    error = nothing,
+    axis = 1,
+    sumrule = nothing,
+    verbose = true,
+) where {T,S,TC,N}
     @assert length(size(green)) >= axis "dimension of the Green's function should be larger than axis!"
     @assert size(green)[axis] == length(nGrid)
     @assert eltype(nGrid) <: Integer
     ωGrid = dlrGrid.ω
 
     if (S == :ph && dlrGrid.isFermi == false) || (S == :pha && dlrGrid.isFermi == true)
-        if length(nGrid) == length(dlrGrid.n) && isapprox(nGrid, dlrGrid.n; rtol=10 * eps(T))
+        if length(nGrid) == length(dlrGrid.n) &&
+           isapprox(nGrid, dlrGrid.n; rtol = 10 * eps(T))
             if length(dlrGrid.kernel_n) == 1
-                dlrGrid.kernel_n = Spectral.kernelΩ(T, Val(dlrGrid.isFermi), Val(S), nGrid, ωGrid, dlrGrid.β, true)
+                dlrGrid.kernel_n = Spectral.kernelΩ(
+                    T,
+                    Val(dlrGrid.isFermi),
+                    Val(S),
+                    nGrid,
+                    ωGrid,
+                    dlrGrid.β,
+                    true,
+                )
             end
             kernel = dlrGrid.kernel_n
         else
-            kernel = Spectral.kernelΩ(T, Val(dlrGrid.isFermi), Val(S), nGrid, ωGrid, dlrGrid.β, true)
+            kernel = Spectral.kernelΩ(
+                T,
+                Val(dlrGrid.isFermi),
+                Val(S),
+                nGrid,
+                ωGrid,
+                dlrGrid.β,
+                true,
+            )
         end
     else
-        if length(nGrid) == length(dlrGrid.n) && isapprox(nGrid, dlrGrid.n; rtol=10 * eps(T))
+        if length(nGrid) == length(dlrGrid.n) &&
+           isapprox(nGrid, dlrGrid.n; rtol = 10 * eps(T))
             if length(dlrGrid.kernel_n) == 1
-                dlrGrid.kernel_nc = Spectral.kernelΩ(T, Val(dlrGrid.isFermi), Val(S), nGrid, ωGrid, dlrGrid.β, true)
+                dlrGrid.kernel_nc = Spectral.kernelΩ(
+                    T,
+                    Val(dlrGrid.isFermi),
+                    Val(S),
+                    nGrid,
+                    ωGrid,
+                    dlrGrid.β,
+                    true,
+                )
             end
             kernel = dlrGrid.kernel_nc
         else
-            kernel = Spectral.kernelΩ(T, Val(dlrGrid.isFermi), Val(S), nGrid, ωGrid, dlrGrid.β, true)
+            kernel = Spectral.kernelΩ(
+                T,
+                Val(dlrGrid.isFermi),
+                Val(S),
+                nGrid,
+                ωGrid,
+                dlrGrid.β,
+                true,
+            )
         end
     end
     # if typ != eltype(green)
@@ -367,14 +461,22 @@ function matfreq2dlr(dlrGrid::DLRGrid{T,S}, green::AbstractArray{TC,N}, nGrid=dl
 
 
     if verbose && all(x -> abs(x) < 1e16, coeff) == false
-        @warn("Some of the DLR coefficients are larger than 1e16. The quality of DLR fitting could be bad.")
+        @warn(
+            "Some of the DLR coefficients are larger than 1e16. The quality of DLR fitting could be bad."
+        )
     end
 
     if isnothing(sumrule) == false
         #check how exact is the sum rule
-        coeffsum = sum(coeff, dims=1) .- sumrule
-        if verbose && all(x -> abs(x) < 1000 * dlrGrid.rtol * max(maximum(abs.(green)), 1.0), coeffsum) == false
-            @warn("Sumrule error $(maximum(abs.(coeffsum))) is larger than the DLRGrid error threshold.")
+        coeffsum = sum(coeff, dims = 1) .- sumrule
+        if verbose &&
+           all(
+            x -> abs(x) < 1000 * dlrGrid.rtol * max(maximum(abs.(green)), 1.0),
+            coeffsum,
+        ) == false
+            @warn(
+                "Sumrule error $(maximum(abs.(coeffsum))) is larger than the DLRGrid error threshold."
+            )
         end
     end
     return _matrix2tensor(coeff, partialsize, Val(axis))
@@ -392,29 +494,69 @@ DLR representation to Matsubara-frequency representation
 - `axis`     : Matsubara-frequency axis in the data `dlrcoeff`
 - `verbose`  : true to print warning information
 """
-function dlr2matfreq(dlrGrid::DLRGrid{T,S}, dlrcoeff::AbstractArray{TC,N}, nGrid=dlrGrid.n; axis=1, verbose=true) where {T,S,TC,N}
+function dlr2matfreq(
+    dlrGrid::DLRGrid{T,S},
+    dlrcoeff::AbstractArray{TC,N},
+    nGrid = dlrGrid.n;
+    axis = 1,
+    verbose = true,
+) where {T,S,TC,N}
     @assert length(size(dlrcoeff)) >= axis "dimension of the dlr coefficients should be larger than axis!"
     @assert size(dlrcoeff)[axis] == length(dlrGrid)
     @assert eltype(nGrid) <: Integer
     ωGrid = dlrGrid.ω
 
     if (S == :ph && dlrGrid.isFermi == false) || (S == :pha && dlrGrid.isFermi == true)
-        if length(nGrid) == length(dlrGrid.n) && isapprox(nGrid, dlrGrid.n; rtol=10 * eps(T))
+        if length(nGrid) == length(dlrGrid.n) &&
+           isapprox(nGrid, dlrGrid.n; rtol = 10 * eps(T))
             if length(dlrGrid.kernel_n) == 1
-                dlrGrid.kernel_n = Spectral.kernelΩ(T, Val(dlrGrid.isFermi), Val(S), nGrid, ωGrid, dlrGrid.β, true)
+                dlrGrid.kernel_n = Spectral.kernelΩ(
+                    T,
+                    Val(dlrGrid.isFermi),
+                    Val(S),
+                    nGrid,
+                    ωGrid,
+                    dlrGrid.β,
+                    true,
+                )
             end
             kernel = dlrGrid.kernel_n
         else
-            kernel = Spectral.kernelΩ(T, Val(dlrGrid.isFermi), Val(S), nGrid, ωGrid, dlrGrid.β, true)
+            kernel = Spectral.kernelΩ(
+                T,
+                Val(dlrGrid.isFermi),
+                Val(S),
+                nGrid,
+                ωGrid,
+                dlrGrid.β,
+                true,
+            )
         end
     else
-        if length(nGrid) == length(dlrGrid.n) && isapprox(nGrid, dlrGrid.n; rtol=10 * eps(T))
+        if length(nGrid) == length(dlrGrid.n) &&
+           isapprox(nGrid, dlrGrid.n; rtol = 10 * eps(T))
             if length(dlrGrid.kernel_n) == 1
-                dlrGrid.kernel_nc = Spectral.kernelΩ(T, Val(dlrGrid.isFermi), Val(S), nGrid, ωGrid, dlrGrid.β, true)
+                dlrGrid.kernel_nc = Spectral.kernelΩ(
+                    T,
+                    Val(dlrGrid.isFermi),
+                    Val(S),
+                    nGrid,
+                    ωGrid,
+                    dlrGrid.β,
+                    true,
+                )
             end
             kernel = dlrGrid.kernel_nc
         else
-            kernel = Spectral.kernelΩ(T, Val(dlrGrid.isFermi), Val(S), nGrid, ωGrid, dlrGrid.β, true)
+            kernel = Spectral.kernelΩ(
+                T,
+                Val(dlrGrid.isFermi),
+                Val(S),
+                nGrid,
+                ωGrid,
+                dlrGrid.β,
+                true,
+            )
         end
     end
 
@@ -436,10 +578,26 @@ Fourier transform from imaginary-time to Matsubara-frequency using the DLR repre
 - `sumrule`  : enforce the sum rule 
 - `verbose`  : true to print warning information
 """
-function tau2matfreq(dlrGrid::DLRGrid{T,S}, green::AbstractArray{TC,N}, nNewGrid::AbstractVector{Int}=dlrGrid.n, τGrid=dlrGrid.τ;
-    error=nothing, axis=1, sumrule=nothing, verbose=true) where {T,S,TC,N}
-    coeff = tau2dlr(dlrGrid, green, τGrid; error=error, axis=axis, sumrule=sumrule, verbose=verbose)
-    return dlr2matfreq(dlrGrid, coeff, nNewGrid, axis=axis, verbose=verbose)
+function tau2matfreq(
+    dlrGrid::DLRGrid{T,S},
+    green::AbstractArray{TC,N},
+    nNewGrid::AbstractVector{Int} = dlrGrid.n,
+    τGrid = dlrGrid.τ;
+    error = nothing,
+    axis = 1,
+    sumrule = nothing,
+    verbose = true,
+) where {T,S,TC,N}
+    coeff = tau2dlr(
+        dlrGrid,
+        green,
+        τGrid;
+        error = error,
+        axis = axis,
+        sumrule = sumrule,
+        verbose = verbose,
+    )
+    return dlr2matfreq(dlrGrid, coeff, nNewGrid, axis = axis, verbose = verbose)
 end
 
 """
@@ -457,9 +615,26 @@ Fourier transform from Matsubara-frequency to imaginary-time using the DLR repre
 - `sumrule`  : enforce the sum rule 
 - `verbose`  : true to print warning information
 """
-function matfreq2tau(dlrGrid, green, τNewGrid=dlrGrid.τ, nGrid=dlrGrid.n; error=nothing, axis=1, sumrule=nothing, verbose=true)
-    coeff = matfreq2dlr(dlrGrid, green, nGrid; error=error, axis=axis, sumrule=sumrule, verbose=verbose)
-    return dlr2tau(dlrGrid, coeff, τNewGrid, axis=axis, verbose=verbose)
+function matfreq2tau(
+    dlrGrid,
+    green,
+    τNewGrid = dlrGrid.τ,
+    nGrid = dlrGrid.n;
+    error = nothing,
+    axis = 1,
+    sumrule = nothing,
+    verbose = true,
+)
+    coeff = matfreq2dlr(
+        dlrGrid,
+        green,
+        nGrid;
+        error = error,
+        axis = axis,
+        sumrule = sumrule,
+        verbose = verbose,
+    )
+    return dlr2tau(dlrGrid, coeff, τNewGrid, axis = axis, verbose = verbose)
 end
 
 """
@@ -477,9 +652,26 @@ Interpolation from the old imaginary-time grid to a new grid using the DLR repre
 - `sumrule`  : enforce the sum rule 
 - `verbose`  : true to print warning information
 """
-function tau2tau(dlrGrid, green, τNewGrid, τGrid=dlrGrid.τ; error=nothing, axis=1, sumrule=nothing, verbose=true)
-    coeff = tau2dlr(dlrGrid, green, τGrid; error=error, axis=axis, sumrule=sumrule, verbose=verbose)
-    return dlr2tau(dlrGrid, coeff, τNewGrid, axis=axis, verbose=verbose)
+function tau2tau(
+    dlrGrid,
+    green,
+    τNewGrid,
+    τGrid = dlrGrid.τ;
+    error = nothing,
+    axis = 1,
+    sumrule = nothing,
+    verbose = true,
+)
+    coeff = tau2dlr(
+        dlrGrid,
+        green,
+        τGrid;
+        error = error,
+        axis = axis,
+        sumrule = sumrule,
+        verbose = verbose,
+    )
+    return dlr2tau(dlrGrid, coeff, τNewGrid, axis = axis, verbose = verbose)
 end
 
 """
@@ -497,11 +689,376 @@ Fourier transform from Matsubara-frequency to imaginary-time using the DLR repre
 - `sumrule`  : enforce the sum rule 
 - `verbose`  : true to print warning information
 """
-function matfreq2matfreq(dlrGrid, green, nNewGrid, nGrid=dlrGrid.n; error=nothing, axis=1, sumrule=nothing, verbose=true)
-    coeff = matfreq2dlr(dlrGrid, green, nGrid; error=error, axis=axis, sumrule=sumrule, verbose=verbose)
-    return dlr2matfreq(dlrGrid, coeff, nNewGrid, axis=axis, verbose=verbose)
+function matfreq2matfreq(
+    dlrGrid,
+    green,
+    nNewGrid,
+    nGrid = dlrGrid.n;
+    error = nothing,
+    axis = 1,
+    sumrule = nothing,
+    verbose = true,
+)
+    coeff = matfreq2dlr(
+        dlrGrid,
+        green,
+        nGrid;
+        error = error,
+        axis = axis,
+        sumrule = sumrule,
+        verbose = verbose,
+    )
+    return dlr2matfreq(dlrGrid, coeff, nNewGrid, axis = axis, verbose = verbose)
 end
 
 # function convolution(dlrGrid, green1, green2; axis = 1)
 
 # end
+
+#=============================================================================
+# In-place DLR operations with workspace buffers
+#
+# These functions are optimized for repeated calls with axis=3 and τGrid=dlr_grid.τ
+# (the common case in QMBToolkitSOEHYB). They avoid allocations by:
+# 1. Using pre-allocated workspace buffers
+# 2. Caching the LU factorization of kernel_τ
+# 3. Using fast contiguous transpose copies (transpose views are 20x slower for BLAS)
+=============================================================================#
+
+"""
+    struct DLRWorkspace{T}
+
+Pre-allocated workspace for in-place DLR operations with axis=3.
+Holds contiguous buffers for efficient BLAS operations.
+
+# Fields
+- `buffer1`: Contiguous buffer of shape (n_dlr, n_other) for linear solve
+- `buffer2`: Contiguous buffer of shape (n_dlr, n_other) for matrix multiply
+- `n_dlr`: DLR rank (number of DLR basis functions)
+- `n_other`: Product of non-DLR dimensions (e.g., dim1 * dim2)
+"""
+mutable struct DLRWorkspace{T<:Number}
+    buffer1::Matrix{T}
+    buffer2::Matrix{T}
+    n_dlr::Int
+    n_other::Int
+end
+
+"""
+    DLRWorkspace(T::Type, n_dlr::Int, n_other::Int)
+
+Create a DLRWorkspace with buffers sized for (dim1, dim2, n_dlr) arrays.
+
+# Arguments
+- `T`: Element type
+- `n_dlr`: DLR rank (size of τ grid)
+- `n_other`: Product of other dimensions (dim1 * dim2)
+"""
+function DLRWorkspace(::Type{T}, n_dlr::Int, n_other::Int) where {T<:Number}
+    buffer1 = Matrix{T}(undef, n_dlr, n_other)
+    buffer2 = Matrix{T}(undef, n_dlr, n_other)
+    return DLRWorkspace{T}(buffer1, buffer2, n_dlr, n_other)
+end
+
+"""
+    DLRWorkspace(dlrGrid::DLRGrid, dim1::Int, dim2::Int, ::Type{T}=Float64)
+
+Create a DLRWorkspace sized for arrays of shape (dim1, dim2, n_dlr).
+"""
+function DLRWorkspace(
+    dlrGrid::DLRGrid,
+    dim1::Int,
+    dim2::Int,
+    ::Type{T} = Float64,
+) where {T<:Number}
+    n_dlr = length(dlrGrid)
+    n_other = dim1 * dim2
+    return DLRWorkspace(T, n_dlr, n_other)
+end
+
+# Fast transpose copy: src[i,j] -> dest[j,i]
+# Uses proper loop ordering for cache efficiency
+@inline function _fast_transpose_copy!(
+    dest::AbstractMatrix{T},
+    src::AbstractMatrix{T},
+) where {T}
+    m, n = size(src)
+    @boundscheck @assert size(dest) == (n, m)
+    @inbounds for j = 1:n
+        @simd for i = 1:m
+            dest[j, i] = src[i, j]
+        end
+    end
+    return dest
+end
+
+# Copy 3D array (dim1, dim2, n_tau) to contiguous matrix (n_tau, dim1*dim2)
+# Optimized for cache efficiency: processes in blocks for better locality
+@inline function _tensor3_to_matrix!(
+    dest::AbstractMatrix{T},
+    src::AbstractArray{T,3},
+) where {T}
+    dim1, dim2, n_tau = size(src)
+    @boundscheck @assert size(dest) == (n_tau, dim1 * dim2)
+
+    # For small arrays or when n_tau is small, use simple loop
+    # For larger arrays, the reshape+permutedims approach may be faster
+    if dim1 * dim2 <= 64 || n_tau <= 32
+        idx = 1
+        @inbounds for j = 1:dim2
+            for i = 1:dim1
+                @simd for k = 1:n_tau
+                    dest[k, idx] = src[i, j, k]
+                end
+                idx += 1
+            end
+        end
+    else
+        # For larger arrays, use a cache-blocked approach
+        # Process columns of dest in blocks to improve cache reuse
+        BLOCK_SIZE = 8
+        @inbounds for j_block = 1:BLOCK_SIZE:dim2
+            j_end = min(j_block + BLOCK_SIZE - 1, dim2)
+            for i_block = 1:BLOCK_SIZE:dim1
+                i_end = min(i_block + BLOCK_SIZE - 1, dim1)
+                # Process this block: traverse tau (innermost read) for each (i,j) pair
+                for k = 1:n_tau
+                    for j = j_block:j_end
+                        @simd for i = i_block:i_end
+                            idx = (j - 1) * dim1 + i
+                            dest[k, idx] = src[i, j, k]
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return dest
+end
+
+# Copy contiguous matrix (n_tau, dim1*dim2) back to 3D array (dim1, dim2, n_tau)
+# Optimized for cache efficiency
+@inline function _matrix_to_tensor3!(
+    dest::AbstractArray{T,3},
+    src::AbstractMatrix{T},
+) where {T}
+    dim1, dim2, n_tau = size(dest)
+    @boundscheck @assert size(src) == (n_tau, dim1 * dim2)
+
+    # For small arrays, use simple loop
+    if dim1 * dim2 <= 64 || n_tau <= 32
+        idx = 1
+        @inbounds for j = 1:dim2
+            for i = 1:dim1
+                @simd for k = 1:n_tau
+                    dest[i, j, k] = src[k, idx]
+                end
+                idx += 1
+            end
+        end
+    else
+        # For larger arrays, use a cache-blocked approach
+        BLOCK_SIZE = 8
+        @inbounds for j_block = 1:BLOCK_SIZE:dim2
+            j_end = min(j_block + BLOCK_SIZE - 1, dim2)
+            for i_block = 1:BLOCK_SIZE:dim1
+                i_end = min(i_block + BLOCK_SIZE - 1, dim1)
+                for k = 1:n_tau
+                    for j = j_block:j_end
+                        @simd for i = i_block:i_end
+                            idx = (j - 1) * dim1 + i
+                            dest[i, j, k] = src[k, idx]
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return dest
+end
+
+"""
+    ensure_kernel_τ_lu!(dlrGrid::DLRGrid{T,S}) where {T,S}
+
+Ensure the LU factorization of kernel_τ is computed and cached.
+This is called automatically by tau2dlr! but can be called explicitly to
+pre-compute the factorization.
+"""
+function ensure_kernel_τ_lu!(dlrGrid::DLRGrid{T,S}) where {T,S}
+    # First ensure kernel_τ is computed
+    if length(dlrGrid.kernel_τ) == 1
+        dlrGrid.kernel_τ = Spectral.kernelT(
+            T,
+            Val(dlrGrid.isFermi),
+            Val(S),
+            dlrGrid.τ,
+            dlrGrid.ω,
+            dlrGrid.β,
+            true,
+        )
+    end
+
+    # Then compute LU factorization if not already done
+    if isnothing(dlrGrid.kernel_τ_lu)
+        dlrGrid.kernel_τ_lu = lu(dlrGrid.kernel_τ)
+    end
+
+    return dlrGrid.kernel_τ_lu
+end
+
+"""
+    tau2dlr!(dest::AbstractArray{T,3}, dlrGrid::DLRGrid, green::AbstractArray{T,3},
+             workspace::DLRWorkspace{T}) where T
+
+In-place transform from τ-space to DLR coefficients for 3D arrays.
+Assumes τGrid = dlrGrid.τ (the common case in QMBToolkitSOEHYB).
+
+# Arguments
+- `dest`: Output array of shape (dim1, dim2, n_dlr) for DLR coefficients
+- `dlrGrid`: DLR grid (must have same τ grid)
+- `green`: Input array of shape (dim1, dim2, n_dlr) on τ grid
+- `workspace`: Pre-allocated DLRWorkspace
+
+# Notes
+- This function uses the cached LU factorization for efficiency
+- The workspace buffers must be sized appropriately (n_dlr, dim1*dim2)
+"""
+function tau2dlr!(
+    dest::AbstractArray{TC,3},
+    dlrGrid::DLRGrid{T,S},
+    green::AbstractArray{TC,3},
+    workspace::DLRWorkspace{TC},
+) where {T,S,TC<:Number}
+    dim1, dim2, n_tau = size(green)
+    n_dlr = length(dlrGrid)
+
+    @boundscheck begin
+        @assert size(dest) == (dim1, dim2, n_dlr) "dest size $(size(dest)) != expected ($dim1, $dim2, $n_dlr)"
+        @assert n_tau == n_dlr "Input τ dimension $n_tau != DLR size $n_dlr (must use dlrGrid.τ)"
+        @assert workspace.n_dlr >= n_dlr "Workspace n_dlr $(workspace.n_dlr) < required $n_dlr"
+        @assert workspace.n_other >= dim1 * dim2 "Workspace n_other $(workspace.n_other) < required $(dim1*dim2)"
+    end
+
+    # Ensure LU factorization is available
+    lu_fact = ensure_kernel_τ_lu!(dlrGrid)
+
+    # Copy input to contiguous buffer: green(dim1, dim2, n_tau) -> buffer1(n_tau, dim1*dim2)
+    buffer = view(workspace.buffer1, 1:n_dlr, 1:(dim1*dim2))
+    _tensor3_to_matrix!(buffer, green)
+
+    # Solve in-place: kernel * coeff = input, so coeff = kernel \ input
+    # buffer now contains the solution (DLR coefficients)
+    ldiv!(lu_fact, buffer)
+
+    # Copy result back: buffer(n_dlr, dim1*dim2) -> dest(dim1, dim2, n_dlr)
+    _matrix_to_tensor3!(dest, buffer)
+
+    return dest
+end
+
+"""
+    dlr2tau!(dest::AbstractArray{T,3}, dlrGrid::DLRGrid, dlrcoeff::AbstractArray{T,3},
+             workspace::DLRWorkspace{T}) where T
+
+In-place transform from DLR coefficients to τ-space for 3D arrays.
+Assumes τGrid = dlrGrid.τ (the common case in QMBToolkitSOEHYB).
+
+# Arguments
+- `dest`: Output array of shape (dim1, dim2, n_dlr) for τ values
+- `dlrGrid`: DLR grid (must use same τ grid)
+- `dlrcoeff`: Input array of shape (dim1, dim2, n_dlr) with DLR coefficients
+- `workspace`: Pre-allocated DLRWorkspace
+
+# Notes
+- This function uses matrix multiplication with contiguous buffers for efficiency
+- The workspace buffers must be sized appropriately (n_dlr, dim1*dim2)
+"""
+function dlr2tau!(
+    dest::AbstractArray{TC,3},
+    dlrGrid::DLRGrid{T,S},
+    dlrcoeff::AbstractArray{TC,3},
+    workspace::DLRWorkspace{TC},
+) where {T,S,TC<:Number}
+    # Delegate to the version with explicit τGrid = dlrGrid.τ
+    return dlr2tau!(dest, dlrGrid, dlrcoeff, dlrGrid.τ, workspace)
+end
+
+"""
+    dlr2tau!(dest::AbstractArray{T,3}, dlrGrid::DLRGrid, dlrcoeff::AbstractArray{T,3},
+             τGrid::AbstractVector, workspace::DLRWorkspace{T}) where T
+
+In-place transform from DLR coefficients to τ-space for 3D arrays with custom τGrid.
+This version is useful for reflection operations where τGrid = β - dlrGrid.τ.
+
+# Arguments
+- `dest`: Output array of shape (dim1, dim2, n_tau) for τ values
+- `dlrGrid`: DLR grid
+- `dlrcoeff`: Input array of shape (dim1, dim2, n_dlr) with DLR coefficients
+- `τGrid`: Custom τ grid to evaluate on
+- `workspace`: Pre-allocated DLRWorkspace
+
+# Notes
+- This function uses matrix multiplication with contiguous buffers for efficiency
+- When τGrid != dlrGrid.τ, the kernel is computed on-the-fly (small allocation)
+- The workspace buffers avoid the larger tensor allocation/permutation overhead
+"""
+function dlr2tau!(
+    dest::AbstractArray{TC,3},
+    dlrGrid::DLRGrid{T,S},
+    dlrcoeff::AbstractArray{TC,3},
+    τGrid::AbstractVector,
+    workspace::DLRWorkspace{TC},
+) where {T,S,TC<:Number}
+    dim1, dim2, n_dlr_in = size(dlrcoeff)
+    n_dlr = length(dlrGrid)
+    n_tau = length(τGrid)
+
+    @boundscheck begin
+        @assert size(dest) == (dim1, dim2, n_tau) "dest size $(size(dest)) != expected ($dim1, $dim2, $n_tau)"
+        @assert n_dlr_in == n_dlr "Input DLR dimension $n_dlr_in != DLR size $n_dlr"
+        @assert workspace.n_dlr >= max(n_dlr, n_tau) "Workspace n_dlr $(workspace.n_dlr) < required $(max(n_dlr, n_tau))"
+        @assert workspace.n_other >= dim1 * dim2 "Workspace n_other $(workspace.n_other) < required $(dim1*dim2)"
+    end
+
+    # Get or compute the kernel
+    if length(τGrid) == length(dlrGrid.τ) && isapprox(τGrid, dlrGrid.τ; rtol = 10 * eps(T))
+        # Use cached kernel_τ
+        if length(dlrGrid.kernel_τ) == 1
+            dlrGrid.kernel_τ = Spectral.kernelT(
+                T,
+                Val(dlrGrid.isFermi),
+                Val(S),
+                dlrGrid.τ,
+                dlrGrid.ω,
+                dlrGrid.β,
+                true,
+            )
+        end
+        kernel = dlrGrid.kernel_τ
+    else
+        # Compute kernel for custom τGrid (small allocation: n_tau × n_dlr matrix)
+        kernel = Spectral.kernelT(
+            T,
+            Val(dlrGrid.isFermi),
+            Val(S),
+            τGrid,
+            dlrGrid.ω,
+            dlrGrid.β,
+            true,
+        )
+    end
+
+    # Copy input to contiguous buffer: dlrcoeff(dim1, dim2, n_dlr) -> buffer1(n_dlr, dim1*dim2)
+    buffer_in = view(workspace.buffer1, 1:n_dlr, 1:(dim1*dim2))
+    buffer_out = view(workspace.buffer2, 1:n_tau, 1:(dim1*dim2))
+    _tensor3_to_matrix!(buffer_in, dlrcoeff)
+
+    # Matrix multiply: dest = kernel * coeff
+    # kernel is (n_tau, n_dlr), buffer_in is (n_dlr, n_other), result is (n_tau, n_other)
+    mul!(buffer_out, kernel, buffer_in)
+
+    # Copy result back: buffer_out(n_tau, dim1*dim2) -> dest(dim1, dim2, n_tau)
+    _matrix_to_tensor3!(dest, buffer_out)
+
+    return dest
+end

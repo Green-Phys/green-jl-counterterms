@@ -45,6 +45,8 @@ mutable struct DLRGrid{T<:Real,S}
     kernel_n::Matrix{T}
     kernel_nc::Matrix{Complex{T}}
 
+    # LU factorization of kernel_τ for in-place operations (lazily computed)
+    kernel_τ_lu::Union{Nothing,LinearAlgebra.LU{T,Matrix{T},Vector{Int}}}
 end
 
 function Base.getproperty(obj::DLRGrid, sym::Symbol)
@@ -85,8 +87,18 @@ Create DLR grids
 - `algorithm`   : if rebuild = true, then set :functional to use the functional algorithm to generate the DLR basis, or set :discrete to use the matrix algorithm.
 - `verbose`     : false not to print DLRGrid to terminal, or true to print
 """
-function DLRGrid(Euv, β, rtol, isFermi::Bool, symmetry::Symbol=:none;
-    rebuild=false, folder=nothing, algorithm=:functional, verbose=false, dtype=Float64)
+function DLRGrid(
+    Euv,
+    β,
+    rtol,
+    isFermi::Bool,
+    symmetry::Symbol = :none;
+    rebuild = false,
+    folder = nothing,
+    algorithm = :functional,
+    verbose = false,
+    dtype = Float64,
+)
 
     T = dtype
 
@@ -122,7 +134,9 @@ function DLRGrid(Euv, β, rtol, isFermi::Bool, symmetry::Symbol=:none;
                 return joinpath(dir, filename)
             end
         end
-        @warn("Cann't find the DLR file $filename in the folders $folder. Regenerating DLR...")
+        @warn(
+            "Cann't find the DLR file $filename in the folders $folder. Regenerating DLR..."
+        )
         return nothing
     end
 
@@ -147,16 +161,31 @@ function DLRGrid(Euv, β, rtol, isFermi::Bool, symmetry::Symbol=:none;
     if rebuild == false
         if isnothing(folder)
             Λ = Λ < 100 ? Int(100) : 10^(Int(ceil(log10(Λ)))) # get smallest n so that Λ<10^n
-            folderList = [string(@__DIR__, "/../basis/"),]
+            folderList = [string(@__DIR__, "/../basis/")]
         else
-            folderList = [folder,]
+            folderList = [folder]
         end
 
         file = filename(Λ, rtolpower)
         dlrfile = finddlr(folderList, file)
 
         if isnothing(dlrfile) == false
-            dlr = DLRGrid{T,symmetry}(isFermi, symmetry, Euv, β, Λ, rtol, [], [], [], [], zeros(T, 1, 1), zeros(T, 1, 1), zeros(Complex{T}, 1, 1))
+            dlr = DLRGrid{T,symmetry}(
+                isFermi,
+                symmetry,
+                Euv,
+                β,
+                Λ,
+                rtol,
+                [],
+                [],
+                [],
+                [],
+                zeros(T, 1, 1),
+                zeros(T, 1, 1),
+                zeros(Complex{T}, 1, 1),
+                nothing,
+            )
             _load!(dlr, dlrfile, verbose)
             # dlr.kernel_τ = Spectral.kernelT(Val(dlr.isFermi), Val(dlr.symmetry), dlr.τ, dlr.ω, dlr.β, true)
             # dlr.kernel_n = Spectral.kernelΩ(Val(dlr.isFermi), Val(dlr.symmetry), dlr.n, dlr.ω, dlr.β, true)
@@ -168,7 +197,22 @@ function DLRGrid(Euv, β, rtol, isFermi::Bool, symmetry::Symbol=:none;
     end
 
     # try to rebuild the dlrGrid
-    dlr = DLRGrid{T,symmetry}(isFermi, symmetry, Euv, β, Euv * β, rtol, [], [], [], [], zeros(T, 1, 1), zeros(T, 1, 1), zeros(Complex{T}, 1, 1))
+    dlr = DLRGrid{T,symmetry}(
+        isFermi,
+        symmetry,
+        Euv,
+        β,
+        Euv * β,
+        rtol,
+        [],
+        [],
+        [],
+        [],
+        zeros(T, 1, 1),
+        zeros(T, 1, 1),
+        zeros(Complex{T}, 1, 1),
+        nothing,
+    )
     file2save = filename(Euv * β, rtolpower)
     _build!(dlr, folder, file2save, algorithm, verbose)
 
@@ -176,8 +220,19 @@ function DLRGrid(Euv, β, rtol, isFermi::Bool, symmetry::Symbol=:none;
     # dlr.kernel_n = Spectral.kernelΩ(Val(dlr.isFermi), Val(dlr.symmetry), dlr.n, dlr.ω, dlr.β, true)
     return dlr
 end
-function DLRGrid(; isFermi::Bool, β=-1.0, beta=-1.0, Euv=1.0, symmetry::Symbol=:none,
-    rtol=1e-14, rebuild=false, folder=nothing, algorithm=:functional, verbose=false, dtype=Float64)
+function DLRGrid(;
+    isFermi::Bool,
+    β = -1.0,
+    beta = -1.0,
+    Euv = 1.0,
+    symmetry::Symbol = :none,
+    rtol = 1e-14,
+    rebuild = false,
+    folder = nothing,
+    algorithm = :functional,
+    verbose = false,
+    dtype = Float64,
+)
     T = dtype
     if β <= T(0) && beta > T(0)
         β = beta
@@ -187,7 +242,18 @@ function DLRGrid(; isFermi::Bool, β=-1.0, beta=-1.0, Euv=1.0, symmetry::Symbol=
         error("Either β or beta needs to be initialized with a positive value!")
     end
     @assert β ≈ beta
-    return DLRGrid(Euv, β, rtol, isFermi, symmetry; rebuild=rebuild, folder=folder, algorithm=algorithm, verbose=verbose, dtype=dtype)
+    return DLRGrid(
+        Euv,
+        β,
+        rtol,
+        isFermi,
+        symmetry;
+        rebuild = rebuild,
+        folder = folder,
+        algorithm = algorithm,
+        verbose = verbose,
+        dtype = dtype,
+    )
 end
 
 
@@ -206,12 +272,12 @@ Base.length(dlrGrid::DLRGrid) = length(dlrGrid.ω)
 function symmetrize_ω(ω)
     # for a real frequency grid \omega, make it symmetric with respect to 0 by adding missing symmetric grid points.
     zero_idx = searchsortedfirst(ω, 0)
-    ω_neg = ω[1:zero_idx-1]
+    ω_neg = ω[1:(zero_idx-1)]
     ω_pos = ω[zero_idx:end]
     #ω_sort =sort(vcat(ω_pos,-ω_neg,ω_neg, -ω_pos))
     ω_sort = sort(vcat(ω_pos, -ω_neg))
     ω_final = []
-    for i in 1:length(ω_sort)
+    for i = 1:length(ω_sort)
         if i == 1 || abs(ω_sort[i] - ω_sort[i-1]) > 1e-10
             push!(ω_final, ω_sort[i])
         end
@@ -224,14 +290,14 @@ end
 function symmetrize_τ(ω)
     # for an imaginary time grid \omega, make it symmetric with respect to 0 by adding missing symmetric grid points.
     zero_idx = searchsortedfirst(ω, 1.0 / 2.0)
-    ω_neg = ω[1:zero_idx-1]
+    ω_neg = ω[1:(zero_idx-1)]
     ω_pos = ω[zero_idx:end]
     #print("size pos $(ω_pos)\n")
     #print("size neg $(ω_neg)\n")
     # ω_sort =sort(vcat(ω_pos,1.0.-ω_neg,ω_neg, 1.0.-ω_pos))
     ω_sort = sort(vcat(ω_pos, 1.0 .- ω_neg))
     ω_final = []
-    for i in 1:length(ω_sort)
+    for i = 1:length(ω_sort)
         if i == 1 || abs(ω_sort[i] - ω_sort[i-1]) > 1e-10
             push!(ω_final, ω_sort[i])
         end
@@ -246,7 +312,7 @@ function symmetrize_n(ω, isFermi)
     # for a Matsubara frequency grid \omega, make it symmetric with respect to 0 by adding missing symmetric grid points.
 
     zero_idx = searchsortedfirst(ω, 0)
-    ω_neg = ω[1:zero_idx-1]
+    ω_neg = ω[1:(zero_idx-1)]
     ω_pos = ω[zero_idx:end]
     if isFermi
         # for fermionic grid, the sum of symmetric n grid points is -1
@@ -256,7 +322,7 @@ function symmetrize_n(ω, isFermi)
         ω_sort = sort(vcat(ω_pos, -ω_neg, ω_neg, -ω_pos))
     end
     ω_final = []
-    for i in 1:length(ω_sort)
+    for i = 1:length(ω_sort)
         if i == 1 || abs(ω_sort[i] - ω_sort[i-1]) > 1e-16
             push!(ω_final, ω_sort[i])
         end
@@ -286,11 +352,11 @@ function is_symmetrized(dlrGrid::DLRGrid)
     return maximum(n0 .- n) == 0 && maximum(abs.(dlrGrid.β .- τ)) < 1e-8
 end
 
-function _load!(dlrGrid::DLRGrid{T,S}, dlrfile, verbose=false) where {T,S}
+function _load!(dlrGrid::DLRGrid{T,S}, dlrfile, verbose = false) where {T,S}
 
     β = dlrGrid.β
     if dlrGrid.symmetry == :sym
-        grid = readdlm(dlrfile, T, skipstart=1)
+        grid = readdlm(dlrfile, T, skipstart = 1)
         ω = T.(filter(x -> !isnan(x), grid[:, 2]))
         τ = T.(filter(x -> !isnan(x), grid[:, 3]))
         if dlrGrid.isFermi
@@ -300,7 +366,7 @@ function _load!(dlrGrid::DLRGrid{T,S}, dlrfile, verbose=false) where {T,S}
         end
         #print("$(ω) $(τ) $(n)")
     else
-        grid = readdlm(dlrfile, comments=true, comment_char='#')
+        grid = readdlm(dlrfile, comments = true, comment_char = '#')
         ω, τ = grid[:, 2], grid[:, 3]
 
         if dlrGrid.isFermi
@@ -332,7 +398,7 @@ function _load!(dlrGrid::DLRGrid{T,S}, dlrfile, verbose=false) where {T,S}
     verbose && println(dlrGrid)
 end
 
-function _build!(dlrGrid::DLRGrid, folder, filename, algorithm, verbose=false)
+function _build!(dlrGrid::DLRGrid, folder, filename, algorithm, verbose = false)
     isFermi = dlrGrid.isFermi
     β = dlrGrid.β
     if algorithm == :discrete || dlrGrid.symmetry == :none || dlrGrid.symmetry == :sym
@@ -348,7 +414,15 @@ function _build!(dlrGrid::DLRGrid, folder, filename, algorithm, verbose=false)
         print("$(filename)\n")
         file = open(joinpath(folder, filename), "w")
         #open(joinpath(folder, filename), "w") do io
-        @printf(file, "# %5s  %25s  %25s  %25s  %20s\n", "index", "freq", "tau", "fermi n", "bose n")
+        @printf(
+            file,
+            "# %5s  %25s  %25s  %25s  %20s\n",
+            "index",
+            "freq",
+            "tau",
+            "fermi n",
+            "bose n"
+        )
         for r = 1:rank
             s0 = "%5i "
             s1 = r > length(ω) ? "%48s " : "%48.40g "
@@ -356,10 +430,15 @@ function _build!(dlrGrid::DLRGrid, folder, filename, algorithm, verbose=false)
             s3 = r > length(nF) ? "%16s " : "%16i "
             s4 = r > length(nB) ? "%16s\n" : "%16i\n"
             f = Printf.Format(s0 * s1 * s2 * s3 * s4)
-            Printf.format(file, f, r, r > length(ω) ? nan : ω[r],
+            Printf.format(
+                file,
+                f,
+                r,
+                r > length(ω) ? nan : ω[r],
                 r > length(τ) ? nan : τ[r],
                 r > length(nF) ? nan : nF[r],
-                r > length(nB) ? nan : nB[r])
+                r > length(nB) ? nan : nB[r],
+            )
         end
         # for r = 1:rank
         #     @printf(io, "%5i  %32.17g  %32.17g  %16i  %16i\n", r, ω[r], τ[r], nF[r], nB[r])
@@ -384,7 +463,10 @@ end
 
 function Base.show(io::IO, dlr::DLRGrid)
     title = dlr.isFermi ? "ferminoic" : "bosonic"
-    println(io, "rank = $(dlr.size) $title DLR with $(dlr.symmetry) symmetry: Euv = $(dlr.Euv), β = $(dlr.β), rtol = $(dlr.rtol)")
+    println(
+        io,
+        "rank = $(dlr.size) $title DLR with $(dlr.symmetry) symmetry: Euv = $(dlr.Euv), β = $(dlr.β), rtol = $(dlr.rtol)",
+    )
     @printf(io, "# %5s  %28s  %28s  %28s      %20s\n", "index", "freq", "tau", "ωn", "n")
     #for r = 1:dlr.size
     #    @printf(io, "%5i  %32.17g  %32.17g  %32.17g  %16i\n", r, dlr.ω[r], dlr.τ[r], dlr.ωn[r], dlr.n[r])

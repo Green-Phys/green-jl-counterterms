@@ -9,10 +9,11 @@ Provides a wrapper around Array{T,3} for consistent interface with BlockDensePro
 
 Time-dependent dense propagator. A wrapper around Array{T,3} where:
 
-  - First dimension: tau grid points
-  - Second dimension: row index (Fock space dimension)
-  - Third dimension: column index (Fock space dimension)
+  - First dimension: row index (Fock space dimension)
+  - Second dimension: column index (Fock space dimension)
+  - Third dimension: tau grid points
 
+This layout ensures contiguous memory access for matrix operations at each time point.
 This is a trivial wrapper that provides consistent interface with BlockDensePropagator.
 """
 struct DensePropagator{T <: Number}
@@ -22,8 +23,8 @@ end
 # Constructors
 DensePropagator(data::Array{T, 3}) where {T} = DensePropagator{T}(data)
 
-function Base.zeros(::Type{DensePropagator{T}}, n_tau::Int, dim1::Int, dim2::Int) where {T}
-    return DensePropagator{T}(zeros(T, n_tau, dim1, dim2))
+function Base.zeros(::Type{DensePropagator{T}}, dim1::Int, dim2::Int, n_tau::Int) where {T}
+    return DensePropagator{T}(zeros(T, dim1, dim2, n_tau))
 end
 
 # Size and access
@@ -78,8 +79,8 @@ function DenseDLRPropagator(vals::DensePropagator{T}, coeffs::DensePropagator{T}
 end
 
 function DenseDLRPropagator{T}(r::Int, dim1::Int, dim2::Int) where {T}
-    vals = zeros(DensePropagator{T}, r, dim1, dim2)
-    coeffs = zeros(DensePropagator{T}, r, dim1, dim2)
+    vals = zeros(DensePropagator{T}, dim1, dim2, r)
+    coeffs = zeros(DensePropagator{T}, dim1, dim2, r)
     return DenseDLRPropagator{T}(vals, coeffs)
 end
 

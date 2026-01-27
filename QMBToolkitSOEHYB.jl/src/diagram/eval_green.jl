@@ -104,7 +104,8 @@ function eval_green_given_order!(
             multiply_prop_op!(cre_product, buffers.backbone_0_to_beta_with_ann[ann_index], cre_opt)
 
             trace_prop!(buffers.trace_result_buffer, cre_product)
-            view(local_result, :, ann_index, cre_index) .+= buffers.trace_result_buffer
+            # New layout: (ann_flavor, cre_flavor, n_tau) - tau is now the 3rd dimension
+            view(local_result, ann_index, cre_index, :) .+= buffers.trace_result_buffer
         end
     end
 

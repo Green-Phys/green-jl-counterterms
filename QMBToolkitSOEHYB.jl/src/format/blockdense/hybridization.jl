@@ -15,19 +15,22 @@ Apply hybridization function to BlockDense target array in-place, updating targe
 Uses pre-allocated temp_buffer to avoid allocations.
 
 # Arguments
-- `temp_buffer::BlockDensePropagator{T}`: Pre-allocated buffer for intermediate results
-- `target::BlockDensePropagator{T}`: Array to be modified (time-dependent block array)
-- `hyb::HybridizationState`: Hybridization state (NoHyb, KPlus(l), or KMinus(l))
-- `model_data::ModelData{T, BlockDenseFormat}`: Model data containing K± values on DLR τ-grid
-- `is_reverse::Bool=false`: When true, swaps KPlus ↔ KMinus (used in reverse convolution)
+
+  - `temp_buffer::BlockDensePropagator{T}`: Pre-allocated buffer for intermediate results
+  - `target::BlockDensePropagator{T}`: Array to be modified (time-dependent block array)
+  - `hyb::HybridizationState`: Hybridization state (NoHyb, KPlus(l), or KMinus(l))
+  - `model_data::ModelData{T, BlockDenseFormat}`: Model data containing K± values on DLR τ-grid
+  - `is_reverse::Bool=false`: When true, swaps KPlus ↔ KMinus (used in reverse convolution)
 
 # Behavior
-- For NoHyb (index=0): target unchanged
-- For KPlus(l) (index=l>0) and is_reverse=false: multiplies by KPlus_on_DLRtau[:,l]
-- For KMinus(l) (index=-l, l>0) and is_reverse=false: multiplies by KMinus_on_DLRtau[:,l]
-- When is_reverse=true, the KPlus/KMinus selection is swapped
+
+  - For NoHyb (index=0): target unchanged
+  - For KPlus(l) (index=l>0) and is_reverse=false: multiplies by KPlus_on_DLRtau[:,l]
+  - For KMinus(l) (index=-l, l>0) and is_reverse=false: multiplies by KMinus_on_DLRtau[:,l]
+  - When is_reverse=true, the KPlus/KMinus selection is swapped
 
 # Note
+
 Hybridization is applied as element-wise scalar multiplication, so it applies to all blocks
 in the target (both diagonal and off-diagonal). The target may have any flux structure
 depending on prior operator multiplications in the diagram evaluation.
@@ -52,11 +55,11 @@ depending on prior operator multiplications in the diagram evaluation.
         # (both diagonal and off-diagonal) in the target array
         for (block_key, target_block) in target.blocks
             temp_block = temp_buffer.blocks[block_key]
-            n_tau = size(target_block, 1)
+            n_tau = size(target_block, 3)  # layout: (dim1, dim2, n_tau)
 
-            # Element-wise multiplication: temp_block[k, :, :] = vec[k] * target_block[k, :, :]
+            # Element-wise multiplication: temp_block[:, :, k] = vec[k] * target_block[:, :, k]
             @inbounds for k in 1:n_tau
-                @views temp_block[k, :, :] .= vec[k] .* target_block[k, :, :]
+                @views temp_block[:, :, k] .= vec[k] .* target_block[:, :, k]
             end
 
             # Copy back to target

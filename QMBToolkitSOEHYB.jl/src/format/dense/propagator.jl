@@ -17,7 +17,7 @@ Provides 7 distinct buffer roles matching the BlockDense structure for consisten
 All buffers have the same shape since Dense mode doesn't track flux.
 The flux parameter in accessor functions is ignored.
 
-# Buffer Roles (tau-sized: n_tau × n_fock × n_fock)
+# Buffer Roles (tau-sized: n_fock × n_fock × n_tau)
 
   - `result`: Accumulates the backbone result through multiplication and convolution
   - `hyb_temp`: Scratch buffer for hybridization operations on result
@@ -25,7 +25,7 @@ The flux parameter in accessor functions is ignored.
   - `conv_operand`: Holds propagator copy for convolution
   - `conv_hyb_temp`: Scratch buffer for hybridization on convolution operand
 
-# Buffer Roles (dlr-sized: n_dlr × n_fock × n_fock)
+# Buffer Roles (dlr-sized: n_fock × n_fock × n_dlr)
 
   - `conv_dlr`: DLR transform of convolution operand
   - `result_dlr`: DLR transform of result
@@ -44,13 +44,13 @@ end
 
 function DenseBackboneBuffers{T}(n_tau::Int, n_fock::Int, n_dlr::Int) where {T <: Number}
     return DenseBackboneBuffers{T}(
-        zeros(DensePropagator{T}, n_tau, n_fock, n_fock),   # result
-        zeros(DensePropagator{T}, n_tau, n_fock, n_fock),   # hyb_temp
-        zeros(DensePropagator{T}, n_tau, n_fock, n_fock),   # op_product
-        zeros(DensePropagator{T}, n_tau, n_fock, n_fock),   # conv_operand
-        zeros(DensePropagator{T}, n_tau, n_fock, n_fock),   # conv_hyb_temp
-        zeros(DensePropagator{T}, n_dlr, n_fock, n_fock),   # conv_dlr
-        zeros(DensePropagator{T}, n_dlr, n_fock, n_fock)   # result_dlr
+        zeros(DensePropagator{T}, n_fock, n_fock, n_tau),   # result
+        zeros(DensePropagator{T}, n_fock, n_fock, n_tau),   # hyb_temp
+        zeros(DensePropagator{T}, n_fock, n_fock, n_tau),   # op_product
+        zeros(DensePropagator{T}, n_fock, n_fock, n_tau),   # conv_operand
+        zeros(DensePropagator{T}, n_fock, n_fock, n_tau),   # conv_hyb_temp
+        zeros(DensePropagator{T}, n_fock, n_fock, n_dlr),   # conv_dlr
+        zeros(DensePropagator{T}, n_fock, n_fock, n_dlr)    # result_dlr
     )
 end
 
@@ -213,16 +213,16 @@ function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}, expansi
     # Pre-allocate backbone accumulators (one per annihilation flavor)
     # Explicitly type the Vector for type stability
     backbone_0_to_beta_with_ann = Vector{DensePropagator{T}}(
-        [zeros(DensePropagator{T}, n_tau, n_fock, n_fock) for _ in 1:n_flavors]
+        [zeros(DensePropagator{T}, n_fock, n_fock, n_tau) for _ in 1:n_flavors]
     )
 
     # Pre-allocate buffer for reflected contrib_tau_to_beta
-    contrib_tau_to_beta_reflected = zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
+    contrib_tau_to_beta_reflected = zeros(DensePropagator{T}, n_fock, n_fock, n_tau)
 
     # Pre-allocate buffers for operator products (reused across loop iterations)
-    ann_product = zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
-    final_product = zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
-    cre_product = zeros(DensePropagator{T}, n_tau, n_fock, n_fock)
+    ann_product = zeros(DensePropagator{T}, n_fock, n_fock, n_tau)
+    final_product = zeros(DensePropagator{T}, n_fock, n_fock, n_tau)
+    cre_product = zeros(DensePropagator{T}, n_fock, n_fock, n_tau)
 
     # Pre-allocate trace result buffer (Real type - trace of Hermitian is real)
     trace_buffer = zeros(Float64, n_tau)

@@ -242,13 +242,14 @@ function save_results(solver_data::SolverData, solver_params::SolverParams)
     solver_data.calc.green_linear_grid = green_linear
 
     # Print summary
+    # New layout: (ann_flavor, cre_flavor, n_tau)
     println("First 4 linear grid tau points:")
     println(solver_data.calc.tau_linear_grid[1:4])
-    println("Green's function G[1:4, 1,1] on linear grid:")
-    println(solver_data.calc.green_linear_grid.data[1:4, 1, 1])
+    println("Green's function G[1,1, 1:4] on linear grid:")
+    println(solver_data.calc.green_linear_grid.data[1, 1, 1:4])
     println("Head + Tail (linear grid):")
     println(solver_data.calc.green_linear_grid.data[1, 1, 1] +
-            solver_data.calc.green_linear_grid.data[end, 1, 1])
+            solver_data.calc.green_linear_grid.data[1, 1, end])
 
     # Save all data (without timing)
     output_file = joinpath(solver_params.output_path, "sim.h5")

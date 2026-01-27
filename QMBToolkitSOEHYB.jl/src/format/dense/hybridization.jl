@@ -12,23 +12,26 @@ Apply hybridization function to target propagator in-place, updating target with
 Uses pre-allocated temp_buffer to avoid allocations.
 
 # Arguments
-- `temp_buffer::DensePropagator{T}`: Pre-allocated buffer for intermediate results
-- `target::DensePropagator{T}`: Propagator to be modified (τ, orbital1, orbital2)
-- `hyb::HybridizationState`: Hybridization state (NoHyb, KPlus(l), or KMinus(l))
-- `model_data::ModelData{T}`: Model data containing K± values on DLR τ-grid
-- `is_reverse::Bool=false`: When true, swaps KPlus ↔ KMinus (used in reverse convolution)
+
+  - `temp_buffer::DensePropagator{T}`: Pre-allocated buffer for intermediate results
+  - `target::DensePropagator{T}`: Propagator to be modified (orbital1, orbital2, τ)
+  - `hyb::HybridizationState`: Hybridization state (NoHyb, KPlus(l), or KMinus(l))
+  - `model_data::ModelData{T}`: Model data containing K± values on DLR τ-grid
+  - `is_reverse::Bool=false`: When true, swaps KPlus ↔ KMinus (used in reverse convolution)
 
 # Behavior
-- For NoHyb (index=0): target unchanged
-- For KPlus(l) (index=l>0) and is_reverse=false: multiplies by KPlus_on_DLRtau[:,l]
-- For KMinus(l) (index=-l, l>0) and is_reverse=false: multiplies by KMinus_on_DLRtau[:,l]
-- When is_reverse=true, the KPlus/KMinus selection is swapped
+
+  - For NoHyb (index=0): target unchanged
+  - For KPlus(l) (index=l>0) and is_reverse=false: multiplies by KPlus_on_DLRtau[:,l]
+  - For KMinus(l) (index=-l, l>0) and is_reverse=false: multiplies by KMinus_on_DLRtau[:,l]
+  - When is_reverse=true, the KPlus/KMinus selection is swapped
 
 The XOR logic `(index > 0) ⊻ is_reverse` determines which K to use:
-- Positive index, not reverse → KPlus
-- Negative index, not reverse → KMinus
-- Positive index, reverse → KMinus
-- Negative index, reverse → KPlus
+
+  - Positive index, not reverse → KPlus
+  - Negative index, not reverse → KMinus
+  - Positive index, reverse → KMinus
+  - Negative index, reverse → KPlus
 """
 @inline function apply_hybridization_inplace_dense!(
         temp_buffer::DensePropagator{T}, target::DensePropagator{T}, hyb::HybridizationState,

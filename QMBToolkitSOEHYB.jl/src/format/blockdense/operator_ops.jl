@@ -17,7 +17,7 @@ using LinearAlgebra
 """
     _multiplication_23_blockdense!(temp_buffer::BlockDensePropagator{T}, A::BlockDenseOperator, B::BlockDensePropagator{T}) where T<:Number
 
-In-place operator-tensor multiplication: temp_buffer[τ,:,:] = A * B[τ,:,:] for all τ.
+In-place operator-tensor multiplication: temp_buffer[:,:,τ] = A * B[:,:,τ] for all τ.
 
 For each time slice τ, performs block-aware multiplication where only blocks allowed by
 quantum number conservation are computed.
@@ -55,8 +55,8 @@ function _multiplication_23_blockdense!(
     end
 
     # Get time dimension and basis
-    # All blocks should have same n_tau, so get from any block
-    n_tau = size(first(values(B.blocks)), 1)
+    # All blocks should have same n_tau, so get from any block (layout: dim1, dim2, n_tau)
+    n_tau = size(first(values(B.blocks)), 3)
     basis = B.basis
     n_sectors = length(basis.sectors)
 
@@ -84,7 +84,7 @@ function _multiplication_23_blockdense!(
 
                 # For each time point: result[tgt, src](τ) += A[tgt, mid] * B[mid, src](τ)
                 @inbounds for k in 1:n_tau
-                    mul!(view(result_block,k,:,:), A_block, view(B_block,k,:,:), 1.0, 1.0)
+                    mul!(view(result_block,:,:,k), A_block, view(B_block,:,:,k), 1.0, 1.0)
                 end
             end
         end
@@ -96,7 +96,7 @@ end
 """
     _multiplication_32_blockdense!(temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T}, B::BlockDenseOperator) where T<:Number
 
-In-place tensor-operator multiplication: temp_buffer[τ,:,:] = A[τ,:,:] * B for all τ.
+In-place tensor-operator multiplication: temp_buffer[:,:,τ] = A[:,:,τ] * B for all τ.
 
 For each time slice τ, performs block-aware multiplication where only blocks allowed by
 quantum number conservation are computed.
@@ -131,8 +131,8 @@ function _multiplication_32_blockdense!(
         return
     end
 
-    # Get time dimension and basis
-    n_tau = size(first(values(A.blocks)), 1)
+    # Get time dimension and basis (layout: dim1, dim2, n_tau)
+    n_tau = size(first(values(A.blocks)), 3)
     basis = A.basis
     n_sectors = length(basis.sectors)
 
@@ -160,7 +160,7 @@ function _multiplication_32_blockdense!(
 
                 # For each time point: result[tgt, src](τ) += A[tgt, mid](τ) * B[mid, src]
                 @inbounds for k in 1:n_tau
-                    mul!(view(result_block,k,:,:), view(A_block,k,:,:), B_block, 1.0, 1.0)
+                    mul!(view(result_block,:,:,k), view(A_block,:,:,k), B_block, 1.0, 1.0)
                 end
             end
         end
@@ -190,8 +190,8 @@ function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDensePropaga
         return trace_buffer
     end
 
-    # Get time dimension from any block
-    n_tau = size(first(values(A.blocks)), 1)
+    # Get time dimension from any block (layout: dim1, dim2, n_tau)
+    n_tau = size(first(values(A.blocks)), 3)
     @boundscheck @assert length(trace_buffer) == n_tau "Trace buffer must have length n_tau"
 
     # Zero out buffer
@@ -200,13 +200,13 @@ function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDensePropaga
     # Sum traces of diagonal blocks only
     for ((target, source), block) in A.blocks
         if target == source  # Diagonal block
-            dim = size(block, 2)
-            @boundscheck @assert size(block, 3) == dim "Diagonal blocks must be square"
+            dim = size(block, 1)
+            @boundscheck @assert size(block, 2) == dim "Diagonal blocks must be square"
 
             # Manual diagonal sum is faster than tr(@view ...) for small blocks
             @inbounds for k in 1:n_tau
                 for i in 1:dim
-                    trace_buffer[k] += real(block[k, i, i])
+                    trace_buffer[k] += real(block[i, i, k])
                 end
             end
         end
@@ -218,7 +218,7 @@ end
 """
     _multiplication_33_blockdense!(temp_buffer::BlockDensePropagator{T}, A::BlockDensePropagator{T}, B::BlockDensePropagator{T}) where T<:Number
 
-In-place tensor-tensor multiplication for BlockDense: temp_buffer[τ,:,:] = A[τ,:,:] * B[τ,:,:].
+In-place tensor-tensor multiplication for BlockDense: temp_buffer[:,:,τ] = A[:,:,τ] * B[:,:,τ].
 
 For each time slice τ, performs block-aware multiplication where only blocks allowed by
 quantum number conservation are computed.
@@ -253,8 +253,8 @@ function _multiplication_33_blockdense!(
         return temp_buffer
     end
 
-    # Get time dimension and basis
-    n_tau = size(first(values(A.blocks)), 1)
+    # Get time dimension and basis (layout: dim1, dim2, n_tau)
+    n_tau = size(first(values(A.blocks)), 3)
     basis = A.basis
     n_sectors = length(basis.sectors)
 
@@ -282,8 +282,8 @@ function _multiplication_33_blockdense!(
 
                 # For each time point: result[tgt, src](τ) += A[tgt, mid](τ) * B[mid, src](τ)
                 @inbounds for k in 1:n_tau
-                    mul!(view(result_block,k,:,:), view(A_block,k,:,:),
-                        view(B_block,k,:,:), 1.0, 1.0)
+                    mul!(view(result_block,:,:,k), view(A_block,:,:,k),
+                        view(B_block,:,:,k), 1.0, 1.0)
                 end
             end
         end

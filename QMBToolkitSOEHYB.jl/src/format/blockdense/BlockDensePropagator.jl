@@ -12,8 +12,9 @@ using QMBToolkitED.BlockDense
 
 Time-dependent block-dense propagator for DLR operations.
 
-Each block is stored as a 3D array: (time_points, row_dim, col_dim)
+Each block is stored as a 3D array: (row_dim, col_dim, time_points)
 where time_points is either tau grid or DLR grid.
+This layout ensures contiguous memory access for matrix operations at each time point.
 
 Fields:
 
@@ -48,7 +49,7 @@ function Base.zeros(::Type{BlockDensePropagator{T}}, basis::BlockDenseBasis, flu
         # Diagonal blocks only
         for (i, sector) in enumerate(basis.sectors)
             dim = sector.dim
-            blocks[(i, i)] = zeros(T, n_tau, dim, dim)
+            blocks[(i, i)] = zeros(T, dim, dim, n_tau)
         end
     else
         # For non-zero flux, need to determine allowed blocks based on quantum number arithmetic

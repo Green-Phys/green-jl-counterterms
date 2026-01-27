@@ -171,7 +171,8 @@ function run_bare_expansion_test(format::String)
 
             for (tau_idx, tau_val) in enumerate(tau_test)
                 linear_idx = argmin(abs.(tau_linear .- tau_val))
-                G_computed = green_at_order[linear_idx, 1, 1]
+                # New layout: (ann_flavor, cre_flavor, n_tau)
+                G_computed = green_at_order[1, 1, linear_idx]
                 G_expected = G_ANALYTICAL[order][tau_idx]
 
                 @test isapprox(G_computed, G_expected, rtol = 1e-12)
@@ -227,15 +228,16 @@ function run_2spin_bare_expansion_test(format::String)
                 linear_idx = argmin(abs.(tau_linear .- tau_val))
                 G_expected = G_ANALYTICAL_2SPIN[order][tau_idx]
 
+                # New layout: (ann_flavor, cre_flavor, n_tau)
                 # Diagonal elements should match 2-spin analytical result
-                G_00 = green_at_order[linear_idx, 1, 1]
-                G_11 = green_at_order[linear_idx, 2, 2]
+                G_00 = green_at_order[1, 1, linear_idx]
+                G_11 = green_at_order[2, 2, linear_idx]
                 @test isapprox(G_00, G_expected, rtol = 1e-12)
                 @test isapprox(G_11, G_expected, rtol = 1e-12)
 
                 # Off-diagonal elements should be zero
-                G_01 = green_at_order[linear_idx, 1, 2]
-                G_10 = green_at_order[linear_idx, 2, 1]
+                G_01 = green_at_order[1, 2, linear_idx]
+                G_10 = green_at_order[2, 1, linear_idx]
                 @test isapprox(G_01, 0.0, atol = 1e-14)
                 @test isapprox(G_10, 0.0, atol = 1e-14)
             end

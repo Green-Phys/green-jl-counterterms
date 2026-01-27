@@ -137,7 +137,7 @@ function allocate_buffer_for_flux(basis::BlockDenseBasis, delta_qn::QN, n_time::
     for (tgt_idx, src_idx) in block_indices
         dim_tgt = basis.sectors[tgt_idx].dim
         dim_src = basis.sectors[src_idx].dim
-        blocks[(tgt_idx, src_idx)] = zeros(T, n_time, dim_tgt, dim_src)
+        blocks[(tgt_idx, src_idx)] = zeros(T, dim_tgt, dim_src, n_time)
     end
 
     flux = OperatorFlux(delta_qn)

@@ -3,6 +3,7 @@ DLR operations for BlockDensePropagator.
 
 Provides tau2dlr, dlr2tau, reflection, and convolution operations for block-dense propagators.
 Each block is transformed/operated independently, preserving block structure.
+Layout: (dim1, dim2, n_tau) for tau-space, (dim1, dim2, r) for DLR representation.
 """
 
 using QMBToolkitDLR
@@ -24,8 +25,7 @@ function tau2dlr_blockdense(dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, ta
     blocks_dlr = Dict{Tuple{Int, Int}, Array{T, 3}}()
 
     for ((target, source), block_tau) in prop.blocks
-        # Transform this block: (n_tau, n_row, n_col) -> (r, n_row, n_col)
-        block_dlr = QMBToolkitDLR.tau2dlr(dlr_grid, block_tau, tau_grid)
+        block_dlr = QMBToolkitDLR.tau2dlr(dlr_grid, block_tau, tau_grid; axis = 3)
         blocks_dlr[(target, source)] = block_dlr
     end
 
@@ -45,8 +45,7 @@ function tau2dlr_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
 
     for ((target, source), block_tau) in prop.blocks
         @boundscheck @assert haskey(dest.blocks, (target, source)) "Destination missing block ($target, $source)"
-        # Transform this block: (n_tau, n_row, n_col) -> (r, n_row, n_col)
-        block_dlr = QMBToolkitDLR.tau2dlr(dlr_grid, block_tau, tau_grid)
+        block_dlr = QMBToolkitDLR.tau2dlr(dlr_grid, block_tau, tau_grid; axis = 3)
         copyto!(dest.blocks[(target, source)], block_dlr)
     end
 
@@ -63,8 +62,7 @@ function dlr2tau_blockdense(dlr_grid::DLRGrid, prop_dlr::BlockDensePropagator{T}
     blocks_tau = Dict{Tuple{Int, Int}, Array{T, 3}}()
 
     for ((target, source), block_dlr) in prop_dlr.blocks
-        # Transform this block: (r, n_row, n_col) -> (n_tau, n_row, n_col)
-        block_tau = QMBToolkitDLR.dlr2tau(dlr_grid, block_dlr, tau_grid)
+        block_tau = QMBToolkitDLR.dlr2tau(dlr_grid, block_dlr, tau_grid; axis = 3)
         blocks_tau[(target, source)] = block_tau
     end
 
@@ -90,7 +88,7 @@ function do_reflection_tau2tau_blockdense!(dest::BlockDensePropagator{T}, dlr_gr
     tau_grid_reflected = dlr_grid.β .- dlr_grid.τ
 
     for ((target, source), block_dlr) in prop_dlr.blocks
-        block_tau = QMBToolkitDLR.dlr2tau(dlr_grid, block_dlr, tau_grid_reflected)
+        block_tau = QMBToolkitDLR.dlr2tau(dlr_grid, block_dlr, tau_grid_reflected; axis = 3)
         copyto!(dest.blocks[(target, source)], block_tau)
     end
 
@@ -149,6 +147,7 @@ function do_convolution_dlr2tau_blockdense!(
                     block_contrib = QMBToolkitDLR.do_convolution_dlr2tau!(
                         workspace, dlr_grid, kernel_cache, F_block, G_block, do_view = true)
 
+                    # Add to destination
                     dest.blocks[dest_key] .+= block_contrib
                 end
             end
@@ -198,9 +197,9 @@ function blockdense_to_dense_single_tau(bda::BlockDensePropagator{T}) where {T}
         row_offset = sum(bda.basis.sectors[k].dim for k in 1:(i - 1); init = 0)
         col_offset = sum(bda.basis.sectors[k].dim for k in 1:(j - 1); init = 0)
 
-        # Extract single time slice (should be at index 1)
-        @boundscheck @assert size(block, 1) == 1 "Expected single time slice"
-        @inbounds result[(row_offset + 1):(row_offset + dim_i), (col_offset + 1):(col_offset + dim_j)] = block[1, :, :]
+        # Extract single time slice (layout: dim1, dim2, n_tau, so time is at index 3)
+        @boundscheck @assert size(block, 3) == 1 "Expected single time slice"
+        @inbounds result[(row_offset + 1):(row_offset + dim_i), (col_offset + 1):(col_offset + dim_j)] = block[:, :, 1]
     end
 
     return result

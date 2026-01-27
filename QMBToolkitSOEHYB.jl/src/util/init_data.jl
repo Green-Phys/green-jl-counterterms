@@ -425,10 +425,11 @@ function _build_bare_propagator(::Type{T}, eigenvalues::DenseDiagonalOperator,
     evals_shifted = evals .- E_shift
     n_fock = length(evals)
 
-    bare_propagator = zeros(T, length(tau_grid), n_fock, n_fock)
+    # Layout: (dim1, dim2, n_tau) for contiguous BLAS access
+    bare_propagator = zeros(T, n_fock, n_fock, length(tau_grid))
     for (k, tau) in enumerate(tau_grid)
         U_tau = exp.(-tau * evals_shifted)
-        bare_propagator[k, :, :] = Diagonal(U_tau)
+        bare_propagator[:, :, k] = Diagonal(U_tau)
     end
     return DensePropagator(bare_propagator)
 end
@@ -462,12 +463,13 @@ function _build_bare_propagator(::Type{T}, eigenvalues::BlockDenseDiagonalOperat
         evals_shifted = sector_evals .- E_shift
 
         # Construct propagator for this sector (diagonal in eigenbasis)
-        block = zeros(T, n_tau, sector_dim, sector_dim)
+        # Layout: (dim1, dim2, n_tau) for contiguous BLAS access
+        block = zeros(T, sector_dim, sector_dim, n_tau)
 
         for (k, tau) in enumerate(tau_grid)
             # G(τ) = diag(exp(-τ * (E - E_shift))) in eigenbasis
             U_tau = exp.(-tau .* evals_shifted)
-            block[k, :, :] = Diagonal(U_tau)
+            block[:, :, k] = Diagonal(U_tau)
         end
 
         blocks[(sector_idx, sector_idx)] = block
@@ -534,7 +536,7 @@ end
     _create_convolution_workspace(T, dlr_grid, prop::DensePropagator)
 
 Create ConvolutionWorkspace for Dense format with full Fock space dimensions.
-Infers dimensions from the propagator shape (n_tau, n_fock, n_fock).
+Infers dimensions from the propagator shape (n_fock, n_fock, n_tau).
 """
 function _create_convolution_workspace(::Type{T}, dlr_grid, prop::DensePropagator) where {T}
     r = length(dlr_grid.ω)

@@ -24,11 +24,12 @@ Pre-allocated workspace buffers for do_convolution_dlr2tau.
 Reusing these buffers across multiple convolution calls reduces allocations
 in the main computation loop.
 
-Supports non-square matrix convolutions: F (r × d1 × d2) * G (r × d2 × d3) -> H (n_tau × d1 × d3)
+Layout: (d1, d2, r) where r is DLR rank, matching the propagator layout (dim1, dim2, n_tau).
+Supports non-square matrix convolutions: F (d1 × d2 × r) * G (d2 × d3 × r) -> H (d1 × d3 × n_tau)
 
 # Fields
-- `H1_dlr`: Buffer for first convolution term (r × d1 × d3)
-- `H2_dlr`: Buffer for second convolution term (r × d1 × d3)
+- `H1_dlr`: Buffer for first convolution term (d1 × d3 × r)
+- `H2_dlr`: Buffer for second convolution term (d1 × d3 × r)
 - `term1`: Temporary buffer for F accumulation (d1 × d2)
 - `term2`: Temporary buffer for G accumulation (d2 × d3)
 - `term1_result`: Result buffer for term1 * G (d1 × d3)
@@ -49,7 +50,8 @@ end
     ConvolutionWorkspace(r::Int, o1::Int, o2::Int, n_tau::Int)
 
 Create a workspace for square matrix convolution operations (defaults to Float64).
-For F (r × o1 × o2) * G (r × o2 × o2) -> H (n_tau × o1 × o2).
+Layout: (dim1, dim2, r) for contiguous BLAS access.
+For F (o1 × o2 × r) * G (o2 × o2 × r) -> H (o1 × o2 × n_tau).
 
 # Arguments
 - `r`: DLR rank (number of DLR coefficients)
@@ -65,7 +67,8 @@ end
     ConvolutionWorkspace{T}(r::Int, d1::Int, d2::Int, d3::Int, n_tau::Int) where T<:Number
 
 Create a workspace for non-square matrix convolution with specified numeric type.
-For F (r × d1 × d2) * G (r × d2 × d3) -> H (n_tau × d1 × d3).
+Layout: (dim1, dim2, r) for contiguous BLAS access.
+For F (d1 × d2 × r) * G (d2 × d3 × r) -> H (d1 × d3 × n_tau).
 
 # Arguments
 - `r`: DLR rank (number of DLR coefficients)
@@ -74,16 +77,23 @@ For F (r × d1 × d2) * G (r × d2 × d3) -> H (n_tau × d1 × d3).
 - `d3`: Output column dimension (source dimension)
 - `n_tau`: Number of tau grid points
 """
-function ConvolutionWorkspace{T}(r::Int, d1::Int, d2::Int, d3::Int, n_tau::Int) where T<:Number
+function ConvolutionWorkspace{T}(
+    r::Int,
+    d1::Int,
+    d2::Int,
+    d3::Int,
+    n_tau::Int,
+) where {T<:Number}
     # n_tau is kept for API compatibility but not used for workspace allocation
+    # Layout: (d1, d3, r) for contiguous matrix slices
     return ConvolutionWorkspace{T}(
-        zeros(T, r, d1, d3),        # H1_dlr
-        zeros(T, r, d1, d3),        # H2_dlr
+        zeros(T, d1, d3, r),        # H1_dlr
+        zeros(T, d1, d3, r),        # H2_dlr
         zeros(T, d1, d2),           # term1 (accumulates F slices)
         zeros(T, d2, d3),           # term2 (accumulates G slices)
         zeros(T, d1, d3),           # term1_result (term1 * G)
         zeros(T, d1, d3),           # term2_result (F * term2)
-        zeros(T, d1, d3)            # temp_FG (F[j] * G[j] result)
+        zeros(T, d1, d3),           # temp_FG (F[j] * G[j] result)
     )
 end
 
@@ -91,7 +101,8 @@ end
     ConvolutionWorkspace{T}(r::Int, o1::Int, o2::Int, n_tau::Int) where T<:Number
 
 Create a workspace for square matrix convolution with specified numeric type.
-For F (r × o1 × o2) * G (r × o2 × o2) -> H (n_tau × o1 × o2).
+Layout: (dim1, dim2, r) for contiguous BLAS access.
+For F (o1 × o2 × r) * G (o2 × o2 × r) -> H (o1 × o2 × n_tau).
 
 # Arguments
 - `r`: DLR rank (number of DLR coefficients)
@@ -99,7 +110,7 @@ For F (r × o1 × o2) * G (r × o2 × o2) -> H (n_tau × o1 × o2).
 - `o2`: Second orbital dimension (same as intermediate and output dimension)
 - `n_tau`: Number of tau grid points
 """
-function ConvolutionWorkspace{T}(r::Int, o1::Int, o2::Int, n_tau::Int) where T<:Number
+function ConvolutionWorkspace{T}(r::Int, o1::Int, o2::Int, n_tau::Int) where {T<:Number}
     return ConvolutionWorkspace{T}(r, o1, o2, o2, n_tau)
 end
 
@@ -111,7 +122,7 @@ This cache eliminates ~1.1 GB of allocations in do_convolution_dlr2tau.
 """
 function compute_kernel_cache(dlr_grid::DLRGrid)
     cache = Vector{Float64}(undef, length(dlr_grid.ω))
-    for i in 1:length(dlr_grid.ω)
+    for i = 1:length(dlr_grid.ω)
         cache[i] = kernel_tau(0.0, dlr_grid.ω[i], dlr_grid.β)
     end
     return KernelCache(cache)

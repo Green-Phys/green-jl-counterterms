@@ -539,10 +539,8 @@ Create ConvolutionWorkspace for Dense format with full Fock space dimensions.
 Infers dimensions from the propagator shape (n_fock, n_fock, n_tau).
 """
 function _create_convolution_workspace(::Type{T}, dlr_grid, prop::DensePropagator) where {T}
-    r = length(dlr_grid.ω)
-    n_tau = length(dlr_grid.τ)
     n_fock = size(prop, 2)
-    return ConvolutionWorkspace{T}(r, n_fock, n_fock, n_tau)
+    return ConvolutionWorkspace{T}(dlr_grid, n_fock, n_fock)
 end
 
 """
@@ -552,11 +550,9 @@ Create ConvolutionWorkspace for BlockDense format sized for maximum sector dimen
 This workspace is reused for all block convolutions using `do_view=true` mode.
 """
 function _create_convolution_workspace(::Type{T}, dlr_grid, prop::BlockDensePropagator) where {T}
-    r = length(dlr_grid.ω)
-    n_tau = length(dlr_grid.τ)
     # Size workspace for maximum sector dimension
     max_dim = maximum(sector.dim for sector in prop.basis.sectors)
-    return ConvolutionWorkspace{T}(r, max_dim, max_dim, max_dim, n_tau)
+    return ConvolutionWorkspace{T}(dlr_grid, max_dim, max_dim, max_dim)
 end
 
 """

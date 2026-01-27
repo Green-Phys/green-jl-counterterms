@@ -42,7 +42,7 @@ using MPI
 
 # DLR Operations
 function tau2dlr end
-function tau2dlr! end  # In-place version for buffer reuse
+function tau2dlr! end  # In-place version: tau2dlr!(dest, dlr_grid, src, tau_grid, dlr_workspace)
 function dlr2tau end
 function do_reflection_tau2tau! end  # In-place reflection F(τ) → F(β-τ)
 function extract_at_tau end
@@ -87,6 +87,7 @@ function get_conv_dlr end
 
 # Buffer accessors (used in Green's function evaluation)
 function get_contrib_tau_to_beta_reflected end
+function get_reflection_dlr end
 function get_ann_product end
 function get_final_product end
 

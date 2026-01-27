@@ -204,8 +204,9 @@ function _trace_3_blockdense!(trace_buffer::Vector{<:Real}, A::BlockDensePropaga
             @boundscheck @assert size(block, 2) == dim "Diagonal blocks must be square"
 
             # Manual diagonal sum is faster than tr(@view ...) for small blocks
+            # Loop order: k outer, i inner with @simd for vectorization
             @inbounds for k in 1:n_tau
-                for i in 1:dim
+                @simd for i in 1:dim
                     trace_buffer[k] += real(block[i, i, k])
                 end
             end

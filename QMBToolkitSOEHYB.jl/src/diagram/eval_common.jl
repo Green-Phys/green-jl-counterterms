@@ -46,7 +46,8 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
             propagator_at_beta = extract_at_tau(
                 propagator.vals, solver_data.model.beta, solver_data.model.dlr_grid)
             Z_current = tr(propagator_at_beta)
-            push!(solver_data.calc.partition_function_by_order, Z_current)
+            # Use real() since partition function must be real; imaginary part is numerical noise
+            push!(solver_data.calc.partition_function_by_order, real(Z_current))
         end
 
         propagator.coeffs = tau2dlr(

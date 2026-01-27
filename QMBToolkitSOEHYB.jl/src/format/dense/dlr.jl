@@ -6,21 +6,23 @@ Layout: (dim1, dim2, n_tau) for tau-space, (dim1, dim2, r) for DLR representatio
 """
 
 using QMBToolkitDLR
+using Lehmann
 
 #=============================================================================
 # DLR Transformations
 =============================================================================#
 
 """
-    tau2dlr_dense!(dest::DensePropagator{T}, dlr_grid::DLRGrid, prop::DensePropagator{T}, tau_grid::Vector{Float64}) where T
+    tau2dlr_dense!(dest::DensePropagator{T}, dlr_grid::DLRGrid, prop::DensePropagator{T}, tau_grid::Vector{Float64}, dlr_workspace::DLRWorkspace{T}) where T
 
 In-place transform dense propagator from tau space to DLR representation.
-Writes result to dest.
+Uses Lehmann.tau2dlr! for efficient zero-allocation transformation.
+Requires tau_grid == dlr_grid.τ (the common case in SOEHYB).
 """
 function tau2dlr_dense!(dest::DensePropagator{T}, dlr_grid::DLRGrid,
-        prop::DensePropagator{T}, tau_grid::Vector{Float64}) where {T}
-    result = QMBToolkitDLR.tau2dlr(dlr_grid, prop.data, tau_grid; axis = 3)
-    copyto!(dest.data, result)
+        prop::DensePropagator{T}, tau_grid::Vector{Float64}, dlr_workspace::DLRWorkspace{T}) where {T}
+    # Use Lehmann.tau2dlr! directly - truly in-place with no allocations
+    Lehmann.tau2dlr!(dest.data, dlr_grid, prop.data, dlr_workspace)
     return dest
 end
 
@@ -49,15 +51,20 @@ end
 =============================================================================#
 
 """
-    do_reflection_tau2tau_dense!(dest::DensePropagator{T}, dlr_grid::DLRGrid, prop_tau::DensePropagator{T}) where T
+    do_reflection_tau2tau_dense!(dest::DensePropagator{T}, dlr_buffer::DensePropagator{T},
+                                  dlr_grid::DLRGrid, prop_tau::DensePropagator{T},
+                                  dlr_workspace::DLRWorkspace{T};
+                                  τ_reflected::AbstractVector{Float64}) where T
 
 In-place reflection operation on tau-space dense data: dest = prop_tau(beta - tau).
-Writes result to dest.
+Uses pre-allocated dlr_buffer and DLRWorkspace to avoid allocations.
+Requires pre-computed τ_reflected (β - τ) to avoid allocations in hot loops.
 """
-function do_reflection_tau2tau_dense!(dest::DensePropagator{T}, dlr_grid::DLRGrid,
-        prop_tau::DensePropagator{T}) where {T}
-    reflected = QMBToolkitDLR.do_reflection_tau2tau(dlr_grid, prop_tau.data)
-    copyto!(dest.data, reflected)
+function do_reflection_tau2tau_dense!(dest::DensePropagator{T}, dlr_buffer::DensePropagator{T},
+        dlr_grid::DLRGrid, prop_tau::DensePropagator{T},
+        dlr_workspace::DLRWorkspace{T};
+        τ_reflected::AbstractVector{Float64}) where {T}
+    QMBToolkitDLR.do_reflection_tau2tau!(dest.data, dlr_buffer.data, dlr_grid, prop_tau.data, dlr_workspace; τ_reflected = τ_reflected)
     return dest
 end
 
@@ -108,13 +115,14 @@ end
 tau2dlr(dlr_grid::DLRGrid, prop::DensePropagator{T}, tau_grid::Vector{Float64}) where {T} = tau2dlr_dense(dlr_grid, prop, tau_grid)
 
 tau2dlr!(dest::DensePropagator{T}, dlr_grid::DLRGrid,
-    prop::DensePropagator{T}, tau_grid::Vector{Float64}) where {T} = tau2dlr_dense!(dest, dlr_grid, prop, tau_grid)
+    prop::DensePropagator{T}, tau_grid::Vector{Float64}, dlr_workspace::DLRWorkspace{T}) where {T} = tau2dlr_dense!(dest, dlr_grid, prop, tau_grid, dlr_workspace)
 
 dlr2tau(dlr_grid::DLRGrid, prop_dlr::DensePropagator{T}, tau_grid::Vector{Float64}) where {T} = dlr2tau_dense(dlr_grid, prop_dlr, tau_grid)
 
 # Reflection (in-place only)
-do_reflection_tau2tau!(dest::DensePropagator{T}, dlr_grid::DLRGrid,
-    prop_tau::DensePropagator{T}) where {T} = do_reflection_tau2tau_dense!(dest, dlr_grid, prop_tau)
+do_reflection_tau2tau!(dest::DensePropagator{T}, dlr_buffer::DensePropagator{T}, dlr_grid::DLRGrid,
+    prop_tau::DensePropagator{T}, dlr_workspace::DLRWorkspace{T};
+    τ_reflected::AbstractVector{Float64}) where {T} = do_reflection_tau2tau_dense!(dest, dlr_buffer, dlr_grid, prop_tau, dlr_workspace; τ_reflected = τ_reflected)
 
 # Extract at tau
 extract_at_tau(propagator::DensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where {T} = extract_at_tau_dense(propagator, tau, dlr_grid)

@@ -60,10 +60,14 @@ function eval_green_given_order!(
                 diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
             )
 
-            # Reflection: tau -> beta - tau (using pre-allocated buffer)
+            # Reflection: tau -> beta - tau (using pre-allocated buffers)
             flux = get_flux(contrib_tau_to_beta_unreflected)
             contrib_tau_to_beta = get_contrib_tau_to_beta_reflected(buffers, flux)
-            do_reflection_tau2tau!(contrib_tau_to_beta, solver_data.model.dlr_grid, contrib_tau_to_beta_unreflected)
+            reflection_dlr = get_reflection_dlr(buffers, flux)
+            convolution_workspace = solver_data.model.convolution_workspace
+            do_reflection_tau2tau!(contrib_tau_to_beta, reflection_dlr, solver_data.model.dlr_grid,
+                contrib_tau_to_beta_unreflected, convolution_workspace.dlr_workspace;
+                τ_reflected = convolution_workspace.τ_reflected)
 
             prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
 

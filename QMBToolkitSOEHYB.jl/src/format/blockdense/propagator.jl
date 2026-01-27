@@ -303,6 +303,16 @@ function get_contrib_tau_to_beta_reflected(buffers, flux::OperatorFlux)
 end
 
 """
+    get_reflection_dlr(buffers, flux::OperatorFlux)
+
+Get the DLR buffer for reflection operations (BlockDense mode).
+"""
+function get_reflection_dlr(buffers, flux::OperatorFlux)
+    qn = flux.delta_qn
+    return buffers.reflection_dlr_pool[qn]
+end
+
+"""
     get_ann_product(buffers, flux::OperatorFlux)
 
 Get the ann_product buffer for the given flux (BlockDense mode).
@@ -389,6 +399,12 @@ function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}, ex
         contrib_tau_to_beta_reflected_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
     end
 
+    # Pre-allocate DLR buffers for reflection operation (indexed by flux)
+    reflection_dlr_pool = Dict{QN, BlockDensePropagator{T}}()
+    for flux_qn in possible_fluxes
+        reflection_dlr_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_dlr, T)
+    end
+
     # Pre-allocate ann_product_pool for all possible flux values
     ann_product_pool = Dict{QN, BlockDensePropagator{T}}()
     for flux_qn in possible_fluxes
@@ -416,6 +432,7 @@ function allocate_green_buffers(solver_data::SolverData{T, BlockDenseFormat}, ex
         convolution_buffers = conv_buffers,
         backbone_0_to_beta_with_ann = backbone_0_to_beta_with_ann,
         contrib_tau_to_beta_reflected_pool = contrib_tau_to_beta_reflected_pool,
+        reflection_dlr_pool = reflection_dlr_pool,
         ann_product_pool = ann_product_pool,
         final_product_pool = final_product_pool,
         cre_product = cre_product

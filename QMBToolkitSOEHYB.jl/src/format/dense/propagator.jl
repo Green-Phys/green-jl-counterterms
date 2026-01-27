@@ -143,6 +143,14 @@ Flux parameter is ignored for Dense mode.
 get_contrib_tau_to_beta_reflected(buffers, flux) = buffers.contrib_tau_to_beta_reflected
 
 """
+    get_reflection_dlr(buffers, flux)
+
+Get the DLR buffer for reflection operations.
+Flux parameter is ignored for Dense mode.
+"""
+get_reflection_dlr(buffers, flux) = buffers.reflection_dlr
+
+"""
     get_ann_product(buffers, flux)
 
 Get the ann_product buffer. Flux parameter is ignored for Dense mode.
@@ -219,6 +227,9 @@ function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}, expansi
     # Pre-allocate buffer for reflected contrib_tau_to_beta
     contrib_tau_to_beta_reflected = zeros(DensePropagator{T}, n_fock, n_fock, n_tau)
 
+    # Pre-allocate DLR buffer for reflection operation
+    reflection_dlr = zeros(DensePropagator{T}, n_fock, n_fock, n_dlr)
+
     # Pre-allocate buffers for operator products (reused across loop iterations)
     ann_product = zeros(DensePropagator{T}, n_fock, n_fock, n_tau)
     final_product = zeros(DensePropagator{T}, n_fock, n_fock, n_tau)
@@ -232,6 +243,7 @@ function allocate_green_buffers(solver_data::SolverData{T, DenseFormat}, expansi
         convolution_buffers = conv_buffers,
         backbone_0_to_beta_with_ann = backbone_0_to_beta_with_ann,
         contrib_tau_to_beta_reflected = contrib_tau_to_beta_reflected,
+        reflection_dlr = reflection_dlr,
         ann_product = ann_product,
         final_product = final_product,
         cre_product = cre_product

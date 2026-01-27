@@ -184,12 +184,13 @@ function multiplication_convolution(
                 conv_hyb_temp, conv_operand, hyb, model_data, is_reverse = false)
         end
 
-        # Transform to DLR using buffers
+        # Transform to DLR using buffers and workspace
         conv_dlr = get_conv_dlr(buffers)
-        tau2dlr!(conv_dlr, dlr_grid, conv_operand, dlr_grid.τ)
+        dlr_workspace = model_data.convolution_workspace.dlr_workspace
+        tau2dlr!(conv_dlr, dlr_grid, conv_operand, dlr_grid.τ, dlr_workspace)
 
         result_dlr = get_result_dlr(buffers, current_flux)
-        tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.τ)
+        tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.τ, dlr_workspace)
 
         # Perform convolution - result is written back to result buffer
         do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,
@@ -288,12 +289,13 @@ function multiplication_convolution_reverse(
                 conv_hyb_temp, conv_operand, hyb, model_data, is_reverse = false)
         end
 
-        # Transform to DLR using buffers (note: order reversed)
+        # Transform to DLR using buffers and workspace (note: order reversed)
+        dlr_workspace = model_data.convolution_workspace.dlr_workspace
         result_dlr = get_result_dlr(buffers, current_flux)
-        tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.τ)
+        tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.τ, dlr_workspace)
 
         conv_dlr = get_conv_dlr(buffers)
-        tau2dlr!(conv_dlr, dlr_grid, conv_operand, dlr_grid.τ)
+        tau2dlr!(conv_dlr, dlr_grid, conv_operand, dlr_grid.τ, dlr_workspace)
 
         # Perform convolution (reversed order) - result is written back to result buffer
         do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,

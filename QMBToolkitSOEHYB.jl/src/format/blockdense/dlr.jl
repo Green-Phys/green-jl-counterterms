@@ -7,6 +7,7 @@ Layout: (dim1, dim2, n_tau) for tau-space, (dim1, dim2, r) for DLR representatio
 """
 
 using QMBToolkitDLR
+using Lehmann
 using QMBToolkitED.BlockDense
 
 # BlockDensePropagator is defined in BlockDensePropagator.jl
@@ -33,20 +34,32 @@ function tau2dlr_blockdense(dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, ta
 end
 
 """
-    tau2dlr_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where T
+    tau2dlr_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}, dlr_workspace::DLRWorkspace{T}) where T
 
 In-place transform block-dense propagator from tau space to DLR representation.
 Writes result to dest, which must have the same block structure as prop.
+Uses Lehmann.tau2dlr! for efficient transformation when workspace is large enough.
 """
 function tau2dlr_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
-        prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T}
+        prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}, dlr_workspace::DLRWorkspace{T}) where {T}
     @boundscheck @assert dest.basis === prop.basis "Destination and source must have same basis"
     @boundscheck @assert dest.flux.delta_qn == prop.flux.delta_qn "Destination and source must have same flux"
 
+    n_dlr = length(dlr_grid)
+
     for ((target, source), block_tau) in prop.blocks
         @boundscheck @assert haskey(dest.blocks, (target, source)) "Destination missing block ($target, $source)"
-        block_dlr = QMBToolkitDLR.tau2dlr(dlr_grid, block_tau, tau_grid; axis = 3)
-        copyto!(dest.blocks[(target, source)], block_dlr)
+        dim1, dim2, _ = size(block_tau)
+        dest_block = dest.blocks[(target, source)]
+
+        # Use in-place Lehmann.tau2dlr! if workspace is large enough
+        if dlr_workspace.n_dlr >= n_dlr && dlr_workspace.n_other >= dim1 * dim2
+            Lehmann.tau2dlr!(dest_block, dlr_grid, block_tau, dlr_workspace)
+        else
+            # Fallback to allocating version for blocks larger than workspace
+            block_dlr = QMBToolkitDLR.tau2dlr(dlr_grid, block_tau, tau_grid; axis = 3)
+            copyto!(dest_block, block_dlr)
+        end
     end
 
     return dest
@@ -74,22 +87,44 @@ end
 =============================================================================#
 
 """
-    do_reflection_tau2tau_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid, prop_tau::BlockDensePropagator{T}) where T
+    do_reflection_tau2tau_blockdense!(dest::BlockDensePropagator{T}, dlr_buffer::BlockDensePropagator{T},
+                                       dlr_grid::DLRGrid, prop_tau::BlockDensePropagator{T},
+                                       dlr_workspace::DLRWorkspace{T};
+                                       τ_reflected::AbstractVector{Float64}) where T
 
 In-place reflection operation on tau-space BlockDense data: dest = prop_tau(beta - tau).
-Writes result to dest's existing blocks. Assumes dest has matching block structure and flux.
+Writes result to dest's existing blocks. Uses dlr_buffer and dlr_workspace to avoid allocations.
+Requires pre-computed τ_reflected (β - τ) to avoid allocations in hot loops.
 """
-function do_reflection_tau2tau_blockdense!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
-        prop_tau::BlockDensePropagator{T}) where {T}
-    # Transform to DLR
-    prop_dlr = tau2dlr_blockdense(dlr_grid, prop_tau, dlr_grid.τ)
+function do_reflection_tau2tau_blockdense!(dest::BlockDensePropagator{T}, dlr_buffer::BlockDensePropagator{T},
+        dlr_grid::DLRGrid, prop_tau::BlockDensePropagator{T},
+        dlr_workspace::DLRWorkspace{T};
+        τ_reflected::AbstractVector{Float64}) where {T}
+    @boundscheck @assert dest.basis === prop_tau.basis "Destination and source must have same basis"
+    @boundscheck @assert dest.flux.delta_qn == prop_tau.flux.delta_qn "Destination and source must have same flux"
+    @boundscheck @assert dlr_buffer.flux.delta_qn == prop_tau.flux.delta_qn "DLR buffer must have same flux"
 
-    # Evaluate at reflected tau points (beta - tau)
-    tau_grid_reflected = dlr_grid.β .- dlr_grid.τ
+    n_dlr = length(dlr_grid)
 
-    for ((target, source), block_dlr) in prop_dlr.blocks
-        block_tau = QMBToolkitDLR.dlr2tau(dlr_grid, block_dlr, tau_grid_reflected; axis = 3)
-        copyto!(dest.blocks[(target, source)], block_tau)
+    for ((target, source), block_tau) in prop_tau.blocks
+        @boundscheck @assert haskey(dest.blocks, (target, source)) "Destination missing block ($target, $source)"
+        @boundscheck @assert haskey(dlr_buffer.blocks, (target, source)) "DLR buffer missing block ($target, $source)"
+
+        block_dlr = dlr_buffer.blocks[(target, source)]
+        dest_block = dest.blocks[(target, source)]
+        dim1, dim2, _ = size(block_tau)
+
+        # Transform to DLR using in-place operation if workspace is large enough
+        if dlr_workspace.n_dlr >= n_dlr && dlr_workspace.n_other >= dim1 * dim2
+            Lehmann.tau2dlr!(block_dlr, dlr_grid, block_tau, dlr_workspace)
+            # Transform back to tau at reflected points
+            Lehmann.dlr2tau!(dest_block, dlr_grid, block_dlr, τ_reflected, dlr_workspace)
+        else
+            # Fallback to allocating version for blocks larger than workspace
+            block_dlr_tmp = QMBToolkitDLR.tau2dlr(dlr_grid, block_tau, dlr_grid.τ; axis = 3)
+            block_tau_refl = QMBToolkitDLR.dlr2tau(dlr_grid, block_dlr_tmp, τ_reflected; axis = 3)
+            copyto!(dest_block, block_tau_refl)
+        end
     end
 
     return dest
@@ -213,13 +248,14 @@ end
 tau2dlr(dlr_grid::DLRGrid, prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T} = tau2dlr_blockdense(dlr_grid, prop, tau_grid)
 
 tau2dlr!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
-    prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T} = tau2dlr_blockdense!(dest, dlr_grid, prop, tau_grid)
+    prop::BlockDensePropagator{T}, tau_grid::Vector{Float64}, dlr_workspace::DLRWorkspace{T}) where {T} = tau2dlr_blockdense!(dest, dlr_grid, prop, tau_grid, dlr_workspace)
 
 dlr2tau(dlr_grid::DLRGrid, prop_dlr::BlockDensePropagator{T}, tau_grid::Vector{Float64}) where {T} = dlr2tau_blockdense(dlr_grid, prop_dlr, tau_grid)
 
 # Reflection (in-place only)
-do_reflection_tau2tau!(dest::BlockDensePropagator{T}, dlr_grid::DLRGrid,
-    prop_tau::BlockDensePropagator{T}) where {T} = do_reflection_tau2tau_blockdense!(dest, dlr_grid, prop_tau)
+do_reflection_tau2tau!(dest::BlockDensePropagator{T}, dlr_buffer::BlockDensePropagator{T}, dlr_grid::DLRGrid,
+    prop_tau::BlockDensePropagator{T}, dlr_workspace::DLRWorkspace{T};
+    τ_reflected::AbstractVector{Float64}) where {T} = do_reflection_tau2tau_blockdense!(dest, dlr_buffer, dlr_grid, prop_tau, dlr_workspace; τ_reflected = τ_reflected)
 
 # Extract at tau
 extract_at_tau(propagator::BlockDensePropagator{T}, tau::Float64, dlr_grid::DLRGrid) where {T} = extract_at_tau_blockdense(propagator, tau, dlr_grid)

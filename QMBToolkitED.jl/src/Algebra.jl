@@ -64,10 +64,14 @@ function Base.:*(A::Operator, B::Operator)
             for (src, B_block) in B_by_mid[mid]
                 key = (tgt, src)
                 if !haskey(result_blocks, key)
-                    result_blocks[key] = zeros(ComplexF64, size(A_block, 1), size(B_block, 2))
+                    # First contribution: allocate uninitialized and overwrite
+                    C = Matrix{ComplexF64}(undef, size(A_block, 1), size(B_block, 2))
+                    mul!(C, A_block, B_block)
+                    result_blocks[key] = C
+                else
+                    # Subsequent contributions: accumulate
+                    mul!(result_blocks[key], A_block, B_block, 1.0, 1.0)
                 end
-                # result[key] += A_block * B_block
-                mul!(result_blocks[key], A_block, B_block, 1.0, 1.0)
             end
         end
     end
@@ -123,28 +127,31 @@ function Base.sum(ops::Vector{Operator})
 
     # Iterate over all possible keys
     for key in all_keys
-        (tgt, src) = key
-        dim_tgt = basis.sectors[tgt].dim
-        dim_src = basis.sectors[src].dim
-
-        # Initialize accumulator for this block
-        # We start with zero matrix
-        acc = zeros(ComplexF64, dim_tgt, dim_src)
-
-        # Accumulate contributions from all operators that have this block
-        is_nonzero = false
-        for op in ops
-            if haskey(op.blocks, key)
-                # acc .+= op.blocks[key]
-                # Use broadcast for in-place addition
-                acc .+= op.blocks[key]
-                is_nonzero = true
+        # Find the first operator that has this block
+        first_idx = 0
+        for i in 1:length(ops)
+            if haskey(ops[i].blocks, key)
+                first_idx = i
+                break
             end
         end
 
-        # Store if non-zero
-        if is_nonzero && !iszero(acc)
-            result_blocks[key] = acc
+        # This should always be found since key came from all_keys
+        if first_idx > 0
+            # Initialize with a copy of the first contributing block
+            acc = copy(ops[first_idx].blocks[key])
+
+            # Accumulate contributions from remaining operators
+            for i in (first_idx + 1):length(ops)
+                if haskey(ops[i].blocks, key)
+                    acc .+= ops[i].blocks[key]
+                end
+            end
+
+            # Store if non-zero
+            if !iszero(acc)
+                result_blocks[key] = acc
+            end
         end
     end
 

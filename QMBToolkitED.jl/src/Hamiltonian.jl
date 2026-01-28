@@ -1,42 +1,40 @@
 """
-High-level Hamiltonian construction for block-dense operators.
+Hamiltonian construction for quantum many-body systems.
 
-Provides functions to build Hamiltonians from input files.
+Provides functions to build Hamiltonians from hopping matrix and Coulomb tensor inputs.
 """
 
 """
-    build_hamiltonian_blockdense(
-        basis::BlockDenseBasis,
+    build_hamiltonian(
+        basis::Basis,
         hopping_matrix_input::Union{String, IO},
         coulomb_tensor_input::Union{String, IO}
-    ) -> Tuple{BlockDenseOperator, Vector{BlockDenseOperator}}
+    ) -> Tuple{Operator, Vector{Operator}}
 
-Construct a block-dense Hamiltonian from hopping and Coulomb interaction inputs.
-
-This is the block-dense equivalent of `build_hamiltonian(hopping, coulomb)`.
+Construct a Hamiltonian from hopping and Coulomb interaction inputs.
 
 The Hamiltonian has the form:
     H = Σ_{ij} t_{ij} c_i' c_j + 0.5 Σ_{ijkl} U_{ijkl} c_i' c_j' c_k c_l
 
 Arguments:
-- `basis::BlockDenseBasis`: The many-body basis (must match nflavors in input files)
+- `basis::Basis`: The many-body basis (must match nflavors in input files)
 - `hopping_matrix_input`: Path to file or IO containing hopping matrix
   Format: Each line is "i j Re(t_ij) Im(t_ij)" (0-indexed)
 - `coulomb_tensor_input`: Path to file or IO containing Coulomb tensor
-  Format: First line is nflavors, then "# i j k l Re(U_ijkl) Im(U_ijkl)" (0-indexed)
+  Format: First line is count, then "# i j k l Re(U_ijkl) Im(U_ijkl)" (0-indexed)
 
 Returns:
-- `BlockDenseOperator`: The total Hamiltonian H
-- `Vector{BlockDenseOperator}`: Annihilation operators used to build H
+- `Operator`: The total Hamiltonian H
+- `Vector{Operator}`: Annihilation operators used to build H
 
 Note: The Hamiltonian should have flux = 0 (number conserving).
 
 Example:
 ```julia
 site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-basis = make_basis_blockdense(site_qns)
+basis = make_basis(site_qns)
 
-H, c = build_hamiltonian_blockdense(basis, "hopping.txt", "coulomb.txt")
+H, c = build_hamiltonian(basis, "hopping.txt", "coulomb.txt")
 
 # H should be Hermitian
 H_mat = to_matrix(H)
@@ -45,22 +43,9 @@ H_mat = to_matrix(H)
 # H should have zero flux (number conserving)
 @assert H.flux.delta_qn == QN_N(0)
 ```
-
-Comparison with Dense version:
-```julia
-# Dense version
-H_dense, c_dense = build_hamiltonian("hopping.txt", "coulomb.txt")
-
-# BlockDense version
-basis = make_basis_blockdense([QN_N(1) for _ in 1:nflavors])
-H_block, c_block = build_hamiltonian_blockdense(basis, "hopping.txt", "coulomb.txt")
-
-# Hamiltonians should match
-@assert to_matrix(H_block) ≈ to_matrix(H_dense) atol=1e-14
-```
 """
-function build_hamiltonian_blockdense(
-    basis::BlockDenseBasis,
+function build_hamiltonian(
+    basis::Basis,
     hopping_matrix_input::Union{String,IO},
     coulomb_tensor_input::Union{String,IO},
 )
@@ -101,12 +86,12 @@ function build_hamiltonian_blockdense(
     end
 
     # Get annihilation operators
-    c = get_annihilators_blockdense(basis)
+    c = get_annihilators(basis)
     QN_type = typeof(basis.site_qns[1])
 
     # Build hopping Hamiltonian: H_hop = Σ_{ij} t_{ij} c_i' c_j
     # Start with zero operator (no blocks)
-    H_hop = BlockDenseOperator(
+    H_hop = Operator(
         basis,
         OperatorFlux(zero_qn(QN_type)),
         Dict{Tuple{Int,Int},Matrix{ComplexF64}}(),
@@ -119,7 +104,7 @@ function build_hamiltonian_blockdense(
             j = parse(Int, parts[2]) + 1
             val = parse(Float64, parts[3]) + im * parse(Float64, parts[4])
 
-            # Skip zero hopping terms to avoid flux mismatch in BlockDense mode
+            # Skip zero hopping terms to avoid flux mismatch
             if iszero(val)
                 continue
             end
@@ -129,7 +114,7 @@ function build_hamiltonian_blockdense(
     end
 
     # Build interaction Hamiltonian: H_int = 0.5 Σ_{ijkl} U_{ijkl} c_i' c_j' c_k c_l
-    H_int = BlockDenseOperator(
+    H_int = Operator(
         basis,
         OperatorFlux(zero_qn(QN_type)),
         Dict{Tuple{Int,Int},Matrix{ComplexF64}}(),
@@ -144,7 +129,7 @@ function build_hamiltonian_blockdense(
             fl_l = parse(Int, parts[5]) + 1
             val = parse(Float64, parts[6]) + im * parse(Float64, parts[7])
 
-            # Skip zero interaction terms to avoid flux mismatch in BlockDense mode
+            # Skip zero interaction terms to avoid flux mismatch
             if iszero(val)
                 continue
             end

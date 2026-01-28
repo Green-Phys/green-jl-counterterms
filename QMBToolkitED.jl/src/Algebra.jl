@@ -1,5 +1,5 @@
 """
-Linear algebra operations for block-dense operators.
+Linear algebra operations for operators.
 
 Implements:
 - Operator multiplication: A * B (block chaining with flux composition)
@@ -9,20 +9,20 @@ Implements:
 """
 
 """
-    Base.:*(A::BlockDenseOperator, B::BlockDenseOperator) -> BlockDenseOperator
+    Base.:*(A::Operator, B::Operator) -> Operator
 
-Multiply two block-dense operators by chaining blocks.
+Multiply two operators by chaining blocks.
 
 The resulting operator has flux = combine_qn(A.flux, B.flux).
 Block (target, source) in the result is computed by summing over intermediate sectors:
     result[target, source] = Σ_mid A.blocks[target, mid] * B.blocks[mid, source]
 
 Arguments:
-- `A::BlockDenseOperator`: Left operator
-- `B::BlockDenseOperator`: Right operator
+- `A::Operator`: Left operator
+- `B::Operator`: Right operator
 
 Returns:
-- `BlockDenseOperator`: Product operator A*B
+- `Operator`: Product operator A*B
 
 Requirements:
 - Both operators must act on the same basis
@@ -30,8 +30,8 @@ Requirements:
 
 Example:
 ```julia
-basis = make_basis_blockdense([QN_N(1), QN_N(1)])
-c1 = get_annihilator_blockdense(basis, 1)
+basis = make_basis([QN_N(1), QN_N(1)])
+c1 = get_annihilator(basis, 1)
 c1_dag = c1'
 
 # Number operator: n1 = c1† * c1
@@ -39,7 +39,7 @@ n1 = c1_dag * c1
 # flux(n1) = QN_N(1) + QN_N(-1) = QN_N(0)
 ```
 """
-function Base.:*(A::BlockDenseOperator, B::BlockDenseOperator)
+function Base.:*(A::Operator, B::Operator)
     @assert A.basis === B.basis "Operators must act on same basis"
 
     # Result flux is composition of input fluxes
@@ -58,31 +58,6 @@ function Base.:*(A::BlockDenseOperator, B::BlockDenseOperator)
         push!(B_by_mid[mid], (src, B_block))
     end
 
-    # Phase 1: Allocate result blocks
-    # Identify all (tgt, src) pairs that will be non-zero
-    for ((tgt, mid), _) in A.blocks
-        if haskey(B_by_mid, mid)
-            for (src, _) in B_by_mid[mid]
-                key = (tgt, src)
-                if !haskey(result_blocks, key)
-                    # Allocate zero matrix of correct size
-                    dim_tgt = size(A.blocks[(tgt, mid)], 1)
-                    dim_src = size(B.blocks[(mid, src)], 2) # Access B via B.blocks to be safe/clean? No, B_block is available in loop if we restructure
-                    # Wait, B_by_mid stores B_block.
-                    # We can't easily access B dimensions in this loop without the block itself.
-                    # Let's just allocate on first encounter in the main loop, but optimize the lookups.
-                    
-                    # Actually, the "Allocate on first encounter" pattern in the previous version IS the standard way.
-                    # Separating allocation requires iterating twice.
-                    # Let's stick to the single pass but optimize the inner loop slightly.
-                end
-            end
-        end
-    end
-    
-    # Let's retry the "Allocate First" strategy properly
-    # We need the dimensions.
-    
     # 1. Identify active keys and allocate
     for ((tgt, mid), A_block) in A.blocks
         if haskey(B_by_mid, mid)
@@ -97,9 +72,6 @@ function Base.:*(A::BlockDenseOperator, B::BlockDenseOperator)
     end
 
     # 2. Compute and accumulate
-    # Now we know all keys exist, so we can skip haskey check? 
-    # No, we still need to find the specific blocks to multiply.
-    
     for ((tgt, mid), A_block) in A.blocks
         if haskey(B_by_mid, mid)
             for (src, B_block) in B_by_mid[mid]
@@ -114,28 +86,28 @@ function Base.:*(A::BlockDenseOperator, B::BlockDenseOperator)
     # Remove any blocks that became zero due to cancellation
     filter!(((key, block),) -> !iszero(block), result_blocks)
 
-    return BlockDenseOperator(A.basis, result_flux, result_blocks)
+    return Operator(A.basis, result_flux, result_blocks)
 end
 
 """
-    Base.sum(ops::Vector{BlockDenseOperator}) -> BlockDenseOperator
+    Base.sum(ops::Vector{Operator}) -> Operator
 
-Efficiently sum a vector of block-dense operators.
+Efficiently sum a vector of operators.
 
 This optimization avoids intermediate allocations by determining the full structure
 of the result first and then accumulating blocks in-place.
 
 Arguments:
-- `ops::Vector{BlockDenseOperator}`: List of operators to sum
+- `ops::Vector{Operator}`: List of operators to sum
 
 Returns:
-- `BlockDenseOperator`: Sum of all operators
+- `Operator`: Sum of all operators
 
 Requirements:
 - All operators must act on the same basis
 - All operators must have the same flux
 """
-function Base.sum(ops::Vector{BlockDenseOperator})
+function Base.sum(ops::Vector{Operator})
     isempty(ops) && error("Cannot sum empty list of operators")
     length(ops) == 1 && return ops[1]
 
@@ -159,17 +131,17 @@ function Base.sum(ops::Vector{BlockDenseOperator})
 
     # Initialize result blocks
     result_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
-    
+
     # Iterate over all possible keys
     for key in all_keys
         (tgt, src) = key
         dim_tgt = basis.sectors[tgt].dim
         dim_src = basis.sectors[src].dim
-        
+
         # Initialize accumulator for this block
         # We start with zero matrix
         acc = zeros(ComplexF64, dim_tgt, dim_src)
-        
+
         # Accumulate contributions from all operators that have this block
         is_nonzero = false
         for op in ops
@@ -180,30 +152,27 @@ function Base.sum(ops::Vector{BlockDenseOperator})
                 is_nonzero = true
             end
         end
-        
-        # Store if non-zero (or even if zero, but typically we store non-zeros)
-        # Here we only store if at least one operator had a block there. 
-        # Ideally we should check if `acc` itself is zero, but standard sparse logic
-        # often keeps structural non-zeros. Let's check numerical zero to be cleaner.
+
+        # Store if non-zero
         if is_nonzero && !iszero(acc)
             result_blocks[key] = acc
         end
     end
 
-    return BlockDenseOperator(basis, flux, result_blocks)
+    return Operator(basis, flux, result_blocks)
 end
 
 """
-    Base.:+(A::BlockDenseOperator, B::BlockDenseOperator) -> BlockDenseOperator
+    Base.:+(A::Operator, B::Operator) -> Operator
 
-Add two block-dense operators with the same flux.
+Add two operators with the same flux.
 
 Arguments:
-- `A::BlockDenseOperator`: First operator
-- `B::BlockDenseOperator`: Second operator
+- `A::Operator`: First operator
+- `B::Operator`: Second operator
 
 Returns:
-- `BlockDenseOperator`: Sum operator A+B
+- `Operator`: Sum operator A+B
 
 Requirements:
 - Both operators must have the same flux
@@ -211,15 +180,15 @@ Requirements:
 
 Example:
 ```julia
-basis = make_basis_blockdense([QN_N(1), QN_N(1)])
-c1 = get_annihilator_blockdense(basis, 1)
-c2 = get_annihilator_blockdense(basis, 2)
+basis = make_basis([QN_N(1), QN_N(1)])
+c1 = get_annihilator(basis, 1)
+c2 = get_annihilator(basis, 2)
 
 # Both have flux QN_N(-1), so can be added
 c_sum = c1 + c2
 ```
 """
-function Base.:+(A::BlockDenseOperator, B::BlockDenseOperator)
+function Base.:+(A::Operator, B::Operator)
     @assert A.basis === B.basis "Operators must act on same basis"
     @assert A.flux.delta_qn == B.flux.delta_qn "Operators must have same flux to be added"
 
@@ -238,45 +207,45 @@ function Base.:+(A::BlockDenseOperator, B::BlockDenseOperator)
     # Remove any blocks that became zero
     filter!(((key, block),) -> !iszero(block), result_blocks)
 
-    return BlockDenseOperator(A.basis, A.flux, result_blocks)
+    return Operator(A.basis, A.flux, result_blocks)
 end
 
 """
-    Base.:-(A::BlockDenseOperator, B::BlockDenseOperator) -> BlockDenseOperator
+    Base.:-(A::Operator, B::Operator) -> Operator
 
-Subtract two block-dense operators with the same flux.
+Subtract two operators with the same flux.
 
 Equivalent to A + (-1)*B.
 """
-function Base.:-(A::BlockDenseOperator, B::BlockDenseOperator)
+function Base.:-(A::Operator, B::Operator)
     return A + (-1) * B
 end
 
 """
-    Base.:*(α::Number, A::BlockDenseOperator) -> BlockDenseOperator
+    Base.:*(α::Number, A::Operator) -> Operator
 
 Multiply operator by scalar.
 
 Arguments:
 - `α::Number`: Scalar coefficient
-- `A::BlockDenseOperator`: Operator
+- `A::Operator`: Operator
 
 Returns:
-- `BlockDenseOperator`: Scaled operator α*A with same flux
+- `Operator`: Scaled operator α*A with same flux
 
 Example:
 ```julia
-basis = make_basis_blockdense([QN_N(1), QN_N(1)])
-c1 = get_annihilator_blockdense(basis, 1)
+basis = make_basis([QN_N(1), QN_N(1)])
+c1 = get_annihilator(basis, 1)
 
 # Scale by coefficient
 c1_scaled = 2.0 * c1
 ```
 """
-function Base.:*(α::Number, A::BlockDenseOperator)
+function Base.:*(α::Number, A::Operator)
     if iszero(α)
         # Return zero operator (no blocks)
-        return BlockDenseOperator(A.basis, A.flux, Dict{Tuple{Int,Int}, Matrix{ComplexF64}}())
+        return Operator(A.basis, A.flux, Dict{Tuple{Int,Int}, Matrix{ComplexF64}}())
     end
 
     # Scale all blocks
@@ -285,51 +254,51 @@ function Base.:*(α::Number, A::BlockDenseOperator)
         scaled_blocks[key] = α * block
     end
 
-    return BlockDenseOperator(A.basis, A.flux, scaled_blocks)
+    return Operator(A.basis, A.flux, scaled_blocks)
 end
 
 """
-    Base.:*(A::BlockDenseOperator, α::Number) -> BlockDenseOperator
+    Base.:*(A::Operator, α::Number) -> Operator
 
 Multiply operator by scalar (commutative version).
 """
-Base.:*(A::BlockDenseOperator, α::Number) = α * A
+Base.:*(A::Operator, α::Number) = α * A
 
 """
-    Base.:/(A::BlockDenseOperator, α::Number) -> BlockDenseOperator
+    Base.:/(A::Operator, α::Number) -> Operator
 
 Divide operator by scalar.
 
 Equivalent to (1/α) * A.
 """
-Base.:/(A::BlockDenseOperator, α::Number) = (1/α) * A
+Base.:/(A::Operator, α::Number) = (1/α) * A
 
 """
-    Base.adjoint(A::BlockDenseOperator) -> BlockDenseOperator
+    Base.adjoint(A::Operator) -> Operator
 
-Compute the adjoint (Hermitian conjugate) of a block-dense operator.
+Compute the adjoint (Hermitian conjugate) of an operator.
 
 The adjoint operator has:
 - Reversed flux: flux(A') = reverse_qn(flux(A))
 - Transposed and conjugated blocks: A'[src, tgt] = conj(A[tgt, src]ᵀ)
 
 Arguments:
-- `A::BlockDenseOperator`: Input operator
+- `A::Operator`: Input operator
 
 Returns:
-- `BlockDenseOperator`: Adjoint operator A'
+- `Operator`: Adjoint operator A'
 
 Example:
 ```julia
-basis = make_basis_blockdense([QN_N(1), QN_N(1)])
-c1 = get_annihilator_blockdense(basis, 1)
+basis = make_basis([QN_N(1), QN_N(1)])
+c1 = get_annihilator(basis, 1)
 
 # Creation operator
 c1_dag = c1'
 # flux(c1_dag) = reverse_qn(QN_N(-1)) = QN_N(1)
 ```
 """
-function Base.adjoint(A::BlockDenseOperator)
+function Base.adjoint(A::Operator)
     # Reverse flux
     adj_flux = OperatorFlux(reverse_qn(A.flux.delta_qn))
 
@@ -342,66 +311,58 @@ function Base.adjoint(A::BlockDenseOperator)
         adj_blocks[(src, tgt)] = adjoint(block)
     end
 
-    return BlockDenseOperator(A.basis, adj_flux, adj_blocks)
+    return Operator(A.basis, adj_flux, adj_blocks)
 end
 
 """
-    Base.:-(A::BlockDenseOperator) -> BlockDenseOperator
+    Base.:-(A::Operator) -> Operator
 
 Unary negation of operator.
 
 Equivalent to (-1) * A.
 """
-Base.:-(A::BlockDenseOperator) = (-1) * A
+Base.:-(A::Operator) = (-1) * A
 
 # ============================================================================
-# BlockDenseDiagonalOperator Operations
+# DiagonalOperator Operations
 # ============================================================================
 
 """
-    Base.:*(D::BlockDenseDiagonalOperator, A::BlockDenseOperator) -> BlockDenseOperator
+    Base.:*(D::DiagonalOperator, A::Operator) -> Operator
 
-Multiply diagonal operator by block-dense operator.
+Multiply diagonal operator by operator.
 
-For each block (tgt, src), scales columns by D's diagonal values for sector src.
+For each block (tgt, src), scales rows by D's diagonal values for sector tgt.
 """
-function Base.:*(D::BlockDenseDiagonalOperator, A::BlockDenseOperator)
+function Base.:*(D::DiagonalOperator, A::Operator)
     @assert D.basis === A.basis "Operators must act on same basis"
 
     # Result has same flux as A (D has zero flux)
     result_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
 
     for ((tgt, src), block) in A.blocks
-        if haskey(D.sector_diags, src)
-            # D * A: left-multiply by diagonal scales rows
-            # But D is block-diagonal, so it scales based on target sector for left multiply
-            # Wait, D has zero flux, so D only has diagonal blocks (tgt, tgt)
-            # D * A means we apply D to the left of A
-            # (D * A)[tgt, src] = D[tgt, tgt] * A[tgt, src]
-            # So we scale rows of A's block by D's diagonal for the target sector
-            if haskey(D.sector_diags, tgt)
-                diag_tgt = D.sector_diags[tgt]
-                result_blocks[(tgt, src)] = Diagonal(diag_tgt) * block
-            else
-                # If D doesn't have this sector, result is zero (don't store)
-            end
+        # D * A: left-multiply by diagonal scales rows
+        # (D * A)[tgt, src] = D[tgt, tgt] * A[tgt, src]
+        if haskey(D.sector_diags, tgt)
+            diag_tgt = D.sector_diags[tgt]
+            result_blocks[(tgt, src)] = Diagonal(diag_tgt) * block
         end
     end
 
     # Remove zero blocks
     filter!(((key, block),) -> !iszero(block), result_blocks)
 
-    return BlockDenseOperator(A.basis, A.flux, result_blocks)
+    return Operator(A.basis, A.flux, result_blocks)
 end
 
 """
-    Base.:*(A::BlockDenseOperator, D::BlockDenseDiagonalOperator) -> BlockDenseOperator
+    Base.:*(A::Operator, D::DiagonalOperator) -> Operator
 
-Multiply block-dense operator by diagonal operator.
+Multiply operator by diagonal operator.
 
 For each block (tgt, src), scales columns by D's diagonal values for sector src.
 """
-function Base.:*(A::BlockDenseOperator, D::BlockDenseDiagonalOperator)
+function Base.:*(A::Operator, D::DiagonalOperator)
     @assert A.basis === D.basis "Operators must act on same basis"
 
     # Result has same flux as A (D has zero flux)
@@ -419,15 +380,15 @@ function Base.:*(A::BlockDenseOperator, D::BlockDenseDiagonalOperator)
     # Remove zero blocks
     filter!(((key, block),) -> !iszero(block), result_blocks)
 
-    return BlockDenseOperator(A.basis, A.flux, result_blocks)
+    return Operator(A.basis, A.flux, result_blocks)
 end
 
 """
-    Base.:*(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator) -> BlockDenseDiagonalOperator
+    Base.:*(D1::DiagonalOperator, D2::DiagonalOperator) -> DiagonalOperator
 
 Multiply two diagonal operators (element-wise per sector).
 """
-function Base.:*(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator)
+function Base.:*(D1::DiagonalOperator, D2::DiagonalOperator)
     @assert D1.basis === D2.basis "Operators must act on same basis"
 
     result_diags = Dict{Int, Vector{Float64}}()
@@ -439,15 +400,15 @@ function Base.:*(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator)
         end
     end
 
-    return BlockDenseDiagonalOperator(D1.basis, result_diags)
+    return DiagonalOperator(D1.basis, result_diags)
 end
 
 """
-    Base.:+(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator) -> BlockDenseDiagonalOperator
+    Base.:+(D1::DiagonalOperator, D2::DiagonalOperator) -> DiagonalOperator
 
 Add two diagonal operators.
 """
-function Base.:+(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator)
+function Base.:+(D1::DiagonalOperator, D2::DiagonalOperator)
     @assert D1.basis === D2.basis "Operators must act on same basis"
 
     result_diags = Dict{Int, Vector{Float64}}()
@@ -465,59 +426,59 @@ function Base.:+(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator)
         end
     end
 
-    return BlockDenseDiagonalOperator(D1.basis, result_diags)
+    return DiagonalOperator(D1.basis, result_diags)
 end
 
 """
-    Base.:-(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator) -> BlockDenseDiagonalOperator
+    Base.:-(D1::DiagonalOperator, D2::DiagonalOperator) -> DiagonalOperator
 
 Subtract two diagonal operators.
 """
-function Base.:-(D1::BlockDenseDiagonalOperator, D2::BlockDenseDiagonalOperator)
+function Base.:-(D1::DiagonalOperator, D2::DiagonalOperator)
     return D1 + (-1) * D2
 end
 
 """
-    Base.:*(α::Number, D::BlockDenseDiagonalOperator) -> BlockDenseDiagonalOperator
+    Base.:*(α::Number, D::DiagonalOperator) -> DiagonalOperator
 
 Multiply diagonal operator by scalar.
 """
-function Base.:*(α::Number, D::BlockDenseDiagonalOperator)
+function Base.:*(α::Number, D::DiagonalOperator)
     result_diags = Dict{Int, Vector{Float64}}(
         sector_idx => α .* diag for (sector_idx, diag) in D.sector_diags
     )
-    return BlockDenseDiagonalOperator(D.basis, result_diags)
+    return DiagonalOperator(D.basis, result_diags)
 end
 
 """
-    Base.:*(D::BlockDenseDiagonalOperator, α::Number) -> BlockDenseDiagonalOperator
+    Base.:*(D::DiagonalOperator, α::Number) -> DiagonalOperator
 
 Multiply diagonal operator by scalar (commutative version).
 """
-Base.:*(D::BlockDenseDiagonalOperator, α::Number) = α * D
+Base.:*(D::DiagonalOperator, α::Number) = α * D
 
 """
-    Base.:/(D::BlockDenseDiagonalOperator, α::Number) -> BlockDenseDiagonalOperator
+    Base.:/(D::DiagonalOperator, α::Number) -> DiagonalOperator
 
 Divide diagonal operator by scalar.
 """
-Base.:/(D::BlockDenseDiagonalOperator, α::Number) = (1/α) * D
+Base.:/(D::DiagonalOperator, α::Number) = (1/α) * D
 
 """
-    Base.adjoint(D::BlockDenseDiagonalOperator) -> BlockDenseDiagonalOperator
+    Base.adjoint(D::DiagonalOperator) -> DiagonalOperator
 
-Compute the adjoint of a block-diagonal operator.
+Compute the adjoint of a diagonal operator.
 
 For real diagonal operators, the adjoint is the same as the original.
 The flux remains zero.
 """
-function Base.adjoint(D::BlockDenseDiagonalOperator)
+function Base.adjoint(D::DiagonalOperator)
     return D  # Real diagonal is self-adjoint
 end
 
 """
-    Base.:-(D::BlockDenseDiagonalOperator) -> BlockDenseDiagonalOperator
+    Base.:-(D::DiagonalOperator) -> DiagonalOperator
 
 Unary negation of diagonal operator.
 """
-Base.:-(D::BlockDenseDiagonalOperator) = (-1) * D
+Base.:-(D::DiagonalOperator) = (-1) * D

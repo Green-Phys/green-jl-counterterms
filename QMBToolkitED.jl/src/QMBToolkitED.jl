@@ -2,33 +2,44 @@ module QMBToolkitED
 
 using LinearAlgebra
 
-# Include dense submodule
-include("Dense/Dense.jl")
-using .Dense
+# Core types
+include("QuantumNumbers.jl")
+include("Basis.jl")
+include("Operators.jl")
 
-# Include block-dense submodule
-include("BlockDense/BlockDense.jl")
-using .BlockDense
+# Operations
+include("Algebra.jl")
+include("Conversion.jl")
 
-# Include unified interface (provides consistent API)
-include("UnifiedInterface.jl")
+# High-level API
+include("Hamiltonian.jl")
+include("Diagonalization.jl")
+include("Greens.jl")
 
-# Exports - main functions (from unified interface)
-export make_basis
-export get_annihilators, build_hamiltonian, solve_hamiltonian
-export calculate_green_tau, calculate_green_matsubara, get_Z
+# Partition function utility
+function get_Z(evals::Vector{<:Real}, beta::Real; shift_energy::Bool=false)
+    local_evals = copy(evals)
+    if shift_energy
+        local_evals .-= minimum(local_evals)
+    end
+    return sum(exp.(-beta .* local_evals))
+end
 
-# Export conversion functions (from unified interface)
-export to_matrix, to_vector
+# Quantum numbers
+export QuantumNumber, QN_NSz, QN_N, QN_Trivial
+export combine_qn, reverse_qn, zero_qn
 
-# Export submodules for direct access
-export Dense, BlockDense
+# Types
+export Basis, Sector, OperatorFlux
+export Operator, DiagonalOperator, EigenResult
 
-# Export Solver Result Types
-export DenseEigenResult, BlockEigenResult
+# Core functions
+export make_basis, get_annihilator, get_annihilators
+export sum_occupied_sites, compute_fermion_sign
 
-# Export Core Types for convenience
-export DenseBasis, DenseOperator, DenseDiagonalOperator
-export BlockDenseBasis, BlockDenseOperator, BlockDenseDiagonalOperator
+# High-level API
+export build_hamiltonian, solve_hamiltonian
+export calculate_green_tau, calculate_green_matsubara
+export to_matrix, to_vector, get_Z
 
 end # module QMBToolkitED

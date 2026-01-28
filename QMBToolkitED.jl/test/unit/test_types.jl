@@ -1,8 +1,13 @@
-using Test
-# Import BlockDense module (loaded by run_phase1.jl)
-using Main.BlockDense
+"""
+Unit Tests: Core Types
 
-@testset "BlockDense: Core Types" begin
+Tests for quantum number types, sector construction, and utility functions.
+"""
+
+using Test
+using QMBToolkitED
+
+@testset "Core Types" begin
 
     @testset "QN_NSz Type" begin
         @testset "Construction and Equality" begin
@@ -285,67 +290,32 @@ using Main.BlockDense
 
     @testset "compute_fermion_sign" begin
         @testset "Basic sign calculation" begin
-            # State |0000⟩ = 0b0000 = 0: vacuum
-            # Annihilating any flavor from vacuum gives sign +1 (no occupied orbitals below)
             @test compute_fermion_sign(0, 1) == 1
-
-            # State |0001⟩ = 0b0001 = 1: bit 0 set → flavor 1 occupied
-            # Annihilate flavor 1 (bit 0): no orbitals below bit 0
             @test compute_fermion_sign(1, 1) == 1
-
-            # Annihilate flavor 2 (bit 1): bit 0 occupied below
             @test compute_fermion_sign(1, 2) == -1
-
-            # Annihilate flavor 3 (bit 2): bit 0 occupied below
             @test compute_fermion_sign(1, 3) == -1
         end
 
         @testset "Multiple occupied orbitals" begin
-            # State |0111⟩ = 0b0111 = 7: bits 0,1,2 set → flavors 1,2,3 occupied
-            state = 7
-
-            # Annihilate flavor 1 (bit 0): no orbitals below → sign = +1
+            state = 7  # |0111⟩ = 0b0111: bits 0,1,2 set
             @test compute_fermion_sign(state, 1) == 1
-
-            # Annihilate flavor 2 (bit 1): bit 0 occupied → 1 orbital → sign = -1
             @test compute_fermion_sign(state, 2) == -1
-
-            # Annihilate flavor 3 (bit 2): bits 0,1 occupied → 2 orbitals → sign = +1
             @test compute_fermion_sign(state, 3) == 1
-
-            # Annihilate flavor 4 (bit 3): bits 0,1,2 occupied → 3 orbitals → sign = -1
             @test compute_fermion_sign(state, 4) == -1
         end
 
         @testset "Low occupation" begin
-            # State |1010⟩ = 0b1010 = 10: bits 1,3 set → flavors 2,4 occupied
-            state = 10
-
-            # Annihilate flavor 1 (bit 0): no orbitals below → sign = +1
+            state = 10  # |1010⟩ = 0b1010: bits 1,3 set
             @test compute_fermion_sign(state, 1) == 1
-
-            # Annihilate flavor 2 (bit 1): bit 0 not occupied → 0 orbitals → sign = +1
             @test compute_fermion_sign(state, 2) == 1
-
-            # Annihilate flavor 3 (bit 2): bit 1 occupied → 1 orbital → sign = -1
             @test compute_fermion_sign(state, 3) == -1
-
-            # Annihilate flavor 4 (bit 3): bit 1 occupied → 1 orbital → sign = -1
             @test compute_fermion_sign(state, 4) == -1
-
-            # Annihilate flavor 5 (bit 4): bits 1,3 occupied → 2 orbitals → sign = +1
             @test compute_fermion_sign(state, 5) == 1
         end
 
         @testset "Consistency with Jordan-Wigner" begin
-            # For state |abc...⟩ (binary representation 0babc...), annihilating flavor i gives sign (-1)^(number of occupied orbitals below bit i-1)
-            # Example: state |0101⟩ = 0b0101 = 5 (decimal)
-            state = 5  # Bits 0,2 set → flavors 1,3 occupied
-
-            # Annihilate flavor 3 (bit 2): orbitals below bit 2 = {0,1}, occupied = {0} → 1 → sign = -1
+            state = 5  # |0101⟩: bits 0,2 set
             @test compute_fermion_sign(state, 3) == -1
-
-            # Annihilate flavor 1 (bit 0): no orbitals below bit 0 → 0 → sign = +1
             @test compute_fermion_sign(state, 1) == 1
         end
     end

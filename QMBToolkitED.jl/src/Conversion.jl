@@ -1,37 +1,37 @@
 """
-Conversion between BlockDenseOperator and Matrix{ComplexF64}.
+Conversion between block-dense operators and dense matrices.
 
 Functions:
-- to_matrix_blockdense: Convert BlockDenseOperator → Matrix{ComplexF64}
-- to_vector_blockdense: Extract eigenvalues as a concatenated vector
+- to_matrix: Convert Operator/DiagonalOperator → Matrix{ComplexF64}
+- to_vector: Extract eigenvalues as a concatenated vector
 """
 
 """
-    to_matrix_blockdense(op::BlockDenseOperator) -> Matrix{ComplexF64}
+    to_matrix(op::Operator) -> Matrix{ComplexF64}
 
-Convert a BlockDenseOperator to a dense matrix.
+Convert an Operator to a dense matrix.
 
 Directly constructs a dense matrix by placing blocks at the appropriate global indices.
 Each block (target_sector, source_sector) is mapped to the corresponding submatrix
 in the global dense matrix.
 
 Arguments:
-- `op::BlockDenseOperator`: Block-dense operator
+- `op::Operator`: Block-dense operator
 
 Returns:
 - `Matrix{ComplexF64}`: Dense matrix representation
 
 Example:
 ```julia
-basis = make_basis_blockdense([QN_N(1), QN_N(1)])
-c1 = get_annihilator_blockdense(basis, 1)
+basis = make_basis([QN_N(1), QN_N(1)])
+c1 = get_annihilator(basis, 1)
 
 # Convert to dense matrix
-c1_mat = to_matrix_blockdense(c1)
+c1_mat = to_matrix(c1)
 @assert size(c1_mat) == (4, 4)  # 2^2 = 4
 ```
 """
-function to_matrix_blockdense(op::BlockDenseOperator)::Matrix{ComplexF64}
+function to_matrix(op::Operator)::Matrix{ComplexF64}
     basis = op.basis
     n = basis.total_dim
 
@@ -62,25 +62,25 @@ function to_matrix_blockdense(op::BlockDenseOperator)::Matrix{ComplexF64}
 end
 
 """
-    to_matrix_blockdense(D::BlockDenseDiagonalOperator) -> Matrix{ComplexF64}
+    to_matrix(D::DiagonalOperator) -> Matrix{ComplexF64}
 
-Convert a block-diagonal operator to a full matrix.
+Convert a diagonal operator to a full matrix.
 
 Arguments:
-- `D::BlockDenseDiagonalOperator`: Diagonal operator
+- `D::DiagonalOperator`: Diagonal operator
 
 Returns:
 - `Matrix{ComplexF64}`: Full diagonal matrix
 
 Example:
 ```julia
-basis = make_basis_blockdense([QN_N(1), QN_N(1)])
+basis = make_basis([QN_N(1), QN_N(1)])
 sector_diags = Dict(1 => [1.0], 2 => [2.0, 3.0], 3 => [4.0])
-D = BlockDenseDiagonalOperator(basis, sector_diags)
-mat = to_matrix_blockdense(D)
+D = DiagonalOperator(basis, sector_diags)
+mat = to_matrix(D)
 ```
 """
-function to_matrix_blockdense(D::BlockDenseDiagonalOperator)::Matrix{ComplexF64}
+function to_matrix(D::DiagonalOperator)::Matrix{ComplexF64}
     basis = D.basis
     n = basis.total_dim
 
@@ -107,25 +107,25 @@ function to_matrix_blockdense(D::BlockDenseDiagonalOperator)::Matrix{ComplexF64}
 end
 
 """
-    to_vector_blockdense(D::BlockDenseDiagonalOperator) -> Vector{Float64}
+    to_vector(D::DiagonalOperator) -> Vector{Float64}
 
 Extract all diagonal values as a single vector, concatenated in sector order.
 
 Arguments:
-- `D::BlockDenseDiagonalOperator`: Diagonal operator
+- `D::DiagonalOperator`: Diagonal operator
 
 Returns:
 - `Vector{Float64}`: Concatenated diagonal elements
 
 Example:
 ```julia
-basis = make_basis_blockdense([QN_N(1), QN_N(1)])
+basis = make_basis([QN_N(1), QN_N(1)])
 sector_diags = Dict(1 => [1.0], 2 => [2.0, 3.0], 3 => [4.0])
-D = BlockDenseDiagonalOperator(basis, sector_diags)
-vec = to_vector_blockdense(D)  # [1.0, 2.0, 3.0, 4.0]
+D = DiagonalOperator(basis, sector_diags)
+vec = to_vector(D)  # [1.0, 2.0, 3.0, 4.0]
 ```
 """
-function to_vector_blockdense(D::BlockDenseDiagonalOperator)
+function to_vector(D::DiagonalOperator)
     basis = D.basis
     result = Float64[]
 

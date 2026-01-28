@@ -1,20 +1,20 @@
 """
-Green's function calculations for block-dense operators.
+Green's function calculations for quantum many-body systems.
 
 Exploits block-diagonal structure of the Hamiltonian and operators to compute
 Green's functions efficiently without reconstructing the full dense matrices.
 """
 
 """
-    calculate_green_tau_blockdense(result, c_i, c_j, beta, n_tau)
+    calculate_green_tau(result, c_i, c_j, beta, n_tau)
 
-Calculate imaginary-time Green's function G_ij(τ) using BlockEigenResult.
+Calculate imaginary-time Green's function G_ij(τ) using EigenResult.
 G_ij(τ) = -⟨T_τ c_i(τ) c_j^†(0)⟩
 
 Arguments:
-- `result::BlockEigenResult`: Diagonalization result from `solve_hamiltonian_blockdense`
-- `c_i::BlockDenseOperator`: Annihilation operator i
-- `c_j::BlockDenseOperator`: Annihilation operator j (will be conjugated)
+- `result::EigenResult`: Diagonalization result from `solve_hamiltonian`
+- `c_i::Operator`: Annihilation operator i
+- `c_j::Operator`: Annihilation operator j (will be conjugated)
 - `beta::Real`: Inverse temperature
 - `n_tau::Int`: Number of time points
 
@@ -22,10 +22,10 @@ Returns:
 - `tau_grid`: Vector of time points
 - `gtau`: Vector of G(τ) values
 """
-function calculate_green_tau_blockdense(
-    result::BlockEigenResult,
-    c_i::BlockDenseOperator,
-    c_j::BlockDenseOperator,
+function calculate_green_tau(
+    result::EigenResult,
+    c_i::Operator,
+    c_j::Operator,
     beta::Real,
     n_tau::Int
 )
@@ -138,14 +138,14 @@ function calculate_green_tau_blockdense(
 end
 
 """
-    calculate_green_matsubara_blockdense(result, c_i, c_j, beta, n_matsubara)
+    calculate_green_matsubara(result, c_i, c_j, beta, n_matsubara)
 
-Calculate Matsubara Green's function G_ij(iω_n) using BlockEigenResult.
+Calculate Matsubara Green's function G_ij(iω_n) using EigenResult.
 
 Arguments:
-- `result::BlockEigenResult`: Diagonalization result
-- `c_i::BlockDenseOperator`: Annihilation operator i
-- `c_j::BlockDenseOperator`: Annihilation operator j
+- `result::EigenResult`: Diagonalization result
+- `c_i::Operator`: Annihilation operator i
+- `c_j::Operator`: Annihilation operator j
 - `beta::Real`: Inverse temperature
 - `n_matsubara::Int`: Number of frequencies
 
@@ -153,10 +153,10 @@ Returns:
 - `iomega_n`: Vector of Matsubara frequencies
 - `g_iwn`: Vector of G(iω_n) values
 """
-function calculate_green_matsubara_blockdense(
-    result::BlockEigenResult,
-    c_i::BlockDenseOperator,
-    c_j::BlockDenseOperator,
+function calculate_green_matsubara(
+    result::EigenResult,
+    c_i::Operator,
+    c_j::Operator,
     beta::Real,
     n_matsubara::Int
 )

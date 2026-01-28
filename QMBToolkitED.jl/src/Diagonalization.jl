@@ -1,18 +1,18 @@
 """
-Block-diagonal eigenvalue solver for block-dense operators.
+Eigenvalue solver for block-dense operators.
 
 For operators with flux=0 (like Hamiltonians), each sector can be diagonalized
 independently, providing massive speedup over full diagonalization.
 """
 
 """
-    BlockEigenResult
+    EigenResult
 
 Result of block-diagonal eigenvalue decomposition.
 
 Fields:
-- `eigenvalues::BlockDenseDiagonalOperator`: Eigenvalues as a block-diagonal operator
-- `eigenvectors::BlockDenseOperator`: Eigenvectors as a block-diagonal unitary operator
+- `eigenvalues::DiagonalOperator`: Eigenvalues as a diagonal operator
+- `eigenvectors::Operator`: Eigenvectors as a block-diagonal unitary operator
 
 The eigenvectors operator has flux=0 and stores the unitary transformation matrix
 for each sector. Each block (sector_idx, sector_idx) contains the eigenvectors
@@ -20,41 +20,37 @@ for that sector as columns.
 
 Example:
 ```julia
-basis = make_basis_blockdense([QN_N(1), QN_N(1)])
-c = get_annihilators_blockdense(basis)
+basis = make_basis([QN_N(1), QN_N(1)])
+c = get_annihilators(basis)
 H = sum(c[i]' * c[i] for i in 1:2)
 
-result = solve_hamiltonian_blockdense(H)
+result = solve_hamiltonian(H)
 
 # Access eigenvalues for sector 2
 E_sector2 = result.eigenvalues.sector_diags[2]
 
 # Access eigenvectors for sector 2
 U_sector2 = result.eigenvectors.blocks[(2, 2)]
-
-# Transform operator block to eigenbasis
-A_block = c[1].blocks[(tgt, src)]
-A_eigenbasis = U_tgt' * A_block * U_src
 ```
 """
-struct BlockEigenResult
-    eigenvalues::BlockDenseDiagonalOperator
-    eigenvectors::BlockDenseOperator
+struct EigenResult
+    eigenvalues::DiagonalOperator
+    eigenvectors::Operator
 end
 
 """
-    solve_hamiltonian_blockdense(H::BlockDenseOperator) -> BlockEigenResult
+    solve_hamiltonian(H::Operator) -> EigenResult
 
-Diagonalize a block-dense Hamiltonian efficiently by processing each sector independently.
+Diagonalize a Hamiltonian efficiently by processing each sector independently.
 
 This function leverages the block-diagonal structure of the Hamiltonian (implied by flux=0)
 to massively reduce computational cost compared to full diagonalization.
 
 Arguments:
-- `H::BlockDenseOperator`: Hamiltonian (must have flux=0)
+- `H::Operator`: Hamiltonian (must have flux=0)
 
 Returns:
-- `BlockEigenResult`: Structure containing eigenvalues and eigenvectors as operator types.
+- `EigenResult`: Structure containing eigenvalues and eigenvectors as operator types.
 
 Requirements:
 - H must have flux = 0 (block-diagonal in the chosen basis)
@@ -62,27 +58,24 @@ Requirements:
 
 Example:
 ```julia
-basis = make_basis_blockdense([QN_N(1), QN_N(1)])
-c = get_annihilators_blockdense(basis)
+basis = make_basis([QN_N(1), QN_N(1)])
+c = get_annihilators(basis)
 H = sum(c[i]' * c[i] for i in 1:2)
 
 # Get result object
-result = solve_hamiltonian_blockdense(H)
+result = solve_hamiltonian(H)
 
 # Access eigenvalues per sector
 for (idx, evals) in result.eigenvalues.sector_diags
     println("Sector ", idx, ": ", evals)
 end
-
-# Calculate Green's function efficiently
-G = calculate_green_tau_blockdense(result, c[1], c[1]', 10.0, 100)
 ```
 
 Performance:
 For a system with n sectors of dimension d each, this is O(n * d^3) instead
 of O((n*d)^3), a speedup of ~n^2 for equal-sized sectors.
 """
-function solve_hamiltonian_blockdense(H::BlockDenseOperator)
+function solve_hamiltonian(H::Operator)
     basis = H.basis
 
     # Get concrete quantum number type from first element
@@ -122,8 +115,8 @@ function solve_hamiltonian_blockdense(H::BlockDenseOperator)
 
     # Create operator types
     zero_flux = OperatorFlux(zero_qn(QN_type))
-    eigenvalues = BlockDenseDiagonalOperator(basis, zero_flux, sector_diags)
-    eigenvectors = BlockDenseOperator(basis, zero_flux, evec_blocks)
+    eigenvalues = DiagonalOperator(basis, zero_flux, sector_diags)
+    eigenvectors = Operator(basis, zero_flux, evec_blocks)
 
-    return BlockEigenResult(eigenvalues, eigenvectors)
+    return EigenResult(eigenvalues, eigenvectors)
 end

@@ -2,18 +2,18 @@
 QMBToolkitED Test Suite
 
 Test Organization:
-- global/: User-facing API tests, including consistency validation between Dense and BlockDense
-- blockdense/: BlockDense implementation details
+- physics/: Physics validation tests against analytical results
+- unit/: Unit tests for types, basis, operators, and algebra
 """
 
 using Test
 
 @testset "QMBToolkitED Tests" begin
-    @testset "Global API" begin
-        include("global/runtests.jl")
+    @testset "Physics Validation" begin
+        include("physics/runtests.jl")
     end
 
-    @testset "BlockDense Implementation" begin
-        include("blockdense/runtests.jl")
+    @testset "Unit Tests" begin
+        include("unit/runtests.jl")
     end
 end

@@ -83,7 +83,7 @@ Example:
 ```julia
 # Create a 4-orbital system with no symmetry
 site_qns = [QN_Trivial() for _ in 1:4]
-basis = make_basis_blockdense(site_qns)
+basis = make_basis(site_qns)
 # Results in 1 sector with dimension 2^4 = 16
 ```
 """

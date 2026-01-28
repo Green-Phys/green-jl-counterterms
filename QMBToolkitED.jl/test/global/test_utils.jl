@@ -25,13 +25,22 @@ end
 """
     run_hamiltonian_test(test_name; hopping_str, coulomb_str, site_qns_n, site_qns_sz, verify_fn)
 
-Runs a Hamiltonian test across Dense, BlockDense (QN_N), and BlockDense (QN_NSz) backends.
+Runs a Hamiltonian test across Dense, BlockDense (QN_Trivial), BlockDense (QN_N),
+and BlockDense (QN_NSz) backends.
 `verify_fn` should take `(H, annh, method_label)` as arguments.
 """
 function run_hamiltonian_test(test_name; hopping_str, coulomb_str, site_qns_n, site_qns_sz, verify_fn)
     @testset "$test_name (Dense)" begin
         H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str); method=:dense)
         verify_fn(H, annh, "Dense")
+    end
+
+    @testset "$test_name (BlockDense QN_Trivial)" begin
+        nflavors = length(site_qns_n)
+        site_qns_trivial = [QN_Trivial() for _ in 1:nflavors]
+        basis = make_basis(site_qns_trivial)
+        H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str); method=:blockdense, basis=basis)
+        verify_fn(H, annh, "BlockDense Trivial")
     end
 
     @testset "$test_name (BlockDense QN_N)" begin
@@ -50,12 +59,22 @@ end
 """
     run_greens_test(test_name; hopping_str, coulomb_str, site_qns_n, site_qns_sz, beta, verify_fn)
 
-Runs a Green's function test across Dense, BlockDense (QN_N), and BlockDense (QN_NSz) backends.
+Runs a Green's function test across Dense, BlockDense (QN_Trivial), BlockDense (QN_N),
+and BlockDense (QN_NSz) backends.
 `verify_fn` should take `(result, annh)` as arguments, where `result` is the solver output.
 """
 function run_greens_test(test_name; hopping_str, coulomb_str, site_qns_n, site_qns_sz, verify_fn)
     @testset "$test_name (Dense)" begin
         H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str); method=:dense)
+        result = solve_hamiltonian(H)
+        verify_fn(result, annh)
+    end
+
+    @testset "$test_name (BlockDense QN_Trivial)" begin
+        nflavors = length(site_qns_n)
+        site_qns_trivial = [QN_Trivial() for _ in 1:nflavors]
+        basis = make_basis(site_qns_trivial)
+        H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str); method=:blockdense, basis=basis)
         result = solve_hamiltonian(H)
         verify_fn(result, annh)
     end

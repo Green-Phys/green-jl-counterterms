@@ -70,15 +70,36 @@ struct QN_N <: QuantumNumber
     n::Int   # Particle number
 end
 
+"""
+    QN_Trivial
+
+Trivial quantum number for systems with no conserved quantities.
+
+All states have the same quantum number, resulting in a single sector
+spanning the entire Hilbert space. This is equivalent to the dense
+representation but uses the block-dense infrastructure.
+
+Example:
+```julia
+# Create a 4-orbital system with no symmetry
+site_qns = [QN_Trivial() for _ in 1:4]
+basis = make_basis_blockdense(site_qns)
+# Results in 1 sector with dimension 2^4 = 16
+```
+"""
+struct QN_Trivial <: QuantumNumber end
+
 # ============================================================================
 # Interface Implementation: Equality and Hashing
 # ============================================================================
 
 Base.:(==)(a::QN_NSz, b::QN_NSz) = (a.n == b.n) && (a.sz == b.sz)
 Base.:(==)(a::QN_N, b::QN_N) = (a.n == b.n)
+Base.:(==)(::QN_Trivial, ::QN_Trivial) = true
 
 Base.hash(qn::QN_NSz, h::UInt) = hash((qn.n, qn.sz), h)
 Base.hash(qn::QN_N, h::UInt) = hash(qn.n, h)
+Base.hash(::QN_Trivial, h::UInt) = hash(:QN_Trivial, h)
 
 # ============================================================================
 # Interface Implementation: Display
@@ -90,6 +111,10 @@ end
 
 function Base.show(io::IO, qn::QN_N)
     print(io, "QN_N(n=", qn.n, ")")
+end
+
+function Base.show(io::IO, ::QN_Trivial)
+    print(io, "QN_Trivial()")
 end
 
 # ============================================================================
@@ -113,6 +138,7 @@ combine_qn(qn1, qn2)  # QN_NSz(2, 0)
 """
 combine_qn(qn1::QN_NSz, qn2::QN_NSz) = QN_NSz(qn1.n + qn2.n, qn1.sz + qn2.sz)
 combine_qn(qn1::QN_N, qn2::QN_N) = QN_N(qn1.n + qn2.n)
+combine_qn(::QN_Trivial, ::QN_Trivial) = QN_Trivial()
 
 """
     reverse_qn(qn::QN) -> QN
@@ -130,6 +156,7 @@ reverse_qn(qn)  # QN_NSz(-1, -1)
 """
 reverse_qn(qn::QN_NSz) = QN_NSz(-qn.n, -qn.sz)
 reverse_qn(qn::QN_N) = QN_N(-qn.n)
+reverse_qn(::QN_Trivial) = QN_Trivial()
 
 """
     zero_qn(::Type{QN}) -> QN
@@ -144,6 +171,7 @@ zero_qn(QN_N)    # QN_N(0)
 """
 zero_qn(::Type{QN_NSz}) = QN_NSz(0, 0)
 zero_qn(::Type{QN_N}) = QN_N(0)
+zero_qn(::Type{QN_Trivial}) = QN_Trivial()
 
 # ============================================================================
 # Ordering (for deterministic sector ordering)
@@ -166,3 +194,6 @@ function Base.isless(a::QN_NSz, b::QN_NSz)
 end
 
 Base.isless(a::QN_N, b::QN_N) = a.n < b.n
+
+# QN_Trivial: only one value, so never less than itself
+Base.isless(::QN_Trivial, ::QN_Trivial) = false

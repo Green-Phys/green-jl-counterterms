@@ -117,7 +117,7 @@ include("HighLevel/Greens.jl")
 # ============================================================================
 
 # Quantum Numbers
-export QuantumNumber, QN_NSz, QN_N
+export QuantumNumber, QN_NSz, QN_N, QN_Trivial
 export combine_qn, reverse_qn, zero_qn
 
 # Sectors and Basis

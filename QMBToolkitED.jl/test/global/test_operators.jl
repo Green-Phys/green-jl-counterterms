@@ -20,6 +20,20 @@ using .GlobalTestUtils
     verify_anticommutation(c, c_dag, nfock)
 end
 
+@testset "Operators: BlockDense Method with QN_Trivial" begin
+    nflavors = 6
+    site_qns = [QN_Trivial() for _ in 1:nflavors]
+    basis = make_basis(site_qns)
+    c = get_annihilators_blockdense(basis)
+    c_dag = [op' for op in c]
+
+    # Should have exactly 1 sector with full Hilbert space dimension
+    @test length(basis.sectors) == 1
+    @test basis.sectors[1].dim == basis.total_dim
+
+    verify_anticommutation(c, c_dag, basis.total_dim)
+end
+
 @testset "Operators: BlockDense Method with QN_N" begin
     nflavors = 6
     site_qns = [QN_N(1) for _ in 1:nflavors]

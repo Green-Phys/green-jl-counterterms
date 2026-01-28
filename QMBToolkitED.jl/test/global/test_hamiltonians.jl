@@ -123,8 +123,12 @@ end
         if label == "Dense"
              @test size(H) == (64, 64)
              @test ishermitian(H)
-        else
-             @test H.flux.delta_qn == (label == "BlockDense N" ? QN_N(0) : QN_NSz(0, 0))
+        elseif label == "BlockDense N"
+             @test H.flux.delta_qn == QN_N(0)
+        elseif label == "BlockDense NSz"
+             @test H.flux.delta_qn == QN_NSz(0, 0)
+        elseif label == "BlockDense Trivial"
+             @test H.flux.delta_qn == QN_Trivial()
         end
 
         result = solve_hamiltonian(H)

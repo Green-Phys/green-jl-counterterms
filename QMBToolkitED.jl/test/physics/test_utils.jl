@@ -15,16 +15,16 @@ Run all available physics tests for a model with QN_Trivial, QN_N, and QN_NSz.
 Builds and solves the Hamiltonian once per QN type, then runs verify_Z and verify_greens.
 """
 function run_physics_test(model)
-    nflavors = length(model.site_qns_n)
+    nflavors = length(model.flavor_qns_n)
     qn_configs = [
         ("QN_Trivial", [QN_Trivial() for _ in 1:nflavors]),
-        ("QN_N", model.site_qns_n),
-        ("QN_NSz", model.site_qns_sz),
+        ("QN_N", model.flavor_qns_n),
+        ("QN_NSz", model.flavor_qns_sz),
     ]
 
-    for (label, site_qns) in qn_configs
+    for (label, flavor_qns) in qn_configs
         @testset "$label" begin
-            basis = make_basis(site_qns)
+            basis = Basis(flavor_qns)
             H, annh = build_hamiltonian(basis, IOBuffer(model.hopping_str), IOBuffer(model.coulomb_str))
             result = solve_hamiltonian(H)
 

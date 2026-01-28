@@ -27,15 +27,14 @@ end
 
 # Quantum numbers
 export QuantumNumber, QN_NSz, QN_N, QN_Trivial
-export combine_qn, reverse_qn, zero_qn
 
 # Types
-export Basis, Sector, OperatorFlux
+export Basis, Sector
 export Operator, DiagonalOperator, EigenResult
 
 # Core functions
-export make_basis, get_annihilator, get_annihilators
-export sum_occupied_sites, compute_fermion_sign
+export annihilator, annihilators
+export total_qn, fermion_sign
 
 # High-level API
 export build_hamiltonian, solve_hamiltonian

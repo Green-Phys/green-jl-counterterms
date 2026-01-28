@@ -36,38 +36,38 @@ using QMBToolkitED
             @test d[qn2] == "up"  # qn2 == qn1
         end
 
-        @testset "Arithmetic: combine_qn" begin
+        @testset "Arithmetic: +" begin
             qn_up = QN_NSz(1, 1)
             qn_down = QN_NSz(1, -1)
 
-            result = combine_qn(qn_up, qn_down)
+            result = qn_up + qn_down
             @test result == QN_NSz(2, 0)
 
-            # Combine with zero
+            # Add zero
             qn_zero = QN_NSz(0, 0)
-            @test combine_qn(qn_up, qn_zero) == qn_up
+            @test qn_up + qn_zero == qn_up
         end
 
-        @testset "Arithmetic: reverse_qn" begin
+        @testset "Arithmetic: -" begin
             qn = QN_NSz(1, 1)
-            rev = reverse_qn(qn)
+            rev = -qn
             @test rev == QN_NSz(-1, -1)
 
-            # Double reverse
-            @test reverse_qn(rev) == qn
+            # Double negate
+            @test -rev == qn
 
-            # Reverse of zero
-            @test reverse_qn(QN_NSz(0, 0)) == QN_NSz(0, 0)
+            # Negate zero
+            @test -QN_NSz(0, 0) == QN_NSz(0, 0)
         end
 
-        @testset "Arithmetic: zero_qn" begin
-            z = zero_qn(QN_NSz)
+        @testset "Arithmetic: zero" begin
+            z = zero(QN_NSz)
             @test z == QN_NSz(0, 0)
 
-            # Zero is identity for combine_qn
+            # Zero is identity for +
             qn = QN_NSz(2, -1)
-            @test combine_qn(qn, z) == qn
-            @test combine_qn(z, qn) == qn
+            @test qn + z == qn
+            @test z + qn == qn
         end
 
         @testset "Ordering" begin
@@ -120,34 +120,34 @@ using QMBToolkitED
             @test d[qn2] == "one"
         end
 
-        @testset "Arithmetic: combine_qn" begin
+        @testset "Arithmetic: +" begin
             qn1 = QN_N(1)
             qn2 = QN_N(2)
 
-            result = combine_qn(qn1, qn2)
+            result = qn1 + qn2
             @test result == QN_N(3)
 
-            # Combine with zero
+            # Add zero
             qn_zero = QN_N(0)
-            @test combine_qn(qn1, qn_zero) == qn1
+            @test qn1 + qn_zero == qn1
         end
 
-        @testset "Arithmetic: reverse_qn" begin
+        @testset "Arithmetic: -" begin
             qn = QN_N(3)
-            rev = reverse_qn(qn)
+            rev = -qn
             @test rev == QN_N(-3)
 
-            # Double reverse
-            @test reverse_qn(rev) == qn
+            # Double negate
+            @test -rev == qn
         end
 
-        @testset "Arithmetic: zero_qn" begin
-            z = zero_qn(QN_N)
+        @testset "Arithmetic: zero" begin
+            z = zero(QN_N)
             @test z == QN_N(0)
 
             # Identity
             qn = QN_N(5)
-            @test combine_qn(qn, z) == qn
+            @test qn + z == qn
         end
 
         @testset "Ordering" begin
@@ -232,91 +232,91 @@ using QMBToolkitED
         end
     end
 
-    @testset "sum_occupied_sites" begin
+    @testset "total_qn" begin
         @testset "QN_NSz: Simple 2-flavor spin system" begin
             # [↑, ↓]
-            site_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]
+            flavor_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]
 
             # State |00⟩ = 0b00 = 0: vacuum
-            @test sum_occupied_sites(0, site_qns) == QN_NSz(0, 0)
+            @test total_qn(0, flavor_qns) == QN_NSz(0, 0)
 
             # State |01⟩ = 0b01 = 1: bit 0 set → flavor 1 (↑) occupied
-            @test sum_occupied_sites(1, site_qns) == QN_NSz(1, 1)
+            @test total_qn(1, flavor_qns) == QN_NSz(1, 1)
 
             # State |10⟩ = 0b10 = 2: bit 1 set → flavor 2 (↓) occupied
-            @test sum_occupied_sites(2, site_qns) == QN_NSz(1, -1)
+            @test total_qn(2, flavor_qns) == QN_NSz(1, -1)
 
             # State |11⟩ = 0b11 = 3: both occupied
-            @test sum_occupied_sites(3, site_qns) == QN_NSz(2, 0)
+            @test total_qn(3, flavor_qns) == QN_NSz(2, 0)
         end
 
         @testset "QN_NSz: 4-flavor Hubbard atom" begin
-            # [↑, ↓, ↑, ↓] (site 1 spins, site 2 spins)
-            site_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
+            # [↑, ↓, ↑, ↓] (flavors 1-2 for first atom, flavors 3-4 for second atom)
+            flavor_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
 
             # State |0000⟩ = 0b0000 = 0
-            @test sum_occupied_sites(0, site_qns) == QN_NSz(0, 0)
+            @test total_qn(0, flavor_qns) == QN_NSz(0, 0)
 
             # State |0101⟩ = 0b0101 = 5: bits 0,2 set → flavors 1,3 (both ↑)
-            @test sum_occupied_sites(5, site_qns) == QN_NSz(2, 2)
+            @test total_qn(5, flavor_qns) == QN_NSz(2, 2)
 
             # State |1010⟩ = 0b1010 = 10: bits 1,3 set → flavors 2,4 (both ↓)
-            @test sum_occupied_sites(10, site_qns) == QN_NSz(2, -2)
+            @test total_qn(10, flavor_qns) == QN_NSz(2, -2)
 
-            # State |0011⟩ = 0b0011 = 3: bits 0,1 set → flavors 1,2 (site 1 doubly occupied)
-            @test sum_occupied_sites(3, site_qns) == QN_NSz(2, 0)
+            # State |0011⟩ = 0b0011 = 3: bits 0,1 set → flavors 1,2 (first atom doubly occupied)
+            @test total_qn(3, flavor_qns) == QN_NSz(2, 0)
 
             # State |1111⟩ = 0b1111 = 15: all occupied
-            @test sum_occupied_sites(15, site_qns) == QN_NSz(4, 0)
+            @test total_qn(15, flavor_qns) == QN_NSz(4, 0)
         end
 
         @testset "QN_N: N-only conservation" begin
-            # All sites have QN_N(1)
-            site_qns = [QN_N(1), QN_N(1), QN_N(1)]
+            # All flavors have QN_N(1)
+            flavor_qns = [QN_N(1), QN_N(1), QN_N(1)]
 
             # State |000⟩ = 0b000 = 0
-            @test sum_occupied_sites(0, site_qns) == QN_N(0)
+            @test total_qn(0, flavor_qns) == QN_N(0)
 
             # State |001⟩ = 0b001 = 1
-            @test sum_occupied_sites(1, site_qns) == QN_N(1)
+            @test total_qn(1, flavor_qns) == QN_N(1)
 
             # State |011⟩ = 0b011 = 3
-            @test sum_occupied_sites(3, site_qns) == QN_N(2)
+            @test total_qn(3, flavor_qns) == QN_N(2)
 
             # State |111⟩ = 0b111 = 7
-            @test sum_occupied_sites(7, site_qns) == QN_N(3)
+            @test total_qn(7, flavor_qns) == QN_N(3)
         end
     end
 
-    @testset "compute_fermion_sign" begin
+    @testset "fermion_sign" begin
         @testset "Basic sign calculation" begin
-            @test compute_fermion_sign(0, 1) == 1
-            @test compute_fermion_sign(1, 1) == 1
-            @test compute_fermion_sign(1, 2) == -1
-            @test compute_fermion_sign(1, 3) == -1
+            @test fermion_sign(0, 1) == 1
+            @test fermion_sign(1, 1) == 1
+            @test fermion_sign(1, 2) == -1
+            @test fermion_sign(1, 3) == -1
         end
 
-        @testset "Multiple occupied orbitals" begin
+        @testset "Multiple occupied flavors" begin
             state = 7  # |0111⟩ = 0b0111: bits 0,1,2 set
-            @test compute_fermion_sign(state, 1) == 1
-            @test compute_fermion_sign(state, 2) == -1
-            @test compute_fermion_sign(state, 3) == 1
-            @test compute_fermion_sign(state, 4) == -1
+            @test fermion_sign(state, 1) == 1
+            @test fermion_sign(state, 2) == -1
+            @test fermion_sign(state, 3) == 1
+            @test fermion_sign(state, 4) == -1
         end
 
         @testset "Low occupation" begin
             state = 10  # |1010⟩ = 0b1010: bits 1,3 set
-            @test compute_fermion_sign(state, 1) == 1
-            @test compute_fermion_sign(state, 2) == 1
-            @test compute_fermion_sign(state, 3) == -1
-            @test compute_fermion_sign(state, 4) == -1
-            @test compute_fermion_sign(state, 5) == 1
+            @test fermion_sign(state, 1) == 1
+            @test fermion_sign(state, 2) == 1
+            @test fermion_sign(state, 3) == -1
+            @test fermion_sign(state, 4) == -1
+            @test fermion_sign(state, 5) == 1
         end
 
         @testset "Consistency with Jordan-Wigner" begin
             state = 5  # |0101⟩: bits 0,2 set
-            @test compute_fermion_sign(state, 3) == -1
-            @test compute_fermion_sign(state, 1) == 1
+            @test fermion_sign(state, 3) == -1
+            @test fermion_sign(state, 1) == 1
         end
     end
 

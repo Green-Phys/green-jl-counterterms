@@ -20,8 +20,8 @@ for that sector as columns.
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
-c = get_annihilators(basis)
+basis = Basis([QN_N(1), QN_N(1)])
+c = annihilators(basis)
 H = sum(c[i]' * c[i] for i in 1:2)
 
 result = solve_hamiltonian(H)
@@ -58,8 +58,8 @@ Requirements:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
-c = get_annihilators(basis)
+basis = Basis([QN_N(1), QN_N(1)])
+c = annihilators(basis)
 H = sum(c[i]' * c[i] for i in 1:2)
 
 # Get result object
@@ -79,12 +79,12 @@ function solve_hamiltonian(H::Operator)
     basis = H.basis
 
     # Get concrete quantum number type from first element
-    QN_type = typeof(basis.site_qns[1])
+    QN_type = typeof(basis.flavor_qns[1])
 
     # Verify flux is zero (Hamiltonian is block-diagonal)
-    if H.flux.delta_qn != zero_qn(QN_type)
+    if H.flux != zero(QN_type)
         error("Hamiltonian must have zero flux for efficient block diagonalization. " *
-              "Got flux = $(H.flux.delta_qn)")
+              "Got flux = $(H.flux)")
     end
 
     # Storage for eigenvalues and eigenvectors
@@ -114,9 +114,9 @@ function solve_hamiltonian(H::Operator)
     end
 
     # Create operator types
-    zero_flux = OperatorFlux(zero_qn(QN_type))
-    eigenvalues = DiagonalOperator(basis, zero_flux, sector_diags)
-    eigenvectors = Operator(basis, zero_flux, evec_blocks)
+    zf = zero(QN_type)
+    eigenvalues = DiagonalOperator(basis, zf, sector_diags)
+    eigenvectors = Operator(basis, zf, evec_blocks)
 
     return EigenResult(eigenvalues, eigenvectors)
 end

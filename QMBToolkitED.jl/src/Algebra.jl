@@ -13,7 +13,7 @@ Implements:
 
 Multiply two operators by chaining blocks.
 
-The resulting operator has flux = combine_qn(A.flux, B.flux).
+The resulting operator has flux = A.flux + B.flux.
 Block (target, source) in the result is computed by summing over intermediate sectors:
     result[target, source] = Σ_mid A.blocks[target, mid] * B.blocks[mid, source]
 
@@ -30,8 +30,8 @@ Requirements:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator(basis, 1)
+basis = Basis([QN_N(1), QN_N(1)])
+c1 = annihilator(basis, 1)
 c1_dag = c1'
 
 # Number operator: n1 = c1† * c1
@@ -43,7 +43,7 @@ function Base.:*(A::Operator, B::Operator)
     @assert A.basis === B.basis "Operators must act on same basis"
 
     # Result flux is composition of input fluxes
-    result_flux = OperatorFlux(combine_qn(A.flux.delta_qn, B.flux.delta_qn))
+    result_flux = A.flux + B.flux
 
     # Storage for result blocks
     result_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
@@ -58,26 +58,15 @@ function Base.:*(A::Operator, B::Operator)
         push!(B_by_mid[mid], (src, B_block))
     end
 
-    # 1. Identify active keys and allocate
+    # Allocate on first encounter, then accumulate in-place
     for ((tgt, mid), A_block) in A.blocks
         if haskey(B_by_mid, mid)
             for (src, B_block) in B_by_mid[mid]
                 key = (tgt, src)
                 if !haskey(result_blocks, key)
-                    # Allocate
                     result_blocks[key] = zeros(ComplexF64, size(A_block, 1), size(B_block, 2))
                 end
-            end
-        end
-    end
-
-    # 2. Compute and accumulate
-    for ((tgt, mid), A_block) in A.blocks
-        if haskey(B_by_mid, mid)
-            for (src, B_block) in B_by_mid[mid]
-                key = (tgt, src)
-                # In-place accumulation
-                # result += A * B
+                # result[key] += A_block * B_block
                 mul!(result_blocks[key], A_block, B_block, 1.0, 1.0)
             end
         end
@@ -116,7 +105,7 @@ function Base.sum(ops::Vector{Operator})
     flux = ops[1].flux
     for i in 2:length(ops)
         @assert ops[i].basis === basis "Operators must act on same basis"
-        @assert ops[i].flux.delta_qn == flux.delta_qn "Operators must have same flux to be added"
+        @assert ops[i].flux == flux "Operators must have same flux to be added"
     end
 
     # Collect all unique block keys (target, source) present in any operator
@@ -180,9 +169,9 @@ Requirements:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator(basis, 1)
-c2 = get_annihilator(basis, 2)
+basis = Basis([QN_N(1), QN_N(1)])
+c1 = annihilator(basis, 1)
+c2 = annihilator(basis, 2)
 
 # Both have flux QN_N(-1), so can be added
 c_sum = c1 + c2
@@ -190,16 +179,22 @@ c_sum = c1 + c2
 """
 function Base.:+(A::Operator, B::Operator)
     @assert A.basis === B.basis "Operators must act on same basis"
-    @assert A.flux.delta_qn == B.flux.delta_qn "Operators must have same flux to be added"
+    @assert A.flux == B.flux "Operators must have same flux to be added"
 
-    # Start with copy of A's blocks
-    result_blocks = copy(A.blocks)
+    result_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
 
-    # Add B's blocks
-    for (key, B_block) in B.blocks
-        if haskey(result_blocks, key)
-            result_blocks[key] += B_block
+    # Blocks in A: copy or add with B
+    for (key, A_block) in A.blocks
+        if haskey(B.blocks, key)
+            result_blocks[key] = A_block + B.blocks[key]
         else
+            result_blocks[key] = copy(A_block)
+        end
+    end
+
+    # Blocks only in B
+    for (key, B_block) in B.blocks
+        if !haskey(A.blocks, key)
             result_blocks[key] = copy(B_block)
         end
     end
@@ -235,8 +230,8 @@ Returns:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator(basis, 1)
+basis = Basis([QN_N(1), QN_N(1)])
+c1 = annihilator(basis, 1)
 
 # Scale by coefficient
 c1_scaled = 2.0 * c1
@@ -279,7 +274,7 @@ Base.:/(A::Operator, α::Number) = (1/α) * A
 Compute the adjoint (Hermitian conjugate) of an operator.
 
 The adjoint operator has:
-- Reversed flux: flux(A') = reverse_qn(flux(A))
+- Reversed flux: flux(A') = -flux(A)
 - Transposed and conjugated blocks: A'[src, tgt] = conj(A[tgt, src]ᵀ)
 
 Arguments:
@@ -290,17 +285,17 @@ Returns:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator(basis, 1)
+basis = Basis([QN_N(1), QN_N(1)])
+c1 = annihilator(basis, 1)
 
 # Creation operator
 c1_dag = c1'
-# flux(c1_dag) = reverse_qn(QN_N(-1)) = QN_N(1)
+# flux(c1_dag) = -QN_N(-1) = QN_N(1)
 ```
 """
 function Base.adjoint(A::Operator)
     # Reverse flux
-    adj_flux = OperatorFlux(reverse_qn(A.flux.delta_qn))
+    adj_flux = -A.flux
 
     # Transpose and conjugate blocks, swapping indices
     adj_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
@@ -322,163 +317,3 @@ Unary negation of operator.
 Equivalent to (-1) * A.
 """
 Base.:-(A::Operator) = (-1) * A
-
-# ============================================================================
-# DiagonalOperator Operations
-# ============================================================================
-
-"""
-    Base.:*(D::DiagonalOperator, A::Operator) -> Operator
-
-Multiply diagonal operator by operator.
-
-For each block (tgt, src), scales rows by D's diagonal values for sector tgt.
-"""
-function Base.:*(D::DiagonalOperator, A::Operator)
-    @assert D.basis === A.basis "Operators must act on same basis"
-
-    # Result has same flux as A (D has zero flux)
-    result_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
-
-    for ((tgt, src), block) in A.blocks
-        # D * A: left-multiply by diagonal scales rows
-        # (D * A)[tgt, src] = D[tgt, tgt] * A[tgt, src]
-        if haskey(D.sector_diags, tgt)
-            diag_tgt = D.sector_diags[tgt]
-            result_blocks[(tgt, src)] = Diagonal(diag_tgt) * block
-        end
-    end
-
-    # Remove zero blocks
-    filter!(((key, block),) -> !iszero(block), result_blocks)
-
-    return Operator(A.basis, A.flux, result_blocks)
-end
-
-"""
-    Base.:*(A::Operator, D::DiagonalOperator) -> Operator
-
-Multiply operator by diagonal operator.
-
-For each block (tgt, src), scales columns by D's diagonal values for sector src.
-"""
-function Base.:*(A::Operator, D::DiagonalOperator)
-    @assert A.basis === D.basis "Operators must act on same basis"
-
-    # Result has same flux as A (D has zero flux)
-    result_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
-
-    for ((tgt, src), block) in A.blocks
-        if haskey(D.sector_diags, src)
-            # A * D: right-multiply by diagonal scales columns
-            # (A * D)[tgt, src] = A[tgt, src] * D[src, src]
-            diag_src = D.sector_diags[src]
-            result_blocks[(tgt, src)] = block * Diagonal(diag_src)
-        end
-    end
-
-    # Remove zero blocks
-    filter!(((key, block),) -> !iszero(block), result_blocks)
-
-    return Operator(A.basis, A.flux, result_blocks)
-end
-
-"""
-    Base.:*(D1::DiagonalOperator, D2::DiagonalOperator) -> DiagonalOperator
-
-Multiply two diagonal operators (element-wise per sector).
-"""
-function Base.:*(D1::DiagonalOperator, D2::DiagonalOperator)
-    @assert D1.basis === D2.basis "Operators must act on same basis"
-
-    result_diags = Dict{Int, Vector{Float64}}()
-
-    # Only sectors present in both
-    for sector_idx in keys(D1.sector_diags)
-        if haskey(D2.sector_diags, sector_idx)
-            result_diags[sector_idx] = D1.sector_diags[sector_idx] .* D2.sector_diags[sector_idx]
-        end
-    end
-
-    return DiagonalOperator(D1.basis, result_diags)
-end
-
-"""
-    Base.:+(D1::DiagonalOperator, D2::DiagonalOperator) -> DiagonalOperator
-
-Add two diagonal operators.
-"""
-function Base.:+(D1::DiagonalOperator, D2::DiagonalOperator)
-    @assert D1.basis === D2.basis "Operators must act on same basis"
-
-    result_diags = Dict{Int, Vector{Float64}}()
-
-    # Union of sectors
-    all_sectors = union(keys(D1.sector_diags), keys(D2.sector_diags))
-
-    for sector_idx in all_sectors
-        if haskey(D1.sector_diags, sector_idx) && haskey(D2.sector_diags, sector_idx)
-            result_diags[sector_idx] = D1.sector_diags[sector_idx] .+ D2.sector_diags[sector_idx]
-        elseif haskey(D1.sector_diags, sector_idx)
-            result_diags[sector_idx] = copy(D1.sector_diags[sector_idx])
-        else
-            result_diags[sector_idx] = copy(D2.sector_diags[sector_idx])
-        end
-    end
-
-    return DiagonalOperator(D1.basis, result_diags)
-end
-
-"""
-    Base.:-(D1::DiagonalOperator, D2::DiagonalOperator) -> DiagonalOperator
-
-Subtract two diagonal operators.
-"""
-function Base.:-(D1::DiagonalOperator, D2::DiagonalOperator)
-    return D1 + (-1) * D2
-end
-
-"""
-    Base.:*(α::Number, D::DiagonalOperator) -> DiagonalOperator
-
-Multiply diagonal operator by scalar.
-"""
-function Base.:*(α::Number, D::DiagonalOperator)
-    result_diags = Dict{Int, Vector{Float64}}(
-        sector_idx => α .* diag for (sector_idx, diag) in D.sector_diags
-    )
-    return DiagonalOperator(D.basis, result_diags)
-end
-
-"""
-    Base.:*(D::DiagonalOperator, α::Number) -> DiagonalOperator
-
-Multiply diagonal operator by scalar (commutative version).
-"""
-Base.:*(D::DiagonalOperator, α::Number) = α * D
-
-"""
-    Base.:/(D::DiagonalOperator, α::Number) -> DiagonalOperator
-
-Divide diagonal operator by scalar.
-"""
-Base.:/(D::DiagonalOperator, α::Number) = (1/α) * D
-
-"""
-    Base.adjoint(D::DiagonalOperator) -> DiagonalOperator
-
-Compute the adjoint of a diagonal operator.
-
-For real diagonal operators, the adjoint is the same as the original.
-The flux remains zero.
-"""
-function Base.adjoint(D::DiagonalOperator)
-    return D  # Real diagonal is self-adjoint
-end
-
-"""
-    Base.:-(D::DiagonalOperator) -> DiagonalOperator
-
-Unary negation of diagonal operator.
-"""
-Base.:-(D::DiagonalOperator) = (-1) * D

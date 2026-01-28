@@ -4,7 +4,7 @@ Physics model definitions for validation testing.
 Each model returns a NamedTuple with:
 - name: Display name for test output
 - hopping_str, coulomb_str: Hamiltonian input strings
-- site_qns_n, site_qns_sz: Quantum numbers for QN_N and QN_NSz
+- flavor_qns_n, flavor_qns_sz: Quantum numbers for QN_N and QN_NSz
 - verify_Z: Optional (evals) -> tests on Hilbert space dimension and partition function
 - verify_greens: Optional (result, annh) -> tests on Green's functions
 """
@@ -38,8 +38,8 @@ function chain_1d_model()
     coulomb_str = "0"
 
     nflavors = 2 * L
-    site_qns_n = [QN_N(1) for _ in 1:nflavors]
-    site_qns_sz = [QN_NSz(1, isodd(i) ? 1 : -1) for i in 1:nflavors]
+    flavor_qns_n = [QN_N(1) for _ in 1:nflavors]
+    flavor_qns_sz = [QN_NSz(1, isodd(i) ? 1 : -1) for i in 1:nflavors]
 
     # Analytical single-particle spectrum
     H_hop_spin = [0.0 -t 0.0; -t 0.0 -t; 0.0 -t 0.0]
@@ -103,8 +103,8 @@ function chain_1d_model()
         name = "1D Chain",
         hopping_str = hopping_str,
         coulomb_str = coulomb_str,
-        site_qns_n = site_qns_n,
-        site_qns_sz = site_qns_sz,
+        flavor_qns_n = flavor_qns_n,
+        flavor_qns_sz = flavor_qns_sz,
         verify_Z = verify_Z,
         verify_greens = verify_greens,
     )
@@ -135,8 +135,8 @@ function anderson_impurity_model()
     1 1 0 0 1 1.0 0.0
     """
 
-    site_qns_n = [QN_N(1) for _ in 1:6]
-    site_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
+    flavor_qns_n = [QN_N(1) for _ in 1:6]
+    flavor_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
 
     verify_Z = (evals) -> begin
         beta = 10.0
@@ -149,8 +149,8 @@ function anderson_impurity_model()
         name = "Anderson Impurity",
         hopping_str = hopping_str,
         coulomb_str = coulomb_str,
-        site_qns_n = site_qns_n,
-        site_qns_sz = site_qns_sz,
+        flavor_qns_n = flavor_qns_n,
+        flavor_qns_sz = flavor_qns_sz,
         verify_Z = verify_Z,
         verify_greens = nothing,
     )
@@ -171,8 +171,8 @@ function hubbard_atom_model()
     1 1 0 0 1 $(U) 0.0
     """
 
-    site_qns_n = [QN_N(1), QN_N(1)]
-    site_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1)]
+    flavor_qns_n = [QN_N(1), QN_N(1)]
+    flavor_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1)]
 
     verify_Z = (evals) -> begin
         beta = 10.0
@@ -206,8 +206,8 @@ function hubbard_atom_model()
         name = "Hubbard Atom",
         hopping_str = hopping_str,
         coulomb_str = coulomb_str,
-        site_qns_n = site_qns_n,
-        site_qns_sz = site_qns_sz,
+        flavor_qns_n = flavor_qns_n,
+        flavor_qns_sz = flavor_qns_sz,
         verify_Z = verify_Z,
         verify_greens = verify_greens,
     )
@@ -237,8 +237,8 @@ function hubbard_dimer_model()
     3 3 2 2 3 $(U) 0.0
     """
 
-    site_qns_n = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
-    site_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
+    flavor_qns_n = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
+    flavor_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
 
     verify_Z = (evals) -> begin
         beta = 10.0
@@ -288,8 +288,8 @@ function hubbard_dimer_model()
         name = "Hubbard Dimer",
         hopping_str = hopping_str,
         coulomb_str = coulomb_str,
-        site_qns_n = site_qns_n,
-        site_qns_sz = site_qns_sz,
+        flavor_qns_n = flavor_qns_n,
+        flavor_qns_sz = flavor_qns_sz,
         verify_Z = verify_Z,
         verify_greens = verify_greens,
     )
@@ -319,8 +319,8 @@ function hubbard_dimer_degenerate_model()
     3 3 2 2 3 $(U) 0.0
     """
 
-    site_qns_n = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
-    site_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
+    flavor_qns_n = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
+    flavor_qns_sz = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
 
     verify_Z = (evals) -> begin
         beta = 10.0
@@ -395,8 +395,8 @@ function hubbard_dimer_degenerate_model()
         name = "Hubbard Dimer (Near-Degenerate)",
         hopping_str = hopping_str,
         coulomb_str = coulomb_str,
-        site_qns_n = site_qns_n,
-        site_qns_sz = site_qns_sz,
+        flavor_qns_n = flavor_qns_n,
+        flavor_qns_sz = flavor_qns_sz,
         verify_Z = verify_Z,
         verify_greens = verify_greens,
     )

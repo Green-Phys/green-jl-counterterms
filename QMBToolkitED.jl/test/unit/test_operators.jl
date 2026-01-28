@@ -1,7 +1,7 @@
 """
 Unit Tests: Operator Construction
 
-Tests for Operator, OperatorFlux, and get_annihilator.
+Tests for Operator and annihilator construction.
 Validates operator construction, flux calculation, and fermionic properties.
 """
 
@@ -11,53 +11,40 @@ using LinearAlgebra
 
 @testset "Operator Construction" begin
 
-    @testset "OperatorFlux type" begin
-        flux1 = OperatorFlux(QN_N(-1))
-        @test flux1.delta_qn == QN_N(-1)
-
-        flux2 = OperatorFlux(QN_NSz(-1, -1))
-        @test flux2.delta_qn == QN_NSz(-1, -1)
-
-        io = IOBuffer()
-        show(io, flux1)
-        output = String(take!(io))
-        @test occursin("OperatorFlux", output)
-    end
-
     @testset "Simple 2-flavor operator with QN_N" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
+        c1 = annihilator(basis, 1)
 
-        @test c1.flux.delta_qn == QN_N(-1)
+        @test c1.flux == QN_N(-1)
         @test c1.basis === basis
         @test !isempty(c1.blocks)
 
         vac_idx = basis.qn_to_sector[QN_N(0)]
         @test !any(((tgt, src),) -> src == vac_idx, keys(c1.blocks))
 
-        c2 = get_annihilator(basis, 2)
-        @test c2.flux.delta_qn == QN_N(-1)
+        c2 = annihilator(basis, 2)
+        @test c2.flux == QN_N(-1)
     end
 
     @testset "2-flavor spin system with QN_NSz" begin
-        site_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]
+        basis = Basis(flavor_qns)
 
-        c_up = get_annihilator(basis, 1)
-        @test c_up.flux.delta_qn == QN_NSz(-1, -1)
+        c_up = annihilator(basis, 1)
+        @test c_up.flux == QN_NSz(-1, -1)
 
-        c_down = get_annihilator(basis, 2)
-        @test c_down.flux.delta_qn == QN_NSz(-1, 1)
+        c_down = annihilator(basis, 2)
+        @test c_down.flux == QN_NSz(-1, 1)
 
-        @test c_up.flux.delta_qn != c_down.flux.delta_qn
+        @test c_up.flux != c_down.flux
     end
 
     @testset "Block structure for 2-flavor QN_N" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
-        c1 = get_annihilator(basis, 1)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
+        c1 = annihilator(basis, 1)
 
         n0_idx = basis.qn_to_sector[QN_N(0)]
         n1_idx = basis.qn_to_sector[QN_N(1)]
@@ -74,12 +61,12 @@ using LinearAlgebra
     end
 
     @testset "Fermionic signs in operators" begin
-        site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
-        c2 = get_annihilator(basis, 2)
-        c3 = get_annihilator(basis, 3)
+        c1 = annihilator(basis, 1)
+        c2 = annihilator(basis, 2)
+        c3 = annihilator(basis, 3)
 
         n2_idx = basis.qn_to_sector[QN_N(2)]
         n1_idx = basis.qn_to_sector[QN_N(1)]
@@ -110,9 +97,9 @@ using LinearAlgebra
     end
 
     @testset "Operator action on vacuum" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
-        c1 = get_annihilator(basis, 1)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
+        c1 = annihilator(basis, 1)
 
         vac_idx = basis.qn_to_sector[QN_N(0)]
         has_vac_source = any(((tgt, src),) -> src == vac_idx, keys(c1.blocks))
@@ -120,9 +107,9 @@ using LinearAlgebra
     end
 
     @testset "Operator block non-zero checks" begin
-        site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
-        c1 = get_annihilator(basis, 1)
+        flavor_qns = [QN_N(1), QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
+        c1 = annihilator(basis, 1)
 
         for ((tgt, src), block) in c1.blocks
             @test !iszero(block)
@@ -131,34 +118,34 @@ using LinearAlgebra
     end
 
     @testset "Multiple operators on same basis" begin
-        site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
-        operators = [get_annihilator(basis, i) for i in 1:3]
+        flavor_qns = [QN_N(1), QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
+        operators = [annihilator(basis, i) for i in 1:3]
 
-        @test all(op.flux.delta_qn == QN_N(-1) for op in operators)
+        @test all(op.flux == QN_N(-1) for op in operators)
         @test all(op.basis === basis for op in operators)
         @test operators[1].blocks !== operators[2].blocks
     end
 
     @testset "4-flavor Hubbard atom operators" begin
-        site_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis = make_basis(site_qns)
-        c = [get_annihilator(basis, i) for i in 1:4]
+        flavor_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
+        basis = Basis(flavor_qns)
+        c = [annihilator(basis, i) for i in 1:4]
 
-        @test c[1].flux.delta_qn == QN_NSz(-1, -1)
-        @test c[2].flux.delta_qn == QN_NSz(-1, 1)
-        @test c[3].flux.delta_qn == QN_NSz(-1, -1)
-        @test c[4].flux.delta_qn == QN_NSz(-1, 1)
+        @test c[1].flux == QN_NSz(-1, -1)
+        @test c[2].flux == QN_NSz(-1, 1)
+        @test c[3].flux == QN_NSz(-1, -1)
+        @test c[4].flux == QN_NSz(-1, 1)
 
-        @test c[1].flux.delta_qn == c[3].flux.delta_qn
-        @test c[2].flux.delta_qn == c[4].flux.delta_qn
+        @test c[1].flux == c[3].flux
+        @test c[2].flux == c[4].flux
         @test all(!isempty(op.blocks) for op in c)
     end
 
     @testset "Operator display" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
-        c1 = get_annihilator(basis, 1)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
+        c1 = annihilator(basis, 1)
 
         io = IOBuffer()
         show(io, c1)
@@ -171,19 +158,19 @@ using LinearAlgebra
     end
 
     @testset "Boundary conditions - invalid flavor" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        @test_throws AssertionError get_annihilator(basis, 0)
-        @test_throws AssertionError get_annihilator(basis, 3)
+        @test_throws AssertionError annihilator(basis, 0)
+        @test_throws AssertionError annihilator(basis, 3)
     end
 
     @testset "Single flavor system" begin
-        site_qns = [QN_N(1)]
-        basis = make_basis(site_qns)
-        c1 = get_annihilator(basis, 1)
+        flavor_qns = [QN_N(1)]
+        basis = Basis(flavor_qns)
+        c1 = annihilator(basis, 1)
 
-        @test c1.flux.delta_qn == QN_N(-1)
+        @test c1.flux == QN_N(-1)
         @test length(c1.blocks) == 1
 
         n0_idx = basis.qn_to_sector[QN_N(0)]
@@ -196,10 +183,10 @@ using LinearAlgebra
     end
 
     @testset "Block matrix element values" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
-        c1 = get_annihilator(basis, 1)
-        c2 = get_annihilator(basis, 2)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
+        c1 = annihilator(basis, 1)
+        c2 = annihilator(basis, 2)
 
         n1_idx = basis.qn_to_sector[QN_N(1)]
         n2_idx = basis.qn_to_sector[QN_N(2)]
@@ -223,31 +210,31 @@ using LinearAlgebra
     end
 
     @testset "All blocks have correct dimensions" begin
-        site_qns = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
         for flavor in 1:4
-            c = get_annihilator(basis, flavor)
+            c = annihilator(basis, flavor)
             for ((tgt_idx, src_idx), block) in c.blocks
                 tgt_sector = basis.sectors[tgt_idx]
                 src_sector = basis.sectors[src_idx]
                 @test size(block, 1) == tgt_sector.dim
                 @test size(block, 2) == src_sector.dim
-                expected_tgt_qn = combine_qn(src_sector.qn, c.flux.delta_qn)
+                expected_tgt_qn = src_sector.qn + c.flux
                 @test tgt_sector.qn == expected_tgt_qn
             end
         end
     end
 
     @testset "Sector connectivity from flux" begin
-        site_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis = make_basis(site_qns)
-        c_up = get_annihilator(basis, 1)
+        flavor_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]
+        basis = Basis(flavor_qns)
+        c_up = annihilator(basis, 1)
 
         for ((tgt_idx, src_idx), block) in c_up.blocks
             tgt_qn = basis.sectors[tgt_idx].qn
             src_qn = basis.sectors[src_idx].qn
-            expected_tgt = combine_qn(src_qn, c_up.flux.delta_qn)
+            expected_tgt = src_qn + c_up.flux
             @test tgt_qn == expected_tgt
         end
     end

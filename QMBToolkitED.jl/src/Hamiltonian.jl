@@ -31,8 +31,8 @@ Note: The Hamiltonian should have flux = 0 (number conserving).
 
 Example:
 ```julia
-site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-basis = make_basis(site_qns)
+flavor_qns = [QN_N(1), QN_N(1), QN_N(1)]
+basis = Basis(flavor_qns)
 
 H, c = build_hamiltonian(basis, "hopping.txt", "coulomb.txt")
 
@@ -41,7 +41,7 @@ H_mat = to_matrix(H)
 @assert H_mat ≈ H_mat' atol=1e-14
 
 # H should have zero flux (number conserving)
-@assert H.flux.delta_qn == QN_N(0)
+@assert H.flux == QN_N(0)
 ```
 """
 function build_hamiltonian(
@@ -86,16 +86,12 @@ function build_hamiltonian(
     end
 
     # Get annihilation operators
-    c = get_annihilators(basis)
-    QN_type = typeof(basis.site_qns[1])
+    c = annihilators(basis)
+    QN_type = typeof(basis.flavor_qns[1])
 
     # Build hopping Hamiltonian: H_hop = Σ_{ij} t_{ij} c_i' c_j
-    # Start with zero operator (no blocks)
-    H_hop = Operator(
-        basis,
-        OperatorFlux(zero_qn(QN_type)),
-        Dict{Tuple{Int,Int},Matrix{ComplexF64}}(),
-    )
+    # Collect all terms, then sum once (avoids repeated intermediate allocations)
+    hop_terms = Operator[]
 
     if !isempty(hopping_lines)
         for line in hopping_lines
@@ -109,16 +105,19 @@ function build_hamiltonian(
                 continue
             end
 
-            H_hop = H_hop + val * (c[i]' * c[j])
+            push!(hop_terms, val * (c[i]' * c[j]))
         end
     end
 
+    H_hop = if isempty(hop_terms)
+        Operator(basis, zero(QN_type), Dict{Tuple{Int,Int},Matrix{ComplexF64}}())
+    else
+        sum(hop_terms)
+    end
+
     # Build interaction Hamiltonian: H_int = 0.5 Σ_{ijkl} U_{ijkl} c_i' c_j' c_k c_l
-    H_int = Operator(
-        basis,
-        OperatorFlux(zero_qn(QN_type)),
-        Dict{Tuple{Int,Int},Matrix{ComplexF64}}(),
-    )
+    # Collect all terms, then sum once
+    int_terms = Operator[]
 
     if length(coulomb_lines) > 1
         for line in coulomb_lines[2:end]
@@ -134,8 +133,14 @@ function build_hamiltonian(
                 continue
             end
 
-            H_int = H_int + 0.5 * val * (c[fl_i]' * c[fl_j]' * c[fl_k] * c[fl_l])
+            push!(int_terms, 0.5 * val * (c[fl_i]' * c[fl_j]' * c[fl_k] * c[fl_l]))
         end
+    end
+
+    H_int = if isempty(int_terms)
+        Operator(basis, zero(QN_type), Dict{Tuple{Int,Int},Matrix{ComplexF64}}())
+    else
+        sum(int_terms)
     end
 
     # Total Hamiltonian

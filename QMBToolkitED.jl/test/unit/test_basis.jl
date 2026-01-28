@@ -1,7 +1,7 @@
 """
 Unit Tests: Basis Construction
 
-Tests for Basis and make_basis function.
+Tests for Basis construction.
 Validates basis partitioning, sector generation, and state coverage.
 """
 
@@ -11,8 +11,8 @@ using QMBToolkitED
 @testset "Basis Construction" begin
 
     @testset "Simple 2-flavor spin system with QN_NSz" begin
-        site_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]
+        basis = Basis(flavor_qns)
 
         @test basis.nflavors == 2
         @test basis.total_dim == 4
@@ -48,8 +48,8 @@ using QMBToolkitED
     end
 
     @testset "4-flavor Hubbard atom with QN_NSz" begin
-        site_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
+        basis = Basis(flavor_qns)
 
         @test basis.nflavors == 4
         @test basis.total_dim == 16
@@ -79,8 +79,8 @@ using QMBToolkitED
     end
 
     @testset "Simple N-only system with QN_N" begin
-        site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
         @test basis.nflavors == 3
         @test basis.total_dim == 8
@@ -102,8 +102,8 @@ using QMBToolkitED
     end
 
     @testset "Larger N-only system" begin
-        site_qns = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
         @test basis.nflavors == 4
         @test basis.total_dim == 16
@@ -118,8 +118,8 @@ using QMBToolkitED
 
     @testset "State coverage and uniqueness" begin
         for nflavors in [2, 3, 4]
-            site_qns = [QN_N(1) for _ in 1:nflavors]
-            basis = make_basis(site_qns)
+            flavor_qns = [QN_N(1) for _ in 1:nflavors]
+            basis = Basis(flavor_qns)
 
             all_states = Int[]
             for sector in basis.sectors
@@ -133,8 +133,8 @@ using QMBToolkitED
     end
 
     @testset "State lookup in sectors" begin
-        site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
         for sector in basis.sectors
             for (local_idx, state) in enumerate(sector.states)
@@ -151,10 +151,10 @@ using QMBToolkitED
     end
 
     @testset "Sector sorting and determinism" begin
-        site_qns = [QN_N(1), QN_N(1), QN_N(1)]
+        flavor_qns = [QN_N(1), QN_N(1), QN_N(1)]
 
-        basis1 = make_basis(site_qns)
-        basis2 = make_basis(site_qns)
+        basis1 = Basis(flavor_qns)
+        basis2 = Basis(flavor_qns)
 
         @test length(basis1.sectors) == length(basis2.sectors)
 
@@ -170,14 +170,14 @@ using QMBToolkitED
     end
 
     @testset "Edge cases" begin
-        site_qns = [QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1)]
+        basis = Basis(flavor_qns)
         @test basis.nflavors == 1
         @test basis.total_dim == 2
         @test length(basis.sectors) == 2
 
-        site_qns = [QN_NSz(1, 1), QN_NSz(1, 1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_NSz(1, 1), QN_NSz(1, 1)]
+        basis = Basis(flavor_qns)
         @test basis.nflavors == 2
         @test length(basis.sectors) == 3
         @test haskey(basis.qn_to_sector, QN_NSz(0, 0))
@@ -186,8 +186,8 @@ using QMBToolkitED
     end
 
     @testset "Basis display" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
         io = IOBuffer()
         show(io, basis)
@@ -198,9 +198,9 @@ using QMBToolkitED
         @test occursin("total_dim: 4", output)
     end
 
-    @testset "Mixed site quantum numbers with QN_NSz" begin
-        site_qns = [QN_NSz(1, 1), QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis = make_basis(site_qns)
+    @testset "Mixed flavor quantum numbers with QN_NSz" begin
+        flavor_qns = [QN_NSz(1, 1), QN_NSz(1, 1), QN_NSz(1, -1)]
+        basis = Basis(flavor_qns)
 
         @test basis.nflavors == 3
         @test basis.total_dim == 8

@@ -55,12 +55,12 @@ The package exploits quantum number conservation for block-sparse efficiency. Al
 using QMBToolkitED
 
 # Create basis with quantum numbers
-basis = make_basis([QN_Trivial() for _ in 1:nflavors])  # No symmetry
-basis = make_basis([QN_N(1) for _ in 1:nflavors])       # N conservation
-basis = make_basis([QN_NSz(1, 1), QN_NSz(1, -1), ...])  # N+Sz conservation
+basis = Basis([QN_Trivial() for _ in 1:nflavors])  # No symmetry
+basis = Basis([QN_N(1) for _ in 1:nflavors])       # N conservation
+basis = Basis([QN_NSz(1, 1), QN_NSz(1, -1), ...])  # N+Sz conservation
 
 # Generate operators and build Hamiltonian
-c = get_annihilators(basis)
+c = annihilators(basis)
 H, c = build_hamiltonian(basis, hopping_input, coulomb_input)
 
 # Solve and compute observables
@@ -73,8 +73,8 @@ tau, G = calculate_green_tau(result, c[i], c[j], beta, n_tau)
 
 ### Source Layout (`src/`)
 - `QuantumNumbers.jl` - QN_Trivial, QN_N, QN_NSz types and arithmetic
-- `Basis.jl` - Sector, Basis types; make_basis; utility functions
-- `Operators.jl` - Operator, DiagonalOperator types; get_annihilator(s)
+- `Basis.jl` - Sector, Basis types; Basis constructor; utility functions
+- `Operators.jl` - Operator, DiagonalOperator types; annihilator(s)
 - `Algebra.jl` - Operator arithmetic (*, +, -, adjoint, scalar)
 - `Conversion.jl` - to_matrix, to_vector
 - `Hamiltonian.jl` - build_hamiltonian from hopping/Coulomb inputs

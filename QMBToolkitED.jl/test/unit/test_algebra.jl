@@ -12,11 +12,11 @@ using LinearAlgebra
 @testset "Linear Algebra" begin
 
     @testset "Operator multiplication" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
-        c2 = get_annihilator(basis, 2)
+        c1 = annihilator(basis, 1)
+        c2 = annihilator(basis, 2)
 
         c1_dag = c1'
         c2_dag = c2'
@@ -24,8 +24,8 @@ using LinearAlgebra
         n1 = c1_dag * c1
         n2 = c2_dag * c2
 
-        @test n1.flux.delta_qn == QN_N(0)
-        @test n2.flux.delta_qn == QN_N(0)
+        @test n1.flux == QN_N(0)
+        @test n2.flux == QN_N(0)
         @test !isempty(n1.blocks)
         @test !isempty(n2.blocks)
         @test n1.basis === basis
@@ -33,42 +33,42 @@ using LinearAlgebra
     end
 
     @testset "Operator addition" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
-        c2 = get_annihilator(basis, 2)
+        c1 = annihilator(basis, 1)
+        c2 = annihilator(basis, 2)
 
-        @test c1.flux.delta_qn == c2.flux.delta_qn
+        @test c1.flux == c2.flux
 
         c_sum = c1 + c2
-        @test c_sum.flux.delta_qn == c1.flux.delta_qn
+        @test c_sum.flux == c1.flux
         @test c_sum.basis === basis
         @test !isempty(c_sum.blocks)
     end
 
     @testset "Operator subtraction" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
-        c2 = get_annihilator(basis, 2)
+        c1 = annihilator(basis, 1)
+        c2 = annihilator(basis, 2)
 
         c_diff = c1 - c2
-        @test c_diff.flux.delta_qn == c1.flux.delta_qn
+        @test c_diff.flux == c1.flux
 
         c_zero = c1 - c1
         @test isempty(c_zero.blocks) || all(iszero.(values(c_zero.blocks)))
     end
 
     @testset "Scalar multiplication" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
+        c1 = annihilator(basis, 1)
 
         c1_scaled = 2.0 * c1
-        @test c1_scaled.flux.delta_qn == c1.flux.delta_qn
+        @test c1_scaled.flux == c1.flux
         @test c1_scaled.basis === basis
 
         for (key, block) in c1.blocks
@@ -76,10 +76,10 @@ using LinearAlgebra
         end
 
         c1_complex = (1.0 + 2.0im) * c1
-        @test c1_complex.flux.delta_qn == c1.flux.delta_qn
+        @test c1_complex.flux == c1.flux
 
         c1_scaled2 = c1 * 2.0
-        @test c1_scaled2.flux.delta_qn == c1.flux.delta_qn
+        @test c1_scaled2.flux == c1.flux
         for (key, block) in c1_scaled.blocks
             @test c1_scaled2.blocks[key] ≈ block
         end
@@ -94,12 +94,12 @@ using LinearAlgebra
     end
 
     @testset "Unary negation" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
+        c1 = annihilator(basis, 1)
         c1_neg = -c1
-        @test c1_neg.flux.delta_qn == c1.flux.delta_qn
+        @test c1_neg.flux == c1.flux
 
         for (key, block) in c1.blocks
             @test c1_neg.blocks[key] ≈ -block
@@ -107,16 +107,16 @@ using LinearAlgebra
     end
 
     @testset "Adjoint operator" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
+        c1 = annihilator(basis, 1)
         c1_dag = c1'
-        @test c1_dag.flux.delta_qn == QN_N(1)
+        @test c1_dag.flux == QN_N(1)
         @test c1_dag.basis === basis
 
         c1_dagdag = c1_dag'
-        @test c1_dagdag.flux.delta_qn == c1.flux.delta_qn
+        @test c1_dagdag.flux == c1.flux
 
         for ((tgt, src), block) in c1.blocks
             @test haskey(c1_dag.blocks, (src, tgt))
@@ -125,29 +125,29 @@ using LinearAlgebra
     end
 
     @testset "Flux arithmetic" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
-        c = get_annihilators(basis)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
+        c = annihilators(basis)
 
         n1 = c[1]' * c[1]
-        @test n1.flux.delta_qn == QN_N(0)
+        @test n1.flux == QN_N(0)
 
         n_total = c[1]' * c[1] + c[2]' * c[2]
-        @test n_total.flux.delta_qn == QN_N(0)
+        @test n_total.flux == QN_N(0)
 
         c1_scaled = 2.0 * c[1]
         @test c1_scaled.flux == c[1].flux
 
         c1_dag = c[1]'
-        @test c1_dag.flux.delta_qn == QN_N(1)
+        @test c1_dag.flux == QN_N(1)
     end
 
     @testset "Fermionic anticommutation relations" begin
-        # 4-flavor system with QN_NSz (2-site Hubbard with spin)
-        site_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
-        basis = make_basis(site_qns)
+        # 4-flavor system with QN_NSz (Hubbard dimer with spin)
+        flavor_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
+        basis = Basis(flavor_qns)
         nflavors = 4
-        c = get_annihilators(basis)
+        c = annihilators(basis)
         c_dag = [op' for op in c]
         dim = basis.total_dim
         I_mat = Matrix{ComplexF64}(I, dim, dim)
@@ -175,10 +175,10 @@ using LinearAlgebra
     end
 
     @testset "Conversion to matrix" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
+        c1 = annihilator(basis, 1)
         c1_mat = to_matrix(c1)
 
         @test size(c1_mat) == (basis.total_dim, basis.total_dim)
@@ -187,10 +187,10 @@ using LinearAlgebra
     end
 
     @testset "Matrix conversion consistency" begin
-        site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
+        c1 = annihilator(basis, 1)
         c1_dag = c1'
         n1 = c1_dag * c1
         n1_mat = to_matrix(n1)
@@ -202,11 +202,11 @@ using LinearAlgebra
     end
 
     @testset "Operator algebra distributivity" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
-        c2 = get_annihilator(basis, 2)
+        c1 = annihilator(basis, 1)
+        c2 = annihilator(basis, 2)
         c1_dag = c1'
 
         lhs = (c1 + c2) * c1_dag
@@ -216,11 +216,11 @@ using LinearAlgebra
     end
 
     @testset "Scalar multiplication distributivity" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
-        c2 = get_annihilator(basis, 2)
+        c1 = annihilator(basis, 1)
+        c2 = annihilator(basis, 2)
         α = 2.0 + 3.0im
 
         lhs = α * (c1 + c2)
@@ -230,11 +230,11 @@ using LinearAlgebra
     end
 
     @testset "Adjoint distributivity" begin
-        site_qns = [QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        c1 = get_annihilator(basis, 1)
-        c2 = get_annihilator(basis, 2)
+        c1 = annihilator(basis, 1)
+        c2 = annihilator(basis, 2)
 
         # (c1 + c2)' = c1' + c2'
         @test to_matrix((c1 + c2)') ≈ to_matrix(c1' + c2') atol=1e-14
@@ -244,11 +244,11 @@ using LinearAlgebra
     end
 
     @testset "Total number operator" begin
-        site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
 
-        N = sum([get_annihilator(basis, i)' * get_annihilator(basis, i) for i in 1:3])
-        @test N.flux.delta_qn == QN_N(0)
+        N = sum([annihilator(basis, i)' * annihilator(basis, i) for i in 1:3])
+        @test N.flux == QN_N(0)
 
         N_mat = to_matrix(N)
         @test N_mat ≈ adjoint(N_mat) atol=1e-14
@@ -259,15 +259,15 @@ using LinearAlgebra
     end
 
     @testset "Operator on larger system" begin
-        site_qns = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
-        basis = make_basis(site_qns)
+        flavor_qns = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
+        basis = Basis(flavor_qns)
         @test basis.total_dim == 16
 
-        c1 = get_annihilator(basis, 1)
-        c2 = get_annihilator(basis, 2)
+        c1 = annihilator(basis, 1)
+        c2 = annihilator(basis, 2)
 
         hopping = c1' * c2 + c2' * c1
-        @test hopping.flux.delta_qn == QN_N(0)
+        @test hopping.flux == QN_N(0)
 
         hopping_mat = to_matrix(hopping)
         @test hopping_mat ≈ adjoint(hopping_mat) atol=1e-14

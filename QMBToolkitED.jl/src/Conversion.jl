@@ -7,6 +7,21 @@ Functions:
 """
 
 """
+    sector_offsets(basis::Basis) -> Vector{Int}
+
+Compute the starting index (0-based) for each sector in the global matrix.
+"""
+function sector_offsets(basis::Basis)
+    offsets = Vector{Int}(undef, length(basis.sectors))
+    cum = 0
+    for (i, sector) in enumerate(basis.sectors)
+        offsets[i] = cum
+        cum += sector.dim
+    end
+    return offsets
+end
+
+"""
     to_matrix(op::Operator) -> Matrix{ComplexF64}
 
 Convert an Operator to a dense matrix.
@@ -23,8 +38,8 @@ Returns:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator(basis, 1)
+basis = Basis([QN_N(1), QN_N(1)])
+c1 = annihilator(basis, 1)
 
 # Convert to dense matrix
 c1_mat = to_matrix(c1)
@@ -34,22 +49,13 @@ c1_mat = to_matrix(c1)
 function to_matrix(op::Operator)::Matrix{ComplexF64}
     basis = op.basis
     n = basis.total_dim
-
-    # Initialize zero matrix
     result = zeros(ComplexF64, n, n)
-
-    # Compute starting index for each sector
-    sector_starts = zeros(Int, length(basis.sectors))
-    cumsum_dim = 0
-    for (i, sector) in enumerate(basis.sectors)
-        sector_starts[i] = cumsum_dim
-        cumsum_dim += sector.dim
-    end
+    offsets = sector_offsets(basis)
 
     # Place each block at the correct position
     for ((tgt_idx, src_idx), block) in op.blocks
-        tgt_start = sector_starts[tgt_idx]
-        src_start = sector_starts[src_idx]
+        tgt_start = offsets[tgt_idx]
+        src_start = offsets[src_idx]
 
         tgt_dim = basis.sectors[tgt_idx].dim
         src_dim = basis.sectors[src_idx].dim
@@ -74,30 +80,21 @@ Returns:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
+basis = Basis([QN_N(1), QN_N(1)])
 sector_diags = Dict(1 => [1.0], 2 => [2.0, 3.0], 3 => [4.0])
-D = DiagonalOperator(basis, sector_diags)
+D = DiagonalOperator(basis, QN_N(0), sector_diags)
 mat = to_matrix(D)
 ```
 """
 function to_matrix(D::DiagonalOperator)::Matrix{ComplexF64}
     basis = D.basis
     n = basis.total_dim
-
-    # Initialize zero matrix
     result = zeros(ComplexF64, n, n)
-
-    # Compute starting index for each sector
-    sector_starts = zeros(Int, length(basis.sectors))
-    cumsum_dim = 0
-    for (i, sector) in enumerate(basis.sectors)
-        sector_starts[i] = cumsum_dim
-        cumsum_dim += sector.dim
-    end
+    offsets = sector_offsets(basis)
 
     # Place diagonal elements at correct positions
     for (sector_idx, diag) in D.sector_diags
-        sector_start = sector_starts[sector_idx]
+        sector_start = offsets[sector_idx]
         for (i, val) in enumerate(diag)
             result[sector_start + i, sector_start + i] = val
         end
@@ -119,22 +116,22 @@ Returns:
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
+basis = Basis([QN_N(1), QN_N(1)])
 sector_diags = Dict(1 => [1.0], 2 => [2.0, 3.0], 3 => [4.0])
-D = DiagonalOperator(basis, sector_diags)
+D = DiagonalOperator(basis, QN_N(0), sector_diags)
 vec = to_vector(D)  # [1.0, 2.0, 3.0, 4.0]
 ```
 """
 function to_vector(D::DiagonalOperator)
     basis = D.basis
-    result = Float64[]
+    result = zeros(Float64, basis.total_dim)
+    offsets = sector_offsets(basis)
 
     for sector_idx in 1:length(basis.sectors)
         if haskey(D.sector_diags, sector_idx)
-            append!(result, D.sector_diags[sector_idx])
-        else
-            # If sector not in dict, append zeros
-            append!(result, zeros(Float64, basis.sectors[sector_idx].dim))
+            offset = offsets[sector_idx]
+            diag = D.sector_diags[sector_idx]
+            result[offset+1:offset+length(diag)] = diag
         end
     end
 

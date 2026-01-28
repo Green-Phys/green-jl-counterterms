@@ -18,9 +18,9 @@ All concrete quantum number types must implement:
 - `Base.:(==)` - equality comparison
 - `Base.hash` - hashing for Dict usage
 - `Base.show` - display
-- `combine_qn` - addition of quantum numbers
-- `reverse_qn` - negation (for operator adjoint)
-- `zero_qn` - identity element
+- `Base.:(+)` - addition of quantum numbers
+- `Base.:(-)` - negation (for operator adjoint)
+- `Base.zero` - identity element
 """
 abstract type QuantumNumber end
 
@@ -41,7 +41,7 @@ Example:
 ```julia
 qn_up = QN_NSz(1, 1)    # One spin-up electron
 qn_down = QN_NSz(1, -1)  # One spin-down electron
-qn_total = combine_qn(qn_up, qn_down)  # QN_NSz(2, 0)
+qn_total = qn_up + qn_down  # QN_NSz(2, 0)
 ```
 """
 struct QN_NSz <: QuantumNumber
@@ -63,7 +63,7 @@ Example:
 ```julia
 qn1 = QN_N(1)
 qn2 = QN_N(1)
-qn_total = combine_qn(qn1, qn2)  # QN_N(2)
+qn_total = qn1 + qn2  # QN_N(2)
 ```
 """
 struct QN_N <: QuantumNumber
@@ -81,9 +81,9 @@ representation but uses the block-dense infrastructure.
 
 Example:
 ```julia
-# Create a 4-orbital system with no symmetry
-site_qns = [QN_Trivial() for _ in 1:4]
-basis = make_basis(site_qns)
+# Create a 4-flavor system with no symmetry
+flavor_qns = [QN_Trivial() for _ in 1:4]
+basis = Basis(flavor_qns)
 # Results in 1 sector with dimension 2^4 = 16
 ```
 """
@@ -122,9 +122,9 @@ end
 # ============================================================================
 
 """
-    combine_qn(qn1::QN, qn2::QN) -> QN
+    Base.:(+)(qn1::QN, qn2::QN) -> QN
 
-Combine two quantum numbers (addition for operators in product).
+Add two quantum numbers.
 
 For QN_NSz: adds both particle number and spin components.
 For QN_N: adds particle numbers.
@@ -133,17 +133,17 @@ Example:
 ```julia
 qn1 = QN_NSz(1, 1)
 qn2 = QN_NSz(1, -1)
-combine_qn(qn1, qn2)  # QN_NSz(2, 0)
+qn1 + qn2  # QN_NSz(2, 0)
 ```
 """
-combine_qn(qn1::QN_NSz, qn2::QN_NSz) = QN_NSz(qn1.n + qn2.n, qn1.sz + qn2.sz)
-combine_qn(qn1::QN_N, qn2::QN_N) = QN_N(qn1.n + qn2.n)
-combine_qn(::QN_Trivial, ::QN_Trivial) = QN_Trivial()
+Base.:(+)(qn1::QN_NSz, qn2::QN_NSz) = QN_NSz(qn1.n + qn2.n, qn1.sz + qn2.sz)
+Base.:(+)(qn1::QN_N, qn2::QN_N) = QN_N(qn1.n + qn2.n)
+Base.:(+)(::QN_Trivial, ::QN_Trivial) = QN_Trivial()
 
 """
-    reverse_qn(qn::QN) -> QN
+    Base.:(-)(qn::QN) -> QN
 
-Reverse (negate) a quantum number for operator adjoint.
+Negate a quantum number (for operator adjoint).
 
 For QN_NSz: negates both components.
 For QN_N: negates particle number.
@@ -151,27 +151,27 @@ For QN_N: negates particle number.
 Example:
 ```julia
 qn = QN_NSz(1, 1)
-reverse_qn(qn)  # QN_NSz(-1, -1)
+-qn  # QN_NSz(-1, -1)
 ```
 """
-reverse_qn(qn::QN_NSz) = QN_NSz(-qn.n, -qn.sz)
-reverse_qn(qn::QN_N) = QN_N(-qn.n)
-reverse_qn(::QN_Trivial) = QN_Trivial()
+Base.:(-)(qn::QN_NSz) = QN_NSz(-qn.n, -qn.sz)
+Base.:(-)(qn::QN_N) = QN_N(-qn.n)
+Base.:(-)(::QN_Trivial) = QN_Trivial()
 
 """
-    zero_qn(::Type{QN}) -> QN
+    Base.zero(::Type{QN}) -> QN
 
 Return the identity element (zero) for a quantum number type.
 
 Example:
 ```julia
-zero_qn(QN_NSz)  # QN_NSz(0, 0)
-zero_qn(QN_N)    # QN_N(0)
+zero(QN_NSz)  # QN_NSz(0, 0)
+zero(QN_N)    # QN_N(0)
 ```
 """
-zero_qn(::Type{QN_NSz}) = QN_NSz(0, 0)
-zero_qn(::Type{QN_N}) = QN_N(0)
-zero_qn(::Type{QN_Trivial}) = QN_Trivial()
+Base.zero(::Type{QN_NSz}) = QN_NSz(0, 0)
+Base.zero(::Type{QN_N}) = QN_N(0)
+Base.zero(::Type{QN_Trivial}) = QN_Trivial()
 
 # ============================================================================
 # Ordering (for deterministic sector ordering)
@@ -185,13 +185,7 @@ Define ordering for quantum numbers (for deterministic sector sorting).
 For QN_NSz: sort by (n, sz) lexicographically.
 For QN_N: sort by n.
 """
-function Base.isless(a::QN_NSz, b::QN_NSz)
-    if a.n != b.n
-        return a.n < b.n
-    else
-        return a.sz < b.sz
-    end
-end
+Base.isless(a::QN_NSz, b::QN_NSz) = (a.n, a.sz) < (b.n, b.sz)
 
 Base.isless(a::QN_N, b::QN_N) = a.n < b.n
 

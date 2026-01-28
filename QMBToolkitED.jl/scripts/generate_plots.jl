@@ -32,16 +32,18 @@ coulomb_str = """
 3 3 2 2 3 $(U) 0.0
 """
 
-H, annh = build_hamiltonian(IOBuffer(hopping_str), IOBuffer(coulomb_str));
+flavor_qns = [QN_NSz(1, 1), QN_NSz(1, -1), QN_NSz(1, 1), QN_NSz(1, -1)]
+basis = Basis(flavor_qns)
+H, annh = build_hamiltonian(basis, IOBuffer(hopping_str), IOBuffer(coulomb_str));
 
 # 3. Solve the System
-evals, evecs = solve_hamiltonian(H);
+result = solve_hamiltonian(H);
 
 # 4. Calculate Green's Functions
-iwn, g11_matsubara = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 1);
-_,   g12_matsubara = calculate_green_matsubara(evals, evecs, annh, beta, n_matsubara, 1, 3);
-tau_grid, g11_tau = calculate_green_tau(evals, evecs, annh, beta, n_tau, 1, 1);
-_,        g12_tau = calculate_green_tau(evals, evecs, annh, beta, n_tau, 1, 3);
+iwn, g11_matsubara = calculate_green_matsubara(result, annh[1], annh[1], beta, n_matsubara);
+_,   g12_matsubara = calculate_green_matsubara(result, annh[1], annh[3], beta, n_matsubara);
+tau_grid, g11_tau = calculate_green_tau(result, annh[1], annh[1], beta, n_tau);
+_,        g12_tau = calculate_green_tau(result, annh[1], annh[3], beta, n_tau);
 
 # 5. Plot Matsubara Green's Function
 p1 = plot(imag.(iwn), real.(g11_matsubara), title=L"G_{11}(i\omega_n)", label="Re", xlabel=L"\omega_n")

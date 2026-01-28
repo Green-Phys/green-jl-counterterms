@@ -7,43 +7,6 @@ which sector pairs are connected.
 """
 
 # ============================================================================
-# OperatorFlux Type
-# ============================================================================
-
-"""
-    OperatorFlux
-
-Quantum number change carried by an operator.
-
-Fields:
-- `delta_qn::QuantumNumber`: The quantum number change (flux)
-
-For annihilation operators: flux = reverse_qn(site_qns[flavor])
-For creation operators: flux = site_qns[flavor]
-For products: flux = combine_qn(flux1, flux2)
-
-Example:
-```julia
-# Annihilation of spin-up electron
-site_qn = QN_NSz(1, 1)
-flux_annihilation = OperatorFlux(reverse_qn(site_qn))  # QN_NSz(-1, -1)
-
-# Creation
-flux_creation = OperatorFlux(site_qn)  # QN_NSz(1, 1)
-
-# Number operator c† * c
-flux_number = OperatorFlux(combine_qn(flux_creation.delta_qn, flux_annihilation.delta_qn))
-# Result: QN_NSz(0, 0)
-```
-"""
-struct OperatorFlux
-    delta_qn::QuantumNumber
-end
-
-# Display
-Base.show(io::IO, flux::OperatorFlux) = print(io, "OperatorFlux(", flux.delta_qn, ")")
-
-# ============================================================================
 # Operator Type
 # ============================================================================
 
@@ -54,7 +17,7 @@ A block-dense matrix operator exploiting quantum number conservation.
 
 Fields:
 - `basis::Basis`: The basis this operator acts on
-- `flux::OperatorFlux`: Quantum number change carried by this operator
+- `flux::QuantumNumber`: Quantum number change carried by this operator
 - `blocks::Dict{Tuple{Int,Int}, Matrix{ComplexF64}}`: Non-zero blocks
 
 The blocks are indexed as `(target_sector, source_sector) → Matrix`.
@@ -66,11 +29,11 @@ This follows the standard linear algebra convention: operator O has matrix eleme
 Example:
 ```julia
 # Create annihilation operator
-basis = make_basis([QN_N(1), QN_N(1)])
-c1 = get_annihilator(basis, 1)
+basis = Basis([QN_N(1), QN_N(1)])
+c1 = annihilator(basis, 1)
 
 # Check flux
-println(c1.flux)  # OperatorFlux(QN_N(-1))
+println(c1.flux)  # QN_N(-1)
 
 # Check blocks
 for ((target, source), block) in c1.blocks
@@ -80,15 +43,15 @@ end
 """
 struct Operator
     basis::Basis
-    flux::OperatorFlux
+    flux::QuantumNumber
     blocks::Dict{Tuple{Int,Int}, Matrix{ComplexF64}}
 end
 
 # Display
 function Base.show(io::IO, op::Operator)
-    QN_type = eltype(op.basis.site_qns)
+    QN_type = eltype(op.basis.flavor_qns)
     println(io, "Operator{$QN_type}")
-    println(io, "  flux: ", op.flux.delta_qn)
+    println(io, "  flux: ", op.flux)
     println(io, "  num_blocks: ", length(op.blocks))
 
     total_nnz = sum(length(block) for block in values(op.blocks))
@@ -106,7 +69,7 @@ A block-diagonal operator storing only diagonal elements per sector.
 
 Fields:
 - `basis::Basis`: The basis this operator acts on
-- `flux::OperatorFlux`: Quantum number change (must be zero for diagonal operators)
+- `flux::QuantumNumber`: Quantum number change (must be zero for diagonal operators)
 - `sector_diags::Dict{Int, Vector{Float64}}`: Diagonal elements per sector
 
 This type is used to efficiently store eigenvalues from block-diagonal Hamiltonian
@@ -115,7 +78,7 @@ states within the same sector.
 
 Example:
 ```julia
-basis = make_basis([QN_N(1), QN_N(1)])
+basis = Basis([QN_N(1), QN_N(1)])
 H = ...  # Build Hamiltonian
 result = solve_hamiltonian(H)
 
@@ -125,18 +88,18 @@ evals_sector2 = result.eigenvalues.sector_diags[2]
 """
 struct DiagonalOperator
     basis::Basis
-    flux::OperatorFlux
+    flux::QuantumNumber
     sector_diags::Dict{Int, Vector{Float64}}
 
     function DiagonalOperator(
         basis::Basis,
-        flux::OperatorFlux,
+        flux::QuantumNumber,
         sector_diags::Dict{Int, Vector{Float64}}
     )
         # Validate flux is zero
-        QN_type = typeof(basis.site_qns[1])
-        if flux.delta_qn != zero_qn(QN_type)
-            error("DiagonalOperator must have zero flux. Got: $(flux.delta_qn)")
+        QN_type = typeof(basis.flavor_qns[1])
+        if flux != zero(QN_type)
+            error("DiagonalOperator must have zero flux. Got: $(flux)")
         end
 
         # Validate sector dimensions
@@ -150,57 +113,11 @@ struct DiagonalOperator
     end
 end
 
-# Convenience constructor that infers zero flux from basis
-function DiagonalOperator(
-    basis::Basis,
-    sector_diags::Dict{Int, Vector{Float64}}
-)
-    QN_type = typeof(basis.site_qns[1])
-    flux = OperatorFlux(zero_qn(QN_type))
-    DiagonalOperator(basis, flux, sector_diags)
-end
-
-# Allow construction from any real vectors
-function DiagonalOperator(
-    basis::Basis,
-    sector_diags::Dict{Int, Vector{<:Real}}
-)
-    converted = Dict{Int, Vector{Float64}}(
-        k => convert(Vector{Float64}, v) for (k, v) in sector_diags
-    )
-    DiagonalOperator(basis, converted)
-end
-
-"""
-    Base.getindex(D::DiagonalOperator, sector_idx::Int, i::Int)
-
-Get the i-th diagonal element in the specified sector.
-"""
-function Base.getindex(D::DiagonalOperator, sector_idx::Int, i::Int)
-    return D.sector_diags[sector_idx][i]
-end
-
-"""
-    Base.getindex(D::DiagonalOperator, sector_idx::Int)
-
-Get the full diagonal vector for the specified sector.
-"""
-function Base.getindex(D::DiagonalOperator, sector_idx::Int)
-    return D.sector_diags[sector_idx]
-end
-
-"""
-    Base.haskey(D::DiagonalOperator, sector_idx::Int)
-
-Check if the diagonal has values for the specified sector.
-"""
-Base.haskey(D::DiagonalOperator, sector_idx::Int) = haskey(D.sector_diags, sector_idx)
-
 # Display
 function Base.show(io::IO, op::DiagonalOperator)
-    QN_type = eltype(op.basis.site_qns)
+    QN_type = eltype(op.basis.flavor_qns)
     println(io, "DiagonalOperator{$QN_type}")
-    println(io, "  flux: ", op.flux.delta_qn)
+    println(io, "  flux: ", op.flux)
     println(io, "  num_sectors: ", length(op.sector_diags))
 
     total_elements = sum(length(diag) for diag in values(op.sector_diags))
@@ -212,29 +129,29 @@ end
 # ============================================================================
 
 """
-    get_annihilator(basis::Basis, flavor::Int) -> Operator
+    annihilator(basis::Basis, flavor::Int) -> Operator
 
-Construct a fermionic annihilation operator for orbital `flavor`.
+Construct a fermionic annihilation operator for flavor `flavor`.
 
 Arguments:
 - `basis::Basis`: The many-body basis
-- `flavor::Int`: 1-indexed orbital index to annihilate
+- `flavor::Int`: 1-indexed flavor index to annihilate
 
 Returns:
 - `Operator`: The annihilation operator c_{flavor}
 
-The operator has flux `reverse_qn(basis.site_qns[flavor])`, which means:
-- Annihilating orbital k removes the quantum number site_qns[k]
+The operator has flux `-basis.flavor_qns[flavor]`, which means:
+- Annihilating flavor k removes the quantum number flavor_qns[k]
 - Only sectors with compatible quantum numbers are connected
 
 Algorithm:
-1. Determine flux from site_qns[flavor]
+1. Determine flux from flavor_qns[flavor]
 2. For each source sector:
    a. Compute target sector from source_qn + flux
    b. If target sector doesn't exist, skip
    c. Allocate block matrix (target.dim × source.dim)
    d. For each source state:
-      - Check if orbital is occupied (bit set)
+      - Check if flavor is occupied (bit set)
       - Compute target state (flip bit)
       - Compute fermionic sign
       - Set matrix element
@@ -243,25 +160,25 @@ Algorithm:
 Example:
 ```julia
 # 2-flavor spin system
-site_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]  # [↑, ↓]
-basis = make_basis(site_qns)
+flavor_qns = [QN_NSz(1, 1), QN_NSz(1, -1)]  # [↑, ↓]
+basis = Basis(flavor_qns)
 
 # Annihilate spin-up electron
-c_up = get_annihilator(basis, 1)
+c_up = annihilator(basis, 1)
 # flux = QN_NSz(-1, -1)
 
 # Annihilate spin-down electron
-c_down = get_annihilator(basis, 2)
+c_down = annihilator(basis, 2)
 # flux = QN_NSz(-1, 1)
 ```
 """
-function get_annihilator(basis::Basis, flavor::Int)
+function annihilator(basis::Basis, flavor::Int)
     @assert 1 <= flavor <= basis.nflavors "flavor must be in 1:nflavors"
 
-    # Determine flux: annihilating orbital k removes site_qns[k]
-    flux = OperatorFlux(reverse_qn(basis.site_qns[flavor]))
+    # Determine flux: annihilating flavor k removes flavor_qns[k]
+    flux = -basis.flavor_qns[flavor]
 
-    # Bit mask for this orbital
+    # Bit mask for this flavor
     bitmask = 1 << (flavor - 1)
 
     # Storage for blocks
@@ -270,7 +187,7 @@ function get_annihilator(basis::Basis, flavor::Int)
     # Iterate over source sectors
     for (src_idx, src_sector) in enumerate(basis.sectors)
         # Compute target quantum number
-        target_qn = combine_qn(src_sector.qn, flux.delta_qn)
+        target_qn = src_sector.qn + flux
 
         # Check if target sector exists
         if !haskey(basis.qn_to_sector, target_qn)
@@ -285,15 +202,15 @@ function get_annihilator(basis::Basis, flavor::Int)
 
         # Fill block by iterating over source states
         for (src_local_idx, src_state) in enumerate(src_sector.states)
-            # Check if orbital is occupied
+            # Check if flavor is occupied
             if (src_state & bitmask) != 0
-                # Orbital is occupied, can be annihilated
+                # Flavor is occupied, can be annihilated
 
                 # Apply annihilation: flip the bit
                 tgt_state = src_state ⊻ bitmask  # XOR to flip bit
 
                 # Compute fermionic sign
-                sign = compute_fermion_sign(src_state, flavor)
+                sign = fermion_sign(src_state, flavor)
 
                 # Find local index of target state in target sector
                 tgt_local_idx = tgt_sector.state_to_index[tgt_state]
@@ -303,17 +220,16 @@ function get_annihilator(basis::Basis, flavor::Int)
             end
         end
 
-        # Store block if non-zero (non-zero blocks expected when sector connection exists)
-        if !iszero(block)
-            blocks[(tgt_idx, src_idx)] = block
-        end
+        # Block is guaranteed non-zero: the sector connection exists only when
+        # at least one source state has the flavor occupied
+        blocks[(tgt_idx, src_idx)] = block
     end
 
     return Operator(basis, flux, blocks)
 end
 
 """
-    get_annihilators(basis::Basis) -> Vector{Operator}
+    annihilators(basis::Basis) -> Vector{Operator}
 
 Generate fermionic annihilation operators for a given basis.
 
@@ -325,16 +241,16 @@ Returns:
 
 Example:
 ```julia
-# Create basis for 3-orbital system with N conservation
-site_qns = [QN_N(1), QN_N(1), QN_N(1)]
-basis = make_basis(site_qns)
+# Create basis for 3-flavor system with N conservation
+flavor_qns = [QN_N(1), QN_N(1), QN_N(1)]
+basis = Basis(flavor_qns)
 
 # Get annihilation operators
-c = get_annihilators(basis)
+c = annihilators(basis)
 
 # c[i] is the annihilation operator for flavor i
 ```
 """
-function get_annihilators(basis::Basis)
-    return [get_annihilator(basis, i) for i in 1:basis.nflavors]
+function annihilators(basis::Basis)
+    return [annihilator(basis, i) for i in 1:basis.nflavors]
 end

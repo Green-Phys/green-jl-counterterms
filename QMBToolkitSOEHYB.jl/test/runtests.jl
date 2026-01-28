@@ -10,7 +10,7 @@ MPI.Init()
 const DATA_DIR = joinpath(@__DIR__, "data")
 const DATA_DIR_2SPIN = joinpath(@__DIR__, "data_2spin")
 
-# Analytical values from analytic.nb (shared between Dense and BlockDense)
+# Analytical values from analytic.nb
 const Z_ANALYTICAL = [
     1.000000002061154,   # Z0 (order 0)
     3.501361871137541,   # Z0 + Z1 (order 1)
@@ -103,9 +103,9 @@ end
 const G_ANALYTICAL_2SPIN = compute_2spin_G_analytical()
 
 """
-Generate input.toml content for a given Hilbert space format and data directory.
+Generate input.toml content for a given data directory.
 """
-function generate_input_toml(format::String, data_dir::String = DATA_DIR)
+function generate_input_toml(data_dir::String = DATA_DIR)
     """
     [model]
     beta = 10.0
@@ -117,7 +117,6 @@ function generate_input_toml(format::String, data_dir::String = DATA_DIR)
 
     [solver]
     output_path = "."
-    Hilbert_space_format = "$(format)"
     batch_size = 5000000
 
     [solver.propagator]
@@ -136,16 +135,16 @@ function generate_input_toml(format::String, data_dir::String = DATA_DIR)
 end
 
 """
-Run bare expansion test for a given Hilbert space format.
+Run bare expansion test.
 """
-function run_bare_expansion_test(format::String)
+function run_bare_expansion_test()
     # Create temporary directory for this test
     test_dir = mktempdir()
     input_file = joinpath(test_dir, "input.toml")
     output_file = joinpath(test_dir, "sim.h5")
 
     # Write input file
-    write(input_file, generate_input_toml(format))
+    write(input_file, generate_input_toml())
 
     # Run solver
     QMBToolkitSOEHYB.run(input_file)
@@ -184,20 +183,20 @@ function run_bare_expansion_test(format::String)
 end
 
 """
-Run 2-spin bare expansion test for a given Hilbert space format.
+Run 2-spin bare expansion test.
 Tests two independent, equivalent spins with diagonal hybridization.
 
 The expected Green's function values are computed from single-spin analytical
 data using the formula for independent spins (see compute_2spin_G_analytical).
 """
-function run_2spin_bare_expansion_test(format::String)
+function run_2spin_bare_expansion_test()
     # Create temporary directory for this test
     test_dir = mktempdir()
     input_file = joinpath(test_dir, "input.toml")
     output_file = joinpath(test_dir, "sim.h5")
 
     # Write input file using 2-spin data
-    write(input_file, generate_input_toml(format, DATA_DIR_2SPIN))
+    write(input_file, generate_input_toml(DATA_DIR_2SPIN))
 
     # Run solver
     QMBToolkitSOEHYB.run(input_file)
@@ -248,10 +247,10 @@ function run_2spin_bare_expansion_test(format::String)
 end
 
 @testset "QMBToolkitSOEHYB.jl" begin
-    @testset "Bare expansion 1-spin ($format)" for format in ["dense", "blockdense"]
-        run_bare_expansion_test(format)
+    @testset "Bare expansion 1-spin" begin
+        run_bare_expansion_test()
     end
-    @testset "Bare expansion 2-spin ($format)" for format in ["dense", "blockdense"]
-        run_2spin_bare_expansion_test(format)
+    @testset "Bare expansion 2-spin" begin
+        run_2spin_bare_expansion_test()
     end
 end

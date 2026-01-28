@@ -1,6 +1,7 @@
 ### Evaluate the backbone diagrams to obtain their contributions
 using MPI
 using LinearAlgebra
+using QMBToolkitDLR
 
 """
     eval_diagrams!(solver_data, solver_params, diagram_type, comm; batch_size=100000)
@@ -12,15 +13,15 @@ Memory usage is O(batch_size) instead of O(total_diagrams).
 
 # Arguments
 
-  - `solver_data::SolverData{T, Format}`: The solver data
+  - `solver_data::SolverData{T}`: The solver data
   - `solver_params::SolverParams`: Solver parameters
   - `diagram_type::Symbol`: Type of diagrams (`:propagator_diagram` or `:green_diagram`)
   - `comm::MPI.Comm`: MPI communicator
   - `batch_size::Int`: Number of diagrams per batch (default: 100000)
 """
-function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::SolverParams,
+function eval_diagrams!(solver_data::SolverData{T}, solver_params::SolverParams,
         diagram_type::Symbol, comm::MPI.Comm;
-        batch_size::Int = 100000) where {T, Format <: HilbertSpaceFormat}
+        batch_size::Int = 100000) where {T}
     rank = MPI.Comm_rank(comm)
     propagator = get_propagator(solver_data.calc)
 
@@ -75,22 +76,22 @@ function eval_diagrams!(solver_data::SolverData{T, Format}, solver_params::Solve
                 batch_size = batch_size)
 
             push!(solver_data.calc.green_numerator_by_order,
-                DensePropagator{T}(copy(solver_data.calc.green.vals.data)))
+                copy(solver_data.calc.green.vals))
         end
 
         # Compute Green's function by order (numerator / Z)
         for green_order in 1:(solver_params.green.expansion_order)
             propagator_index = green_order
             green_index = green_order
-            green_at_order_data = solver_data.calc.green_numerator_by_order[green_index].data ./
+            green_at_order_data = solver_data.calc.green_numerator_by_order[green_index] ./
                                   solver_data.calc.partition_function_by_order[propagator_index]
-            push!(solver_data.calc.green_by_order, DensePropagator{T}(green_at_order_data))
+            push!(solver_data.calc.green_by_order, green_at_order_data)
         end
 
         # Update final Green's function
         copyto!(solver_data.calc.green.vals, solver_data.calc.green_by_order[end])
-        solver_data.calc.green.coeffs = tau2dlr(
-            solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.τ)
+        solver_data.calc.green.coeffs = QMBToolkitDLR.tau2dlr(
+            solver_data.model.dlr_grid, solver_data.calc.green.vals, solver_data.model.dlr_grid.τ; axis = 3)
     else
         error("Unknown or unsupported diagram type: $diagram_type")
     end

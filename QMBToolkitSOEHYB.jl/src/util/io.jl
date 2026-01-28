@@ -64,10 +64,6 @@ function read_input(file_path::String)
         dict["solver"]["dlr"]["rtol"]
     )
 
-    # Read Hilbert_space_format (default to "dense" for backward compatibility)
-    Hilbert_space_format = get(dict["solver"], "Hilbert_space_format", "dense")
-    @boundscheck @assert Hilbert_space_format in ["dense", "blockdense"] "Hilbert_space_format must be 'dense' or 'blockdense', got: $Hilbert_space_format"
-
     # Read batch_size for diagram evaluation (large default for small problems to behave like non-batched)
     batch_size = get(dict["solver"], "batch_size", 100000)
     @boundscheck @assert batch_size > 0 "batch_size must be positive, got: $batch_size"
@@ -77,7 +73,6 @@ function read_input(file_path::String)
         green_params,
         dlr_params,
         output_path,
-        Hilbert_space_format,
         batch_size
     )
 
@@ -101,7 +96,6 @@ function print_parameters(params::Params)
     println("   hybridization_weights_file: ", params.model.hybridization_weights_file)
     println(" [solver]")
     println("   output_path: ", params.solver.output_path)
-    println("   Hilbert_space_format: ", params.solver.Hilbert_space_format)
     println("   batch_size: ", params.solver.batch_size)
     println("  [expansion]")
     println("    is_bold: ", params.solver.propagator.is_bold)
@@ -120,12 +114,16 @@ end
 
 Print the contents of a `SolverData` object.
 """
-function print_init_data(solver_data::SolverData{T, Format}) where {T, Format}
+function print_init_data(solver_data::SolverData)
     println()
     println("--- Model Data ---")
     println(" n_flavors: ", solver_data.model.n_flavors)
     println(" n_fock: ", solver_data.model.n_fock)
-    _print_sector_info(solver_data, Format)
+    basis = solver_data.model.format_data.eigenvalues.basis
+    sectors = basis.sectors
+    println(" n_sectors: ", length(sectors))
+    dims = [s.dim for s in sectors]
+    println(" sector_dims: ", dims)
     println(" n_flavors_physical: ", solver_data.model.n_flavors_physical)
     println(" # of SOE for hybridization function: ", length(solver_data.model.hyb.exponents))
     println(" E_shift applied to Hamiltonian: ", solver_data.model.E_shift)
@@ -133,18 +131,6 @@ function print_init_data(solver_data::SolverData{T, Format}) where {T, Format}
     println("--- DLR Data ---")
     println(" # of DLR coefficients: ", solver_data.model.dlr_grid.size)
     println(" Maximum reconstruction error in bare propagator: ", solver_data.model.bare_propagator_err)
-end
-
-# Helper to print sector info for blockdense format
-_print_sector_info(::SolverData, ::Type{DenseFormat}) = nothing
-
-function _print_sector_info(solver_data::SolverData, ::Type{BlockDenseFormat})
-    basis = solver_data.model.format_data.eigenvalues.basis
-    sectors = basis.sectors
-    println(" n_sectors: ", length(sectors))
-    # Print sector dimensions in a compact format
-    dims = [s.dim for s in sectors]
-    println(" sector_dims: ", dims)
 end
 
 """
@@ -172,14 +158,14 @@ function save_data(
     h5open(file_path, "w") do file
         # Save Green's function - linear grid
         green_linear_group = create_group(file, "green/linear_grid")
-        green_linear_group["green_tau"] = calc_data.green_linear_grid.data
+        green_linear_group["green_tau"] = calc_data.green_linear_grid
         green_linear_group["tau"] = calc_data.tau_linear_grid
 
         # Save Green's function - DLR grid
         green_dlr_group = create_group(file, "green/dlr_grid")
-        green_dlr_group["green_tau"] = calc_data.green.vals.data
+        green_dlr_group["green_tau"] = calc_data.green.vals
         green_dlr_group["tau"] = model_data.dlr_grid.τ
-        green_dlr_group["coeffs"] = calc_data.green.coeffs.data
+        green_dlr_group["coeffs"] = calc_data.green.coeffs
 
         # Save Green's function by order (on linear grid)
         # Note: green_by_order is stored on DLR grid, need to interpolate to linear grid
@@ -189,7 +175,7 @@ function save_data(
             green_coeffs = tau2dlr(model_data.dlr_grid, green_at_order_dlr, model_data.dlr_grid.τ)
             # Interpolate to linear grid
             green_at_order_linear = dlr2tau(model_data.dlr_grid, green_coeffs, calc_data.tau_linear_grid)
-            green_by_order_group["green_order_$i"] = green_at_order_linear.data
+            green_by_order_group["green_order_$i"] = green_at_order_linear
         end
 
         # Save model parameters
@@ -246,10 +232,10 @@ function save_results(solver_data::SolverData, solver_params::SolverParams)
     println("First 4 linear grid tau points:")
     println(solver_data.calc.tau_linear_grid[1:4])
     println("Green's function G[1,1, 1:4] on linear grid:")
-    println(solver_data.calc.green_linear_grid.data[1, 1, 1:4])
+    println(solver_data.calc.green_linear_grid[1, 1, 1:4])
     println("Head + Tail (linear grid):")
-    println(solver_data.calc.green_linear_grid.data[1, 1, 1] +
-            solver_data.calc.green_linear_grid.data[1, 1, end])
+    println(solver_data.calc.green_linear_grid[1, 1, 1] +
+            solver_data.calc.green_linear_grid[1, 1, end])
 
     # Save all data (without timing)
     output_file = joinpath(solver_params.output_path, "sim.h5")

@@ -1,10 +1,8 @@
 using QMBToolkitDLR
-using QMBToolkitED.Dense: DenseOperator, DenseBasis, DenseDiagonalOperator
-using QMBToolkitED.BlockDense: BlockDenseOperator, BlockDenseBasis, BlockDenseDiagonalOperator,
-                               OperatorFlux
+using QMBToolkitED: Operator, Basis, DiagonalOperator, QuantumNumber
 
 #=============================================================================
-# SOE Data (shared by both formats)
+# SOE Data
 =============================================================================#
 
 """
@@ -28,41 +26,17 @@ end
 """
     ModelDataStorage{T}
 
-Abstract type for format-specific model data storage.
-Concrete subtypes hold operators and bare propagator in either Dense or BlockDense format.
+Storage for model data holding eigenvalues, eigenvectors, operators,
+and bare propagator.
 """
-abstract type ModelDataStorage{T} end
-
-"""
-    DenseModelDataStorage{T}
-
-Format-specific storage for DenseFormat model data.
-Holds eigenvalues, eigenvectors, operators, and bare propagator in dense matrix representation.
-"""
-struct DenseModelDataStorage{T} <: ModelDataStorage{T}
-    eigenvalues::DenseDiagonalOperator     # Eigenvalues as diagonal operator
-    eigenvectors::DenseOperator            # Eigenvectors as unitary operator
-    ann_opts::Vector{DenseOperator}        # Annihilation operators (eigenbasis)
-    cre_opts::Vector{DenseOperator}        # Creation operators (eigenbasis)
-    ann_opts_bar::Matrix{DenseOperator}    # Barred annihilation operators c̄_{o,l}
-    cre_opts_bar::Matrix{DenseOperator}    # Barred creation operators c̄†_{o,l}
-    bare_propagator::DenseDLRPropagator{T} # Bare propagator in DLR representation
-end
-
-"""
-    BlockDenseModelDataStorage{T}
-
-Format-specific storage for BlockDenseFormat model data.
-Holds eigenvalues, eigenvectors, operators, and bare propagator in block-sparse representation.
-"""
-struct BlockDenseModelDataStorage{T} <: ModelDataStorage{T}
-    eigenvalues::BlockDenseDiagonalOperator     # Eigenvalues as block-diagonal operator
-    eigenvectors::BlockDenseOperator            # Eigenvectors as block-unitary operator
-    ann_opts::Vector{BlockDenseOperator}        # Annihilation operators (eigenbasis)
-    cre_opts::Vector{BlockDenseOperator}        # Creation operators (eigenbasis)
-    ann_opts_bar::Matrix{BlockDenseOperator}    # Barred annihilation operators c̄_{o,l}
-    cre_opts_bar::Matrix{BlockDenseOperator}    # Barred creation operators c̄†_{o,l}
-    bare_propagator::BlockDenseDLRPropagator{T} # Bare propagator in DLR representation
+struct ModelDataStorage{T}
+    eigenvalues::DiagonalOperator     # Eigenvalues as block-diagonal operator
+    eigenvectors::Operator            # Eigenvectors as block-unitary operator
+    ann_opts::Vector{Operator}        # Annihilation operators (eigenbasis)
+    cre_opts::Vector{Operator}        # Creation operators (eigenbasis)
+    ann_opts_bar::Matrix{Operator}    # Barred annihilation operators c̄_{o,l}
+    cre_opts_bar::Matrix{Operator}    # Barred creation operators c̄†_{o,l}
+    bare_propagator::DLRPropagator{T}           # Bare propagator in DLR representation
 end
 
 #=============================================================================
@@ -72,29 +46,11 @@ end
 """
     CalculationDataStorage{T}
 
-Abstract type for format-specific calculation data storage.
-Concrete subtypes hold propagator and self-energy in either Dense or BlockDense format.
+Storage for calculation data holding propagator and self-energy.
 """
-abstract type CalculationDataStorage{T} end
-
-"""
-    DenseCalculationDataStorage{T}
-
-Format-specific storage for DenseFormat calculation data.
-"""
-struct DenseCalculationDataStorage{T} <: CalculationDataStorage{T}
-    propagator::DenseDLRPropagator{T}  # Propagator in DLR representation
-    selfenergy::DenseDLRPropagator{T}  # Self-energy in DLR representation
-end
-
-"""
-    BlockDenseCalculationDataStorage{T}
-
-Format-specific storage for BlockDenseFormat calculation data.
-"""
-struct BlockDenseCalculationDataStorage{T} <: CalculationDataStorage{T}
-    propagator::BlockDenseDLRPropagator{T}  # Propagator in DLR representation
-    selfenergy::BlockDenseDLRPropagator{T}  # Self-energy in DLR representation
+struct CalculationDataStorage{T}
+    propagator::DLRPropagator{T}  # Propagator in DLR representation
+    selfenergy::DLRPropagator{T}  # Self-energy in DLR representation
 end
 
 #=============================================================================
@@ -102,20 +58,17 @@ end
 =============================================================================#
 
 """
-    ModelData{T, Format, Storage}
+    ModelData{T}
 
 Holds the derived data for the model, such as the Hamiltonian, operators, and hybridization function.
 
-The `format_data` field contains format-specific data (operators and bare propagator) in either
-Dense or BlockDense representation, eliminating the need for Union{..., Nothing} fields.
+The `format_data` field contains operators and bare propagator.
 
 # Type Parameters
 
   - `T<:Number`: Numeric type for propagator values (typically ComplexF64)
-  - `Format<:HilbertSpaceFormat`: Either DenseFormat or BlockDenseFormat
-  - `Storage<:ModelDataStorage{T}`: Format-specific storage type
 """
-struct ModelData{T <: Number, Format <: HilbertSpaceFormat, Storage <: ModelDataStorage{T}}
+struct ModelData{T <: Number}
     # Model properties
     beta::Float64
     n_flavors::Int
@@ -135,7 +88,7 @@ struct ModelData{T <: Number, Format <: HilbertSpaceFormat, Storage <: ModelData
     convolution_workspace::ConvolutionWorkspace{T}
 
     # Format-specific storage (eigenvalues, eigenvectors, operators, bare propagator)
-    format_data::Storage
+    format_data::ModelDataStorage{T}
 end
 
 #=============================================================================
@@ -143,33 +96,24 @@ end
 =============================================================================#
 
 """
-    CalculationData{T, Format, Storage}
+    CalculationData{T}
 
 Holds the data for the calculation, such as the Green's function, propagator, etc.
-
-The `format_data` field contains format-specific propagator and self-energy in either
-Dense or BlockDense representation.
-
-Note: Green's function is always stored in dense format (it's a physical observable
-in small orbital space).
 
 # Type Parameters
 
   - `T<:Number`: Numeric type for propagator values
-  - `Format<:HilbertSpaceFormat`: Either DenseFormat or BlockDenseFormat
-  - `Storage<:CalculationDataStorage{T}`: Format-specific storage type
 """
-mutable struct CalculationData{
-    T <: Number, Format <: HilbertSpaceFormat, Storage <: CalculationDataStorage{T}}
+mutable struct CalculationData{T <: Number}
     # Format-specific storage
-    format_data::Storage
+    format_data::CalculationDataStorage{T}
 
-    # Always dense (physical observables in small orbital space)
-    green::DenseDLRPropagator{T}
+    # Green's function (physical observable in orbital space)
+    green::GreenDLR{T}
     partition_function_by_order::Vector{Float64}
-    green_numerator_by_order::Vector{DensePropagator{T}}
-    green_by_order::Vector{DensePropagator{T}}
-    green_linear_grid::DensePropagator{T}
+    green_numerator_by_order::Vector{Array{T, 3}}
+    green_by_order::Vector{Array{T, 3}}
+    green_linear_grid::Array{T, 3}
     tau_linear_grid::Vector{Float64}
 
     # Diagram count information: (n_topologies, n_directions, n_flavors_combo, n_exponents_combo, total)
@@ -183,28 +127,18 @@ end
 =============================================================================#
 
 """
-    SolverData{T, Format, MS, CS}
+    SolverData{T}
 
 Holds all the data required for the solver calculation.
-Combines model data and calculation data, both parametrized by the same Format.
+Combines model data and calculation data.
 
 # Type Parameters
 
   - `T<:Number`: Numeric type for propagator values
-  - `Format<:HilbertSpaceFormat`: Either DenseFormat or BlockDenseFormat
-  - `MS<:ModelDataStorage{T}`: Format-specific model storage type
-  - `CS<:CalculationDataStorage{T}`: Format-specific calculation storage type
 """
-struct SolverData{T <: Number, Format <: HilbertSpaceFormat,
-    MS <: ModelDataStorage{T}, CS <: CalculationDataStorage{T}}
-    model::ModelData{T, Format, MS}
-    calc::CalculationData{T, Format, CS}
-end
-
-# Convenience constructor that infers Storage types from components
-function SolverData(model::ModelData{T, Format, MS}, calc::CalculationData{
-        T, Format, CS}) where {T, Format, MS, CS}
-    SolverData{T, Format, MS, CS}(model, calc)
+struct SolverData{T <: Number}
+    model::ModelData{T}
+    calc::CalculationData{T}
 end
 
 #=============================================================================

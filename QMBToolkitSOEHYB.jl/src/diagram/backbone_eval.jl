@@ -1,8 +1,8 @@
 """
 Unified backbone diagram evaluation.
 
-Format-agnostic implementation of backbone diagram evaluation that works with both
-Dense and BlockDense representations through interface functions.
+Format-agnostic implementation of backbone diagram evaluation that works through
+interface functions.
 
 # Key Functions
 - `get_operator(node, model_data)`: Get operator for a diagram node
@@ -32,7 +32,7 @@ using QMBToolkitDLR
 Get the operator for a given node from model data.
 
 This is a format-agnostic function that uses interface accessors to retrieve
-the appropriate operator (Dense or BlockDense) based on the model_data type.
+the appropriate operator based on the model_data type.
 
 # Arguments
 
@@ -94,8 +94,8 @@ Starting from the rightmost edge, accumulates:
   - `edges::Vector{BackBoneEdge}`: Diagram edges (length M-1)
   - `dlr_grid::DLRGrid`: DLR grid for τ-space operations
   - `model_data::ModelData`: Model data with operators and hybridization
-  - `propagator`: Propagator on DLR τ-grid (DensePropagator or BlockDensePropagator)
-  - `buffers`: Pre-allocated work buffers (DenseBackboneBuffers or BlockDenseBackboneBuffers)
+  - `propagator`: Propagator on DLR τ-grid
+  - `buffers`: Pre-allocated work buffers (BackboneBuffers)
 
 # Returns
 
@@ -122,7 +122,7 @@ function multiplication_convolution(
     length(nodes) == length(edges) + 1 ||
         error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
-    # Get initial flux (nothing for Dense, OperatorFlux for BlockDense)
+    # Get initial flux
     current_flux = get_flux(propagator)
 
     # Get result buffer for current flux and copy propagator into it
@@ -228,7 +228,7 @@ function multiplication_convolution_reverse(
     length(nodes) == length(edges) + 1 ||
         error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
-    # Get initial flux (nothing for Dense, OperatorFlux for BlockDense)
+    # Get initial flux
     current_flux = get_flux(propagator)
 
     # Get result buffer for current flux and copy propagator into it
@@ -314,18 +314,17 @@ end
 
 Evaluate a single propagator diagram using the unified backbone evaluation.
 
-This is the format-agnostic implementation that works for both Dense and BlockDense modes.
 Called by `eval_propagator_given_order!`.
 
 # Arguments
 
   - `diagram::BackBone`: The diagram to evaluate
   - `solver_data::SolverData{T}`: Solver data containing model information
-  - `buffers`: Pre-allocated work buffers (format-specific)
+  - `buffers`: Pre-allocated work buffers
 
 # Returns
 
-Diagram contribution in imaginary time (format-specific propagator type).
+Diagram contribution in imaginary time (Propagator type).
 """
 function eval_propagator_forward_backbone(diagram::BackBone, solver_data::SolverData{T}, buffers) where {T <:
                                                                                                          Number}
@@ -346,14 +345,13 @@ end
     eval_green_forward_backbone(diagram, split_point, solver_data, propagator, buffers)
 
 Evaluate forward backbone contribution from node 1 to split_point.
-Format-agnostic: works with both Dense and BlockDense propagators.
 
 # Arguments
 
   - `diagram::BackBone`: The diagram being evaluated
   - `split_point::Int`: Position of the external annihilation operator
   - `solver_data::SolverData{T}`: Solver data containing model information
-  - `propagator`: Propagator to use (DensePropagator or BlockDensePropagator)
+  - `propagator`: Propagator to use
   - `buffers`: Evaluation buffers containing forward convolution buffers
 
 # Returns
@@ -376,14 +374,13 @@ end
     eval_green_reverse_backbone(diagram, split_point, solver_data, propagator, buffers)
 
 Evaluate reverse backbone contribution from split_point to end.
-Format-agnostic: works with both Dense and BlockDense propagators.
 
 # Arguments
 
   - `diagram::BackBone`: The diagram being evaluated
   - `split_point::Int`: Position of the external annihilation operator
   - `solver_data::SolverData{T}`: Solver data containing model information
-  - `propagator`: Propagator to use (DensePropagator or BlockDensePropagator)
+  - `propagator`: Propagator to use
   - `buffers`: Evaluation buffers containing reverse convolution buffers
 
 # Returns

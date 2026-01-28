@@ -1,10 +1,6 @@
 # Green's function diagram evaluation using batched generation
 using MPI
 
-# allocate_green_buffers is defined in format-specific files:
-# - src/format/dense/propagator.jl
-# - src/format/blockdense/propagator.jl
-
 """
     eval_green_given_order!(solver_data, cache, is_bold, comm; batch_size=100000)
 
@@ -14,7 +10,7 @@ Memory-efficient version that generates and evaluates diagrams in batches.
 
 # Arguments
 
-  - `solver_data::SolverData{T, Format}`: Solver data containing model and calculation results
+  - `solver_data::SolverData{T}`: Solver data containing model and calculation results
   - `cache::DiagramConfigCache`: Pre-built configuration cache for this order
   - `is_bold::Bool`: Whether to use bold expansion
   - `comm::MPI.Comm`: MPI communicator for parallel evaluation
@@ -31,8 +27,8 @@ Memory-efficient version that generates and evaluates diagrams in batches.
   - Results are summed across all ranks using MPI.Allreduce
 """
 function eval_green_given_order!(
-        solver_data::SolverData{T, Format}, cache::DiagramConfigCache, is_bold::Bool,
-        comm::MPI.Comm; batch_size::Int = 100000) where {T <: Number, Format <: HilbertSpaceFormat}
+        solver_data::SolverData{T}, cache::DiagramConfigCache, is_bold::Bool,
+        comm::MPI.Comm; batch_size::Int = 100000) where {T <: Number}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 
@@ -42,7 +38,7 @@ function eval_green_given_order!(
     ann_opts = get_ann_opts(solver_data.model)
     cre_opts = get_cre_opts(solver_data.model)
 
-    local_result = zeros_like(solver_data.calc.green.vals)
+    local_result = zeros(T, size(solver_data.calc.green.vals)...)
 
     # Allocate evaluation buffers once
     buffers = allocate_green_buffers(solver_data, cache.order)

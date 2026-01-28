@@ -1,7 +1,6 @@
 """
 Abstract interface for format-agnostic operations.
 
-This module defines the interface that both Dense and BlockDense formats must implement.
 Functions dispatch on propagator/operator types, allowing diagram evaluation code to be
 written once and work with any format.
 
@@ -72,9 +71,6 @@ function add_scaled! end
 function get_flux end
 function compute_new_flux end
 function compute_new_flux_reverse end
-
-# For Dense mode, flux is always Nothing (zero)
-is_zero_flux(::Nothing) = true
 
 # Buffer accessors (used in backbone evaluation)
 function get_result end

@@ -1,25 +1,23 @@
 """
-Hybridization application operations for BlockDense representation.
+Hybridization application operations for Propagator representation.
 
-Functions for applying SOE-decomposed hybridization functions K±(τ) to BlockDense propagators.
+Functions for applying SOE-decomposed hybridization functions K±(τ) to propagators.
 
 Hybridization conserves quantum numbers (flux = 0), so only diagonal blocks are affected.
 """
 
-using QMBToolkitED.BlockDense
-
 """
-    apply_hybridization_inplace_blockdense!(temp_buffer, target, hyb, model_data; is_reverse=false)
+    apply_hybridization_inplace_impl!(temp_buffer, target, hyb, model_data; is_reverse=false)
 
-Apply hybridization function to BlockDense target array in-place, updating target with the result.
+Apply hybridization function to target array in-place, updating target with the result.
 Uses pre-allocated temp_buffer to avoid allocations.
 
 # Arguments
 
-  - `temp_buffer::BlockDensePropagator{T}`: Pre-allocated buffer for intermediate results
-  - `target::BlockDensePropagator{T}`: Array to be modified (time-dependent block array)
+  - `temp_buffer::Propagator{T}`: Pre-allocated buffer for intermediate results
+  - `target::Propagator{T}`: Array to be modified (time-dependent block array)
   - `hyb::HybridizationState`: Hybridization state (NoHyb, KPlus(l), or KMinus(l))
-  - `model_data::ModelData{T, BlockDenseFormat}`: Model data containing K± values on DLR τ-grid
+  - `model_data::ModelData{T}`: Model data containing K± values on DLR τ-grid
   - `is_reverse::Bool=false`: When true, swaps KPlus ↔ KMinus (used in reverse convolution)
 
 # Behavior
@@ -35,12 +33,12 @@ Hybridization is applied as element-wise scalar multiplication, so it applies to
 in the target (both diagonal and off-diagonal). The target may have any flux structure
 depending on prior operator multiplications in the diagram evaluation.
 """
-@inline function apply_hybridization_inplace_blockdense!(
-        temp_buffer::BlockDensePropagator{T}, target::BlockDensePropagator{T},
-        hyb::HybridizationState, model_data::ModelData{T, BlockDenseFormat};
+@inline function apply_hybridization_inplace_impl!(
+        temp_buffer::Propagator{T}, target::Propagator{T},
+        hyb::HybridizationState, model_data::ModelData{T};
         is_reverse::Bool = false) where {T <: Number}
     @boundscheck @assert temp_buffer.basis === target.basis "Buffer and target must use same basis"
-    @boundscheck @assert temp_buffer.flux.delta_qn == target.flux.delta_qn "Buffer and target must have same flux"
+    @boundscheck @assert temp_buffer.flux == target.flux "Buffer and target must have same flux"
 
     index = hyb.index
     if index != 0  # Not NoHyb
@@ -75,9 +73,9 @@ end
 
 # Hybridization application - interface version
 function apply_hybridization_inplace!(
-        temp_buffer::BlockDensePropagator{T}, target::BlockDensePropagator{T},
-        hyb::HybridizationState, model_data::ModelData{T, BlockDenseFormat};
+        temp_buffer::Propagator{T}, target::Propagator{T},
+        hyb::HybridizationState, model_data::ModelData{T};
         is_reverse::Bool = false) where {T}
-    apply_hybridization_inplace_blockdense!(
+    apply_hybridization_inplace_impl!(
         temp_buffer, target, hyb, model_data; is_reverse = is_reverse)
 end

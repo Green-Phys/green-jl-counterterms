@@ -11,7 +11,7 @@ avoiding storing all diagrams in memory simultaneously.
 
 # Arguments
 
-  - `solver_data::SolverData{T, Format}`: Solver data containing model and calculation results
+  - `solver_data::SolverData{T}`: Solver data containing model and calculation results
   - `cache::DiagramConfigCache`: Pre-built configuration cache for this order
   - `comm::MPI.Comm`: MPI communicator for parallel evaluation
   - `batch_size::Int`: Number of diagrams per batch (default: 100000)
@@ -27,8 +27,8 @@ avoiding storing all diagrams in memory simultaneously.
   - Results are summed across all ranks using MPI.Allreduce
 """
 function eval_propagator_given_order!(
-        solver_data::SolverData{T, Format}, cache::DiagramConfigCache,
-        comm::MPI.Comm; batch_size::Int = 100000) where {T <: Number, Format <: HilbertSpaceFormat}
+        solver_data::SolverData{T}, cache::DiagramConfigCache,
+        comm::MPI.Comm; batch_size::Int = 100000) where {T <: Number}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 

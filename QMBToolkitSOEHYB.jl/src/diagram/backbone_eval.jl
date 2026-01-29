@@ -14,7 +14,7 @@ interface functions.
 
 # Interface Functions Used
 - get_flux, compute_new_flux, compute_new_flux_reverse: Flux handling
-- get_result, get_hyb_temp, get_op_product, etc.: Buffer accessors
+- get_result, get_op_product, get_result_dlr, get_conv_operand, get_conv_dlr: Buffer accessors
 - multiply_op_prop!, multiply_prop_op!: Operator multiplications
 - apply_hybridization_inplace!: Hybridization application
 - tau2dlr!, do_convolution_dlr2tau!: DLR operations

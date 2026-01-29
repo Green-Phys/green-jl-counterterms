@@ -96,8 +96,6 @@ function _do_convolution_direct!(
     # Reshape contiguous buffers once at start
     H1_dlr = reshape(@view(workspace.dlr_buffer1[1:dlr_size]), d1, d3, r)
     H2_dlr = reshape(@view(workspace.dlr_buffer2[1:dlr_size]), d1, d3, r)
-    H1_tau = reshape(@view(workspace.tau_buffer1[1:tau_size]), d1, d3, n_tau)
-    H2_tau = reshape(@view(workspace.tau_buffer2[1:tau_size]), d1, d3, n_tau)
     H_tau = reshape(@view(workspace.tau_result[1:tau_size]), d1, d3, n_tau)
 
     # Clear workspace buffers

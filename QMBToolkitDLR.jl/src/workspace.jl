@@ -40,7 +40,7 @@ Supports non-square matrix convolutions: F (d1 × d2 × r) * G (d2 × d3 × r) -
 - `temp_FG`: Temporary buffer for F[j] * G[j] matrix multiplication (d1 × d3)
 - `dlr_workspace`: Workspace for in-place DLR transformations
 - `dlr_buffer1`, `dlr_buffer2`: Contiguous linear buffers for DLR data (can be reshaped)
-- `tau_buffer1`, `tau_buffer2`, `tau_result`: Contiguous linear buffers for tau data (can be reshaped)
+- `tau_buffer1`, `tau_result`: Contiguous linear buffers for tau data (can be reshaped)
 - `reflection_matrix`: Pre-computed direct reflection matrix R = K(β-τ,ω) * inv(K(τ,ω))
 - `kernel_tau`: Pre-computed DLR kernel K(τ,ω) for dlr2tau transformation
 - `tau_weighted_kernel`: Pre-computed τ-weighted kernel for fused convolution: diag(τ) * K(τ,ω)
@@ -56,7 +56,6 @@ struct ConvolutionWorkspace{T<:Number}
     dlr_buffer1::Vector{T}
     dlr_buffer2::Vector{T}
     tau_buffer1::Vector{T}
-    tau_buffer2::Vector{T}
     tau_result::Vector{T}
     # Pre-computed matrices for efficient DLR operations
     reflection_matrix::Matrix{Float64}  # R = K(β-τ,ω) * inv(K(τ,ω))
@@ -150,7 +149,6 @@ function ConvolutionWorkspace{T}(
         zeros(T, max_dlr_size),     # dlr_buffer1
         zeros(T, max_dlr_size),     # dlr_buffer2
         zeros(T, max_tau_size),     # tau_buffer1
-        zeros(T, max_tau_size),     # tau_buffer2
         zeros(T, max_tau_size),     # tau_result
         reflection_matrix,          # Pre-computed direct reflection matrix
         kernel_tau,                 # Pre-computed DLR kernel

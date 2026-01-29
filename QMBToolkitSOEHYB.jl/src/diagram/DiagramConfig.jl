@@ -486,7 +486,7 @@ struct DiagramGroup
 end
 
 """
-    check_flux_sequence(topo_config, directions, flavors, basis, diagram_type) -> Bool
+    check_flux_sequence(topo_config, directions, flavors, basis, diagram_type, valid_fluxes) -> Bool
 
 Check if the operator sequence produces only valid intermediate fluxes.
 
@@ -504,6 +504,7 @@ plus validation that external operators can produce valid combined fluxes.
   - `flavors::NTuple{L,Int}`: Flavor index for each hybridization line
   - `basis::Basis`: The basis defining valid fluxes
   - `diagram_type::Symbol`: :propagator_diagram or :green_diagram
+  - `valid_fluxes::Set{QN}`: Pre-computed set of valid flux values
 
 # Returns
 
@@ -514,18 +515,9 @@ function check_flux_sequence(
         directions::NTuple{L, Symbol},
         flavors::NTuple{L, Int},
         basis::Basis,
-        diagram_type::Symbol
-) where {L}
-    # Get quantum number type and compute valid fluxes
-    QN = typeof(basis.sectors[1].qn)
-    valid_fluxes = Set{QN}()
-    for src_sector in basis.sectors
-        for tgt_sector in basis.sectors
-            flux = tgt_sector.qn + (-src_sector.qn)
-            push!(valid_fluxes, flux)
-        end
-    end
-
+        diagram_type::Symbol,
+        valid_fluxes::Set{QN}
+) where {L, QN <: QuantumNumber}
     M = topo_config.M
 
     # Build operator sequence with their fluxes
@@ -668,6 +660,16 @@ only valid intermediate fluxes during backbone evaluation.
   - `Vector{DiagramGroup}`: List of valid groups, each containing n_exponent_combos diagrams
 """
 function build_valid_groups(cache::DiagramConfigCache{L}, basis::Basis) where {L}
+    # Pre-compute valid fluxes once (avoid rebuilding for each group check)
+    QN = typeof(basis.sectors[1].qn)
+    valid_fluxes = Set{QN}()
+    for src_sector in basis.sectors
+        for tgt_sector in basis.sectors
+            flux = tgt_sector.qn + (-src_sector.qn)
+            push!(valid_fluxes, flux)
+        end
+    end
+
     groups = DiagramGroup[]
 
     for topo_idx in 1:cache.n_topologies
@@ -680,7 +682,8 @@ function build_valid_groups(cache::DiagramConfigCache{L}, basis::Basis) where {L
                 flavors = cache.flavors[flav_idx]
 
                 # Check if this combination has valid flux sequence
-                if check_flux_sequence(topo_config, directions, flavors, basis, cache.diagram_type)
+                if check_flux_sequence(topo_config, directions, flavors, basis,
+                    cache.diagram_type, valid_fluxes)
                     push!(groups, DiagramGroup(
                         topo_idx, dir_idx, flav_idx, cache.n_exponents_combo
                     ))

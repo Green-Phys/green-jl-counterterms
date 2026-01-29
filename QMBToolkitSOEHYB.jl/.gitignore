@@ -6,6 +6,7 @@
 /auxiliary/
 /examples/
 test_*.jl
+/reference/
 
 # macOS
 .DS_Store

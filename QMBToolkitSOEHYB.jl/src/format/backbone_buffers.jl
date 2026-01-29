@@ -184,10 +184,10 @@ Buffers for Green's function diagram evaluation.
 Contains forward/reverse backbone buffers plus additional pools for
 reflection, annihilation/creation operator products, and trace computation.
 
-Note: With flux pre-filtering (build_valid_groups), backbone diagrams are guaranteed
-to have valid intermediate fluxes. However, post-backbone operations (ann_product)
-may produce fluxes outside the valid set, so empty propagator sentinels are kept
-for those accessors.
+Note: With flux pre-filtering (build_valid_groups), all diagrams are guaranteed
+to have valid intermediate fluxes. The pre-filtering checks both backbone fluxes
+AND external operator fluxes, ensuring at least one valid (α, β) combination exists.
+Invalid (α) combinations during evaluation are skipped via haskey check.
 
 # Type Parameters
 
@@ -219,10 +219,6 @@ for those accessors.
 ## Trace computation:
 
   - `trace_result_buffer`: Accumulates trace values [n_tau]
-
-## Sentinels:
-
-  - `empty_propagator_tau`: Empty propagator for post-backbone fluxes outside valid set
 """
 struct GreenEvalBuffers{T <: Number, QN <: QuantumNumber}
     # Backbone evaluation buffers

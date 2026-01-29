@@ -42,6 +42,8 @@ Supports non-square matrix convolutions: F (d1 × d2 × r) * G (d2 × d3 × r) -
 - `dlr_buffer1`, `dlr_buffer2`: Contiguous linear buffers for DLR data (can be reshaped)
 - `tau_buffer1`, `tau_buffer2`, `tau_result`: Contiguous linear buffers for tau data (can be reshaped)
 - `reflection_matrix`: Pre-computed direct reflection matrix R = K(β-τ,ω) * inv(K(τ,ω))
+- `kernel_tau`: Pre-computed DLR kernel K(τ,ω) for dlr2tau transformation
+- `tau_weighted_kernel`: Pre-computed τ-weighted kernel for fused convolution: diag(τ) * K(τ,ω)
 """
 struct ConvolutionWorkspace{T<:Number}
     term1::Array{T,2}
@@ -56,9 +58,10 @@ struct ConvolutionWorkspace{T<:Number}
     tau_buffer1::Vector{T}
     tau_buffer2::Vector{T}
     tau_result::Vector{T}
-    # Pre-computed direct reflection matrix: R = kernel_tau_reflected * inv(kernel_tau)
-    # Allows reflection in single matrix multiply instead of tau2dlr + dlr2tau
-    reflection_matrix::Matrix{Float64}
+    # Pre-computed matrices for efficient DLR operations
+    reflection_matrix::Matrix{Float64}  # R = K(β-τ,ω) * inv(K(τ,ω))
+    kernel_tau::Matrix{Float64}         # K(τ,ω) for dlr2tau
+    tau_weighted_kernel::Matrix{Float64} # diag(τ) * K(τ,ω) for fused τ-weighting in convolution
 end
 
 """
@@ -126,6 +129,16 @@ function ConvolutionWorkspace{T}(
     # R = K_reflected * inv(K_tau), computed as K_reflected / K_tau
     reflection_matrix = kernel_tau_reflected / kernel_tau
 
+    # Pre-compute τ-weighted kernel for fused convolution: diag(τ) * K(τ,ω)
+    # This allows H_tau = tau_weighted_kernel * H1_dlr + kernel_tau * H2_dlr
+    # instead of H_tau = τ * (kernel_tau * H1_dlr) + kernel_tau * H2_dlr
+    tau_weighted_kernel = similar(kernel_tau)
+    @inbounds for j = 1:r
+        @simd for k = 1:n_tau
+            tau_weighted_kernel[k, j] = dlr_grid.τ[k] * kernel_tau[k, j]
+        end
+    end
+
     return ConvolutionWorkspace{T}(
         zeros(T, d1, d2),           # term1 (accumulates F slices)
         zeros(T, d2, d3),           # term2 (accumulates G slices)
@@ -140,6 +153,8 @@ function ConvolutionWorkspace{T}(
         zeros(T, max_tau_size),     # tau_buffer2
         zeros(T, max_tau_size),     # tau_result
         reflection_matrix,          # Pre-computed direct reflection matrix
+        kernel_tau,                 # Pre-computed DLR kernel
+        tau_weighted_kernel,        # Pre-computed τ-weighted kernel
     )
 end
 

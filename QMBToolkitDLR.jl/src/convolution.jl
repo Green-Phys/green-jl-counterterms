@@ -131,19 +131,28 @@ function _do_convolution_direct!(
         @view(H2_dlr[:, :, j]) .= workspace.term1_result .+ workspace.term2_result
     end
 
-    # Transform to tau space in-place using dlr2tau!
-    dlr2tau!(H1_tau, dlr_grid, H1_dlr, workspace.dlr_workspace)
-    dlr2tau!(H2_tau, dlr_grid, H2_dlr, workspace.dlr_workspace)
+    # Fused τ-weighted DLR to tau transformation
+    # H_tau = τ * (kernel * H1_dlr) + kernel * H2_dlr
+    #       = tau_weighted_kernel * H1_dlr + kernel * H2_dlr
+    # This saves one intermediate copy and the τ multiplication loop
 
-    # Compute final result in-place: H_tau = tau * H1_tau + H2_tau
-    @inbounds for k = 1:n_tau
-        tau_k = dlr_grid.τ[k]
-        for j = 1:d3
-            @simd for i = 1:d1
-                H_tau[i, j, k] = tau_k * H1_tau[i, j, k] + H2_tau[i, j, k]
-            end
-        end
-    end
+    # Copy H1_dlr to contiguous buffer (r, d1*d3)
+    H1_matrix = view(workspace.dlr_workspace.buffer1, 1:r, 1:(d1*d3))
+    Lehmann._tensor3_to_matrix!(H1_matrix, H1_dlr)
+
+    # Copy H2_dlr to contiguous buffer (r, d1*d3)
+    H2_matrix = view(workspace.dlr_workspace.buffer2, 1:r, 1:(d1*d3))
+    Lehmann._tensor3_to_matrix!(H2_matrix, H2_dlr)
+
+    # Compute H_tau in matrix form using tau_buffer1 as intermediate buffer
+    # (to avoid aliasing with tau_result which is used for tensor output)
+    H_tau_matrix = reshape(@view(workspace.tau_buffer1[1:tau_size]), n_tau, d1*d3)
+    mul!(H_tau_matrix, workspace.tau_weighted_kernel, H1_matrix)  # H_tau = tau_weighted * H1
+    mul!(H_tau_matrix, workspace.kernel_tau, H2_matrix, 1.0, 1.0) # H_tau += kernel * H2
+
+    # Copy result back to tensor form
+    Lehmann._matrix_to_tensor3!(H_tau, H_tau_matrix)
+
     return H_tau
 end
 
@@ -173,8 +182,6 @@ function _do_convolution_view!(
     # Reshape contiguous buffers ONCE at start - compute directly into these
     H1_dlr = reshape(@view(workspace.dlr_buffer1[1:dlr_size]), d1, d3, r)
     H2_dlr = reshape(@view(workspace.dlr_buffer2[1:dlr_size]), d1, d3, r)
-    H1_tau = reshape(@view(workspace.tau_buffer1[1:tau_size]), d1, d3, n_tau)
-    H2_tau = reshape(@view(workspace.tau_buffer2[1:tau_size]), d1, d3, n_tau)
     H_tau = reshape(@view(workspace.tau_result[1:tau_size]), d1, d3, n_tau)
 
     # Clear only the portions we use
@@ -214,18 +221,27 @@ function _do_convolution_view!(
         @view(H2_dlr[:, :, j]) .= term1_result_view .+ term2_result_view
     end
 
-    # Transform directly from contiguous buffers to tau space
-    dlr2tau!(H1_tau, dlr_grid, H1_dlr, workspace.dlr_workspace)
-    dlr2tau!(H2_tau, dlr_grid, H2_dlr, workspace.dlr_workspace)
+    # Fused τ-weighted DLR to tau transformation
+    # H_tau = τ * (kernel * H1_dlr) + kernel * H2_dlr
+    #       = tau_weighted_kernel * H1_dlr + kernel * H2_dlr
+    # This saves one intermediate copy and the τ multiplication loop
 
-    # Compute final result in-place
-    @inbounds for k = 1:n_tau
-        tau_k = dlr_grid.τ[k]
-        for j = 1:d3
-            @simd for i = 1:d1
-                H_tau[i, j, k] = tau_k * H1_tau[i, j, k] + H2_tau[i, j, k]
-            end
-        end
-    end
+    # Copy H1_dlr to contiguous buffer (r, d1*d3)
+    H1_matrix = view(workspace.dlr_workspace.buffer1, 1:r, 1:(d1*d3))
+    Lehmann._tensor3_to_matrix!(H1_matrix, H1_dlr)
+
+    # Copy H2_dlr to contiguous buffer (r, d1*d3)
+    H2_matrix = view(workspace.dlr_workspace.buffer2, 1:r, 1:(d1*d3))
+    Lehmann._tensor3_to_matrix!(H2_matrix, H2_dlr)
+
+    # Compute H_tau in matrix form using tau_buffer1 as intermediate buffer
+    # (to avoid aliasing with tau_result which is used for tensor output)
+    H_tau_matrix = reshape(@view(workspace.tau_buffer1[1:tau_size]), n_tau, d1*d3)
+    mul!(H_tau_matrix, workspace.tau_weighted_kernel, H1_matrix)  # H_tau = tau_weighted * H1
+    mul!(H_tau_matrix, workspace.kernel_tau, H2_matrix, 1.0, 1.0) # H_tau += kernel * H2
+
+    # Copy result back to tensor form
+    Lehmann._matrix_to_tensor3!(H_tau, H_tau_matrix)
+
     return H_tau
 end

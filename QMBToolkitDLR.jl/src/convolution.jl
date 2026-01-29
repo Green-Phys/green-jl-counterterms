@@ -89,25 +89,34 @@ function _do_convolution_direct!(
     d2::Int,
     d3::Int,
 ) where {T<:Number}
-    # Clear workspace buffers
-    fill!(workspace.H1_dlr, zero(T))
-    fill!(workspace.H2_dlr, zero(T))
+    n_tau = length(dlr_grid.τ)
+    dlr_size = d1 * d3 * r
+    tau_size = d1 * d3 * n_tau
 
-    # Compute H1_dlr using workspace - contiguous matrix slices at [:, :, j]
+    # Reshape contiguous buffers once at start
+    H1_dlr = reshape(@view(workspace.dlr_buffer1[1:dlr_size]), d1, d3, r)
+    H2_dlr = reshape(@view(workspace.dlr_buffer2[1:dlr_size]), d1, d3, r)
+    H1_tau = reshape(@view(workspace.tau_buffer1[1:tau_size]), d1, d3, n_tau)
+    H2_tau = reshape(@view(workspace.tau_buffer2[1:tau_size]), d1, d3, n_tau)
+    H_tau = reshape(@view(workspace.tau_result[1:tau_size]), d1, d3, n_tau)
+
+    # Clear workspace buffers
+    fill!(H1_dlr, zero(T))
+    fill!(H2_dlr, zero(T))
+
+    # Compute H1_dlr - contiguous matrix slices at [:, :, j]
     @inbounds for j = 1:r
         mul!(workspace.temp_FG, @view(F_dlr[:, :, j]), @view(G_dlr[:, :, j]))
-        @view(workspace.H1_dlr[:, :, j]) .= kernel_cache.values[j] .* workspace.temp_FG
+        @view(H1_dlr[:, :, j]) .= kernel_cache.values[j] .* workspace.temp_FG
     end
 
-    # Compute H2_dlr using workspace with in-place operations
-    # Uses pre-computed convolution coefficients to avoid per-iteration division
+    # Compute H2_dlr using pre-computed convolution coefficients
     coeffs = kernel_cache.convolution_coeffs
     @inbounds for j = 1:r
         fill!(workspace.term1, zero(T))
         fill!(workspace.term2, zero(T))
 
         # Accumulate terms using axpy! to avoid broadcast temporaries
-        # Skip k == j (coeff would be 0 anyway, and we avoid the conditional)
         for k = 1:r
             if k != j
                 coeff = coeffs[k, j]
@@ -119,25 +128,23 @@ function _do_convolution_direct!(
         # Multiply accumulated terms by the j-th slice
         mul!(workspace.term1_result, workspace.term1, @view(G_dlr[:, :, j]))
         mul!(workspace.term2_result, @view(F_dlr[:, :, j]), workspace.term2)
-        @view(workspace.H2_dlr[:, :, j]) .= workspace.term1_result .+ workspace.term2_result
+        @view(H2_dlr[:, :, j]) .= workspace.term1_result .+ workspace.term2_result
     end
 
     # Transform to tau space in-place using dlr2tau!
-    dlr2tau!(workspace.H1_tau, dlr_grid, workspace.H1_dlr, workspace.dlr_workspace)
-    dlr2tau!(workspace.H2_tau, dlr_grid, workspace.H2_dlr, workspace.dlr_workspace)
+    dlr2tau!(H1_tau, dlr_grid, H1_dlr, workspace.dlr_workspace)
+    dlr2tau!(H2_tau, dlr_grid, H2_dlr, workspace.dlr_workspace)
 
     # Compute final result in-place: H_tau = tau * H1_tau + H2_tau
-    n_tau = length(dlr_grid.τ)
     @inbounds for k = 1:n_tau
         tau_k = dlr_grid.τ[k]
         for j = 1:d3
             @simd for i = 1:d1
-                workspace.H_tau[i, j, k] =
-                    tau_k * workspace.H1_tau[i, j, k] + workspace.H2_tau[i, j, k]
+                H_tau[i, j, k] = tau_k * H1_tau[i, j, k] + H2_tau[i, j, k]
             end
         end
     end
-    return workspace.H_tau
+    return H_tau
 end
 
 """
@@ -145,8 +152,8 @@ View-based convolution implementation - workspace can be larger than needed.
 Uses views into workspace buffers based on actual dimensions.
 Layout: (d1, d3, r) for workspace buffers, (d1, d3, n_tau) for output.
 
-Uses pre-allocated contiguous linear buffers to avoid allocations in hot loops.
-Returns a reshaped view of workspace.view_tau_result - caller should copy if needed.
+Computes directly into contiguous linear buffers to avoid intermediate allocations.
+Returns a reshaped view of workspace.tau_result - caller should copy if needed.
 """
 function _do_convolution_view!(
     workspace::ConvolutionWorkspace{T},
@@ -159,27 +166,35 @@ function _do_convolution_view!(
     d2::Int,
     d3::Int,
 ) where {T<:Number}
-    # Create views into workspace buffers for the actual dimensions needed
-    # New layout: (d1, d3, r)
-    H1_dlr_view = @view workspace.H1_dlr[1:d1, 1:d3, 1:r]
-    H2_dlr_view = @view workspace.H2_dlr[1:d1, 1:d3, 1:r]
+    n_tau = length(dlr_grid.τ)
+    dlr_size = d1 * d3 * r
+    tau_size = d1 * d3 * n_tau
+
+    # Reshape contiguous buffers ONCE at start - compute directly into these
+    H1_dlr = reshape(@view(workspace.dlr_buffer1[1:dlr_size]), d1, d3, r)
+    H2_dlr = reshape(@view(workspace.dlr_buffer2[1:dlr_size]), d1, d3, r)
+    H1_tau = reshape(@view(workspace.tau_buffer1[1:tau_size]), d1, d3, n_tau)
+    H2_tau = reshape(@view(workspace.tau_buffer2[1:tau_size]), d1, d3, n_tau)
+    H_tau = reshape(@view(workspace.tau_result[1:tau_size]), d1, d3, n_tau)
+
+    # Clear only the portions we use
+    fill!(H1_dlr, zero(T))
+    fill!(H2_dlr, zero(T))
+
+    # Create views for intermediate computation
     term1_view = @view workspace.term1[1:d1, 1:d2]
     term2_view = @view workspace.term2[1:d2, 1:d3]
     term1_result_view = @view workspace.term1_result[1:d1, 1:d3]
     term2_result_view = @view workspace.term2_result[1:d1, 1:d3]
-
-    # Clear only the portions we use
-    fill!(H1_dlr_view, zero(T))
-    fill!(H2_dlr_view, zero(T))
-
-    # Compute H1_dlr - contiguous matrix slices at [:, :, j]
     temp_FG_view = @view workspace.temp_FG[1:d1, 1:d3]
+
+    # Compute H1_dlr - directly into contiguous buffer
     @inbounds for j = 1:r
         mul!(temp_FG_view, @view(F_dlr[:, :, j]), @view(G_dlr[:, :, j]))
-        @view(H1_dlr_view[:, :, j]) .= kernel_cache.values[j] .* temp_FG_view
+        @view(H1_dlr[:, :, j]) .= kernel_cache.values[j] .* temp_FG_view
     end
 
-    # Compute H2_dlr using pre-computed convolution coefficients
+    # Compute H2_dlr using pre-computed convolution coefficients - directly into contiguous buffer
     coeffs = kernel_cache.convolution_coeffs
     @inbounds for j = 1:r
         fill!(term1_view, zero(T))
@@ -196,28 +211,12 @@ function _do_convolution_view!(
 
         mul!(term1_result_view, term1_view, @view(G_dlr[:, :, j]))
         mul!(term2_result_view, @view(F_dlr[:, :, j]), term2_view)
-        @view(H2_dlr_view[:, :, j]) .= term1_result_view .+ term2_result_view
+        @view(H2_dlr[:, :, j]) .= term1_result_view .+ term2_result_view
     end
 
-    # Transform to tau space using pre-allocated contiguous buffers
-    n_tau = length(dlr_grid.τ)
-    dlr_size = d1 * d3 * r
-    tau_size = d1 * d3 * n_tau
-
-    # Reshape contiguous buffers to 3D arrays for the actual dimensions
-    H1_dlr_cont = reshape(@view(workspace.view_dlr_buffer1[1:dlr_size]), d1, d3, r)
-    H2_dlr_cont = reshape(@view(workspace.view_dlr_buffer2[1:dlr_size]), d1, d3, r)
-    H1_tau = reshape(@view(workspace.view_tau_buffer1[1:tau_size]), d1, d3, n_tau)
-    H2_tau = reshape(@view(workspace.view_tau_buffer2[1:tau_size]), d1, d3, n_tau)
-    H_tau = reshape(@view(workspace.view_tau_result[1:tau_size]), d1, d3, n_tau)
-
-    # Copy from non-contiguous views to contiguous buffers
-    copyto!(H1_dlr_cont, H1_dlr_view)
-    copyto!(H2_dlr_cont, H2_dlr_view)
-
-    # Use in-place transforms with existing workspace
-    dlr2tau!(H1_tau, dlr_grid, H1_dlr_cont, workspace.dlr_workspace)
-    dlr2tau!(H2_tau, dlr_grid, H2_dlr_cont, workspace.dlr_workspace)
+    # Transform directly from contiguous buffers to tau space
+    dlr2tau!(H1_tau, dlr_grid, H1_dlr, workspace.dlr_workspace)
+    dlr2tau!(H2_tau, dlr_grid, H2_dlr, workspace.dlr_workspace)
 
     # Compute final result in-place
     @inbounds for k = 1:n_tau

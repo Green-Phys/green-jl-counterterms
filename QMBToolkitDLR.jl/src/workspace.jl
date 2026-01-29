@@ -33,41 +33,30 @@ Layout: (d1, d2, r) where r is DLR rank, matching the propagator layout (dim1, d
 Supports non-square matrix convolutions: F (d1 × d2 × r) * G (d2 × d3 × r) -> H (d1 × d3 × n_tau)
 
 # Fields
-- `H1_dlr`: Buffer for first convolution term (d1 × d3 × r)
-- `H2_dlr`: Buffer for second convolution term (d1 × d3 × r)
 - `term1`: Temporary buffer for F accumulation (d1 × d2)
 - `term2`: Temporary buffer for G accumulation (d2 × d3)
 - `term1_result`: Result buffer for term1 * G (d1 × d3)
 - `term2_result`: Result buffer for F * term2 (d1 × d3)
 - `temp_FG`: Temporary buffer for F[j] * G[j] matrix multiplication (d1 × d3)
-- `H1_tau`: Buffer for first tau-space term (d1 × d3 × n_tau)
-- `H2_tau`: Buffer for second tau-space term (d1 × d3 × n_tau)
-- `H_tau`: Buffer for final result (d1 × d3 × n_tau)
 - `dlr_workspace`: Workspace for in-place DLR transformations
-- `view_dlr_buffer1`, `view_dlr_buffer2`: Contiguous linear buffers for view-path DLR data
-- `view_tau_buffer1`, `view_tau_buffer2`, `view_tau_result`: Contiguous linear buffers for view-path tau data
+- `dlr_buffer1`, `dlr_buffer2`: Contiguous linear buffers for DLR data (can be reshaped)
+- `tau_buffer1`, `tau_buffer2`, `tau_result`: Contiguous linear buffers for tau data (can be reshaped)
 - `τ_reflected`: Pre-computed β - τ for reflection operations (avoids allocation in hot loops)
 - `kernel_tau_reflected`: Pre-computed kernel matrix K(β - τ, ω) for reflection operations
 """
 struct ConvolutionWorkspace{T<:Number}
-    H1_dlr::Array{T,3}
-    H2_dlr::Array{T,3}
     term1::Array{T,2}
     term2::Array{T,2}
     term1_result::Array{T,2}
     term2_result::Array{T,2}
     temp_FG::Array{T,2}
-    # Fields for in-place tau transforms (direct path)
-    H1_tau::Array{T,3}
-    H2_tau::Array{T,3}
-    H_tau::Array{T,3}
     dlr_workspace::DLRWorkspace{T}
-    # Contiguous linear buffers for view-path (avoid allocations when dimensions vary)
-    view_dlr_buffer1::Vector{T}
-    view_dlr_buffer2::Vector{T}
-    view_tau_buffer1::Vector{T}
-    view_tau_buffer2::Vector{T}
-    view_tau_result::Vector{T}
+    # Contiguous linear buffers (can be reshaped for any dimensions up to max)
+    dlr_buffer1::Vector{T}
+    dlr_buffer2::Vector{T}
+    tau_buffer1::Vector{T}
+    tau_buffer2::Vector{T}
+    tau_result::Vector{T}
     # Pre-computed reflected tau grid for reflection operations
     τ_reflected::Vector{Float64}
     # Pre-computed kernel matrix for reflection: K(β - τ, ω)
@@ -127,23 +116,18 @@ function ConvolutionWorkspace{T}(
         true,
     )
     return ConvolutionWorkspace{T}(
-        zeros(T, d1, d3, r),        # H1_dlr
-        zeros(T, d1, d3, r),        # H2_dlr
         zeros(T, d1, d2),           # term1 (accumulates F slices)
         zeros(T, d2, d3),           # term2 (accumulates G slices)
         zeros(T, d1, d3),           # term1_result (term1 * G)
         zeros(T, d1, d3),           # term2_result (F * term2)
         zeros(T, d1, d3),           # temp_FG (F[j] * G[j] result)
-        zeros(T, d1, d3, n_tau),    # H1_tau
-        zeros(T, d1, d3, n_tau),    # H2_tau
-        zeros(T, d1, d3, n_tau),    # H_tau (final result)
         DLRWorkspace(T, r, d1 * d3),  # dlr_workspace for in-place transforms
-        # Contiguous linear buffers for view-path (can be reshaped for any dimensions)
-        zeros(T, max_dlr_size),     # view_dlr_buffer1
-        zeros(T, max_dlr_size),     # view_dlr_buffer2
-        zeros(T, max_tau_size),     # view_tau_buffer1
-        zeros(T, max_tau_size),     # view_tau_buffer2
-        zeros(T, max_tau_size),     # view_tau_result
+        # Contiguous linear buffers (can be reshaped for any dimensions up to max)
+        zeros(T, max_dlr_size),     # dlr_buffer1
+        zeros(T, max_dlr_size),     # dlr_buffer2
+        zeros(T, max_tau_size),     # tau_buffer1
+        zeros(T, max_tau_size),     # tau_buffer2
+        zeros(T, max_tau_size),     # tau_result
         τ_reflected,                # Pre-computed β - τ for reflection
         kernel_tau_reflected,       # Pre-computed kernel K(β - τ, ω) for reflection
     )

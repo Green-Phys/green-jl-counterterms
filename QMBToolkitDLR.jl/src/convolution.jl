@@ -100,14 +100,17 @@ function _do_convolution_direct!(
     end
 
     # Compute H2_dlr using workspace with in-place operations
+    # Uses pre-computed convolution coefficients to avoid per-iteration division
+    coeffs = kernel_cache.convolution_coeffs
     @inbounds for j = 1:r
         fill!(workspace.term1, zero(T))
         fill!(workspace.term2, zero(T))
 
         # Accumulate terms using axpy! to avoid broadcast temporaries
+        # Skip k == j (coeff would be 0 anyway, and we avoid the conditional)
         for k = 1:r
             if k != j
-                coeff = kernel_cache.values[k] / (dlr_grid.ω[k] - dlr_grid.ω[j])
+                coeff = coeffs[k, j]
                 axpy!(coeff, @view(F_dlr[:, :, k]), workspace.term1)
                 axpy!(coeff, @view(G_dlr[:, :, k]), workspace.term2)
             end
@@ -176,7 +179,8 @@ function _do_convolution_view!(
         @view(H1_dlr_view[:, :, j]) .= kernel_cache.values[j] .* temp_FG_view
     end
 
-    # Compute H2_dlr
+    # Compute H2_dlr using pre-computed convolution coefficients
+    coeffs = kernel_cache.convolution_coeffs
     @inbounds for j = 1:r
         fill!(term1_view, zero(T))
         fill!(term2_view, zero(T))
@@ -184,7 +188,7 @@ function _do_convolution_view!(
         # Accumulate terms using axpy! to avoid broadcast temporaries
         for k = 1:r
             if k != j
-                coeff = kernel_cache.values[k] / (dlr_grid.ω[k] - dlr_grid.ω[j])
+                coeff = coeffs[k, j]
                 axpy!(coeff, @view(F_dlr[:, :, k]), term1_view)
                 axpy!(coeff, @view(G_dlr[:, :, k]), term2_view)
             end

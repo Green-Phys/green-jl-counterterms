@@ -9,12 +9,17 @@ using Lehmann
 """
     KernelCache
 
-Cache for kernel_tau evaluations at tau=0.
-Significantly reduces allocations in do_convolution_dlr2tau by avoiding
-repeated kernel_tau(0, omega[k], beta) calls in the nested loop.
+Cache for kernel_tau evaluations and derived coefficients.
+Significantly reduces allocations and computation in do_convolution_dlr2tau.
+
+# Fields
+- `values`: kernel_tau(0, omega[i], beta) for each DLR pole i
+- `convolution_coeffs`: Pre-computed matrix where coeffs[k,j] = values[k] / (ω[k] - ω[j])
+  for k ≠ j, and coeffs[k,k] = 0 (diagonal unused but set to 0 for safety)
 """
 struct KernelCache
     values::Vector{Float64}  # kernel_tau(0, omega[i], beta) for each i
+    convolution_coeffs::Matrix{Float64}  # values[k] / (ω[k] - ω[j]) for k ≠ j
 end
 
 """
@@ -163,15 +168,34 @@ end
 """
     compute_kernel_cache(dlr_grid::DLRGrid)
 
-Pre-compute kernel_tau(0, omega[i], beta) for all DLR omega points.
-This cache eliminates ~1.1 GB of allocations in do_convolution_dlr2tau.
+Pre-compute kernel_tau(0, omega[i], beta) for all DLR omega points,
+and the convolution coefficient matrix values[k] / (ω[k] - ω[j]).
+
+This cache eliminates ~1.1 GB of allocations in do_convolution_dlr2tau
+and removes per-iteration division in the convolution inner loop.
 """
 function compute_kernel_cache(dlr_grid::DLRGrid)
-    cache = Vector{Float64}(undef, length(dlr_grid.ω))
-    for i = 1:length(dlr_grid.ω)
-        cache[i] = kernel_tau(0.0, dlr_grid.ω[i], dlr_grid.β)
+    r = length(dlr_grid.ω)
+    ω = dlr_grid.ω
+
+    # Compute kernel values at tau=0
+    values = Vector{Float64}(undef, r)
+    for i = 1:r
+        values[i] = kernel_tau(0.0, ω[i], dlr_grid.β)
     end
-    return KernelCache(cache)
+
+    # Pre-compute convolution coefficients: values[k] / (ω[k] - ω[j]) for k ≠ j
+    convolution_coeffs = zeros(Float64, r, r)
+    @inbounds for k = 1:r
+        for j = 1:r
+            if k != j
+                convolution_coeffs[k, j] = values[k] / (ω[k] - ω[j])
+            end
+            # diagonal (k == j) stays 0
+        end
+    end
+
+    return KernelCache(values, convolution_coeffs)
 end
 
 """

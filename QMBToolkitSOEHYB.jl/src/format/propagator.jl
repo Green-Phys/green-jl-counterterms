@@ -51,8 +51,15 @@ function Base.zeros(::Type{Propagator{T}}, basis::Basis, flux::QuantumNumber, n_
             blocks[(i, i)] = zeros(T, dim, dim, n_tau)
         end
     else
-        # For non-zero flux, need to determine allowed blocks based on quantum number arithmetic
-        # Currently just create empty dict - will be populated as needed
+        # For non-zero flux, allocate blocks where sector_i.qn + flux == sector_j.qn
+        for (i, sector_i) in enumerate(basis.sectors)
+            target_qn = sector_i.qn + flux
+            for (j, sector_j) in enumerate(basis.sectors)
+                if sector_j.qn == target_qn
+                    blocks[(i, j)] = zeros(T, sector_i.dim, sector_j.dim, n_tau)
+                end
+            end
+        end
     end
 
     return Propagator{T}(basis, flux, blocks)

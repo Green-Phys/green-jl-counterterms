@@ -117,7 +117,6 @@ function generate_input_toml(data_dir::String = DATA_DIR)
 
     [solver]
     output_path = "."
-    batch_size = 5000000
 
     [solver.propagator]
     is_bold = false

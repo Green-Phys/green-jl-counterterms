@@ -39,7 +39,6 @@ struct SolverParams
     green::GreenParams
     dlr::DLRParams
     output_path::String
-    batch_size::Int               # batch size for diagram evaluation (default: 100000)
 end
 
 """

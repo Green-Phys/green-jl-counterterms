@@ -115,7 +115,7 @@ All operations are in-place to minimize allocations.
   - `result_dlr`: DLR transform of result
 """
 function multiplication_convolution(
-        nodes::AbstractVector{BackBoneNode}, edges::AbstractVector{BackBoneEdge}, dlr_grid::DLRGrid,
+        nodes::AbstractVector{BackBoneNode}, edges::AbstractVector, dlr_grid::DLRGrid,
         model_data::ModelData{T}, propagator, buffers) where {T <: Number}
     length(nodes) == length(edges) + 1 ||
         error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
@@ -131,7 +131,7 @@ function multiplication_convolution(
     @inbounds for i in 1:(length(edges) - 1)
         edge = edges[i]
         if i == 1
-            for hyb in edge.attached_hybs
+            for hyb in get_attached_hybs(edge)
                 apply_hybridization_inplace!(result, hyb, model_data, is_reverse = false)
             end
         end
@@ -145,21 +145,28 @@ function multiplication_convolution(
             new_flux = compute_new_flux(current_flux, op)
 
             # Get op_product buffer for the new flux
-            # (flux validity guaranteed by pre-filtering in build_valid_groups)
             op_product = get_op_product(buffers, new_flux)
             fill!(op_product, zero(T))
 
-            # Perform multiplication: op * result -> op_product
-            multiply_op_prop!(op_product, op, result)
+            # Get K-vector for node hybridization (empty if NoHyb)
+            K = get_K_vector(node.attached_hyb, model_data, is_reverse = false)
+
+            if !isempty(K)
+                # Fused multiplication: op * result -> op_product, with K scaling
+                multiply_op_prop_with_K!(op_product, op, result, K)
+            else
+                # No K-factor, use standard multiplication
+                multiply_op_prop!(op_product, op, result)
+            end
 
             # Update current flux and get new result buffer
             current_flux = new_flux
             result = get_result(buffers, current_flux)
             copyto!(result, op_product)
+        else
+            # No operator at this node, just apply hybridization
+            apply_hybridization_inplace!(result, node.attached_hyb, model_data, is_reverse = false)
         end
-
-        # Apply hybridization attached to the node
-        apply_hybridization_inplace!(result, node.attached_hyb, model_data, is_reverse = false)
 
         # Calculate the convolution with the next edge
         edge_plus1 = edges[i + 1]
@@ -168,7 +175,7 @@ function multiplication_convolution(
         conv_operand = get_conv_operand(buffers)
         copyto!(conv_operand, propagator)
 
-        for hyb in edge_plus1.attached_hybs
+        for hyb in get_attached_hybs(edge_plus1)
             apply_hybridization_inplace!(conv_operand, hyb, model_data, is_reverse = false)
         end
 
@@ -211,7 +218,7 @@ Same as `multiplication_convolution`.
 Reference to the result buffer containing diagram contribution on DLR τ-grid.
 """
 function multiplication_convolution_reverse(
-        nodes::AbstractVector{BackBoneNode}, edges::AbstractVector{BackBoneEdge}, dlr_grid::DLRGrid,
+        nodes::AbstractVector{BackBoneNode}, edges::AbstractVector, dlr_grid::DLRGrid,
         model_data::ModelData{T}, propagator, buffers) where {T <: Number}
     length(nodes) == length(edges) + 1 ||
         error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
@@ -227,7 +234,7 @@ function multiplication_convolution_reverse(
     @inbounds for i in length(edges):-1:2
         edge = edges[i]
         if i == length(edges)
-            for hyb in edge.attached_hybs
+            for hyb in get_attached_hybs(edge)
                 apply_hybridization_inplace!(result, hyb, model_data, is_reverse = false)
             end
         end
@@ -240,21 +247,28 @@ function multiplication_convolution_reverse(
             new_flux = compute_new_flux_reverse(current_flux, op)
 
             # Get op_product buffer for the new flux
-            # (flux validity guaranteed by pre-filtering in build_valid_groups)
             op_product = get_op_product(buffers, new_flux)
             fill!(op_product, zero(T))
 
-            # Perform multiplication: result * op -> op_product
-            multiply_prop_op!(op_product, result, op)
+            # Get K-vector for node hybridization (is_reverse=true swaps K+/K-, empty if NoHyb)
+            K = get_K_vector(node.attached_hyb, model_data, is_reverse = true)
+
+            if !isempty(K)
+                # Fused multiplication: result * op -> op_product, with K scaling
+                multiply_prop_op_with_K!(op_product, result, op, K)
+            else
+                # No K-factor, use standard multiplication
+                multiply_prop_op!(op_product, result, op)
+            end
 
             # Update current flux and get new result buffer
             current_flux = new_flux
             result = get_result(buffers, current_flux)
             copyto!(result, op_product)
+        else
+            # No operator at this node, just apply hybridization
+            apply_hybridization_inplace!(result, node.attached_hyb, model_data, is_reverse = true)
         end
-
-        # Apply hybridization with is_reverse=true (swaps K+ ↔ K-)
-        apply_hybridization_inplace!(result, node.attached_hyb, model_data, is_reverse = true)
 
         # Calculate the convolution with the next edge
         edge_minus1 = edges[i - 1]
@@ -263,7 +277,7 @@ function multiplication_convolution_reverse(
         conv_operand = get_conv_operand(buffers)
         copyto!(conv_operand, propagator)
 
-        for hyb in edge_minus1.attached_hybs
+        for hyb in get_attached_hybs(edge_minus1)
             apply_hybridization_inplace!(conv_operand, hyb, model_data, is_reverse = false)
         end
 
@@ -315,6 +329,19 @@ function eval_propagator_forward_backbone(diagram::BackBone, solver_data::Solver
     )
 end
 
+# MutableBackBone version - uses views of active nodes/edges
+function eval_propagator_forward_backbone(diagram::MutableBackBone, solver_data::SolverData{T}, buffers) where {T <:
+                                                                                                                Number}
+    bare_propagator = get_bare_propagator(solver_data.model)
+    return multiplication_convolution(
+        @view(diagram.nodes[1:diagram.M]),
+        @view(diagram.edges[1:(diagram.M - 1)]),
+        solver_data.model.dlr_grid, solver_data.model,
+        bare_propagator.vals,
+        buffers
+    )
+end
+
 #=============================================================================
 # Green's Function Backbone Evaluation
 =============================================================================#
@@ -348,6 +375,19 @@ function eval_green_forward_backbone(diagram::BackBone, split_point::Int,
     )
 end
 
+# MutableBackBone version
+function eval_green_forward_backbone(diagram::MutableBackBone, split_point::Int,
+        solver_data::SolverData{T}, propagator, buffers) where {T}
+    return multiplication_convolution(
+        @view(diagram.nodes[1:split_point]),
+        @view(diagram.edges[1:(split_point - 1)]),
+        solver_data.model.dlr_grid,
+        solver_data.model,
+        propagator,
+        buffers.fwd_buffers
+    )
+end
+
 """
     eval_green_reverse_backbone(diagram, split_point, solver_data, propagator, buffers)
 
@@ -370,6 +410,19 @@ function eval_green_reverse_backbone(diagram::BackBone, split_point::Int,
     return multiplication_convolution_reverse(
         @view(diagram.nodes[split_point:end]),
         @view(diagram.edges[split_point:end]),
+        solver_data.model.dlr_grid,
+        solver_data.model,
+        propagator,
+        buffers.rev_buffers
+    )
+end
+
+# MutableBackBone version - uses M field for correct end index
+function eval_green_reverse_backbone(diagram::MutableBackBone, split_point::Int,
+        solver_data::SolverData{T}, propagator, buffers) where {T}
+    return multiplication_convolution_reverse(
+        @view(diagram.nodes[split_point:diagram.M]),
+        @view(diagram.edges[split_point:(diagram.M - 1)]),
         solver_data.model.dlr_grid,
         solver_data.model,
         propagator,

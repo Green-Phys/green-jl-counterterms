@@ -35,7 +35,6 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
         println()
         println("--- Generate and evaluate propagator ---")
         println("Use bold expansion for the propagator: ", solver_params.propagator.is_bold)
-        println("Batch size: ", solver_params.batch_size)
         @boundscheck println("Boundscheck is enabled.")
     end
 
@@ -44,8 +43,7 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
     end
 
     t_start = MPI.Wtime()
-    eval_diagrams!(solver_data, solver_params, :propagator_diagram, comm;
-        batch_size = solver_params.batch_size)
+    eval_diagrams!(solver_data, solver_params, :propagator_diagram, comm)
     t_prop_wall = MPI.Wtime() - t_start
 
     if rank == 0
@@ -65,8 +63,7 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
     end
 
     t_start = MPI.Wtime()
-    eval_diagrams!(solver_data, solver_params, :green_diagram, comm;
-        batch_size = solver_params.batch_size)
+    eval_diagrams!(solver_data, solver_params, :green_diagram, comm)
     t_green_wall = MPI.Wtime() - t_start
 
     # === Data Processing and Saving (rank 0 only) ===

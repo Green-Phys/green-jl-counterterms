@@ -459,6 +459,103 @@ function generate_diagram_at_index(cache::DiagramConfigCache, linear_idx::Int)
 end
 
 #=============================================================================
+# Zero-Allocation Diagram Generation (MutableBackBone)
+=============================================================================#
+
+"""
+    fill_backbone_from_configs!(bb::MutableBackBone, cache::DiagramConfigCache,
+                                topo_config::TopologyConfig, directions::NTuple,
+                                flavors::NTuple, exponent_indices::NTuple)
+
+Fill a pre-allocated MutableBackBone with diagram configuration.
+The backbone must be reset before calling this function.
+
+# Arguments
+
+  - `bb::MutableBackBone`: Pre-allocated and reset backbone to fill
+  - `cache::DiagramConfigCache`: The configuration cache
+  - `topo_config::TopologyConfig`: Topology configuration
+  - `directions::NTuple`: Direction for each hybridization line
+  - `flavors::NTuple`: Flavor index for each hybridization line
+  - `exponent_indices::NTuple`: Exponent index for each hybridization line
+
+# Returns
+
+  - `MutableBackBone`: The filled backbone (same object as input)
+"""
+function fill_backbone_from_configs!(
+        bb::MutableBackBone,
+        cache::DiagramConfigCache{L},
+        topo_config::TopologyConfig,
+        directions::NTuple{L, Symbol},
+        flavors::NTuple{L, Int},
+        exponent_indices::NTuple{L, Int}
+) where {L}
+    M = topo_config.M
+    p = length(cache.exponents)
+    bb.M = M
+    bb.diagram_type = cache.diagram_type
+
+    # Set up empty node template
+    empty_node = BackBoneNode(:empty, -1, -1, NoHyb())
+
+    # Initialize nodes based on diagram type
+    if cache.diagram_type == :propagator_diagram
+        bb.nodes[1] = empty_node
+        bb.nodes[M] = empty_node
+        bb.sign = topo_config.crossing_parity
+    elseif cache.diagram_type == :green_diagram
+        bb.nodes[1] = empty_node
+        bb.nodes[topo_config.annihilation_pos] = empty_node
+        bb.nodes[M] = empty_node
+        bb.external_opts_loc[1] = 1
+        bb.external_opts_loc[2] = topo_config.annihilation_pos
+        bb.sign = -1.0 * topo_config.crossing_parity
+    else
+        error("Unsupported diagram type: $(cache.diagram_type)")
+    end
+
+    # Process each connected pair
+    connected_pairs = topo_config.pairing
+    for (idx, (i, j)) in enumerate(connected_pairs)
+        bb.sign = process_connected_pair_mutable!(
+            i, j,
+            directions[idx],
+            flavors[idx],
+            exponent_indices[idx],
+            cache.exponents,
+            bb.nodes,
+            bb.edges,
+            bb.prefactor_Kexps,
+            bb.sign
+        )
+    end
+
+    return bb
+end
+
+"""
+    allocate_mutable_backbone(cache::DiagramConfigCache)
+
+Allocate a MutableBackBone sized for diagrams from this cache.
+
+The backbone is sized for the maximum M across all topologies, with sufficient
+edge capacity for the worst-case number of hybridizations per edge.
+"""
+function allocate_mutable_backbone(cache::DiagramConfigCache)
+    # Find maximum M across all topologies
+    max_M = maximum(t.M for t in cache.topologies)
+
+    # Maximum hybridizations per edge is L (all lines could attach to same edge)
+    max_hybs_per_edge = cache.n_hyb_lines
+
+    # Number of exponents
+    p = length(cache.exponents)
+
+    return MutableBackBone(max_M, p, max_hybs_per_edge)
+end
+
+#=============================================================================
 # Flux Pre-Filtering Infrastructure
 =============================================================================#
 
@@ -722,6 +819,40 @@ Generate a diagram from a group and exponent index.
 function generate_diagram_from_group(
         cache::DiagramConfigCache{L}, group::DiagramGroup, exp_idx::Int) where {L}
     return generate_diagram_from_configs(
+        cache,
+        cache.topologies[group.topo_idx],
+        cache.directions[group.dir_idx],
+        cache.flavors[group.flav_idx],
+        cache.exponent_indices[exp_idx]
+    )
+end
+
+"""
+    fill_backbone_from_group!(bb::MutableBackBone, cache::DiagramConfigCache,
+                              group::DiagramGroup, exp_idx::Int)
+
+Fill a MutableBackBone from a group and exponent index (zero-allocation version).
+The backbone must be reset before calling this function.
+
+# Arguments
+
+  - `bb::MutableBackBone`: Pre-allocated and reset backbone to fill
+  - `cache::DiagramConfigCache`: The configuration cache
+  - `group::DiagramGroup`: The diagram group
+  - `exp_idx::Int`: Index into cache.exponent_indices (1-based)
+
+# Returns
+
+  - `MutableBackBone`: The filled backbone (same object as input)
+"""
+function fill_backbone_from_group!(
+        bb::MutableBackBone,
+        cache::DiagramConfigCache{L},
+        group::DiagramGroup,
+        exp_idx::Int
+) where {L}
+    return fill_backbone_from_configs!(
+        bb,
         cache,
         cache.topologies[group.topo_idx],
         cache.directions[group.dir_idx],

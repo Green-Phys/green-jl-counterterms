@@ -7,6 +7,34 @@ Hybridization conserves quantum numbers (flux = 0), so only diagonal blocks are 
 """
 
 """
+    get_K_vector(hyb::HybridizationState, model_data::ModelData; is_reverse::Bool=false)
+
+Get the K-vector for a hybridization state.
+
+# Arguments
+
+  - `hyb::HybridizationState`: Hybridization state (NoHyb, KPlus(l), or KMinus(l))
+  - `model_data::ModelData`: Model data containing K± values on DLR τ-grid
+  - `is_reverse::Bool=false`: When true, swaps KPlus ↔ KMinus
+
+# Returns
+
+  - View of K-vector, or empty view (length 0) for NoHyb
+  - Always returns the same type for type stability
+"""
+function get_K_vector(hyb::HybridizationState, model_data::ModelData; is_reverse::Bool = false)
+    index = hyb.index
+    if index == 0  # NoHyb - return empty view for type stability
+        return view(model_data.hyb.KPlus_on_DLRtau, 1:0, 1)
+    end
+    # XOR determines if we should use KPlus: (positive and not reverse) OR (negative and reverse)
+    use_kplus = (index > 0) ⊻ is_reverse
+    l = abs(index)
+    return use_kplus ? view(model_data.hyb.KPlus_on_DLRtau, :, l) :
+           view(model_data.hyb.KMinus_on_DLRtau, :, l)
+end
+
+"""
     apply_hybridization_inplace!(target, hyb, model_data; is_reverse=false)
 
 Apply hybridization function to target array in-place.

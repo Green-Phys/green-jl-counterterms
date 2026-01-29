@@ -4,12 +4,12 @@ using LinearAlgebra
 using QMBToolkitDLR
 
 """
-    eval_diagrams!(solver_data, solver_params, diagram_type, comm; batch_size=100000)
+    eval_diagrams!(solver_data, solver_params, diagram_type, comm)
 
-Evaluate diagrams for a given type using memory-efficient batched generation.
+Evaluate diagrams for a given type using zero-allocation diagram generation.
 
-Generates and evaluates diagrams in batches rather than storing all diagrams in memory.
-Memory usage is O(batch_size) instead of O(total_diagrams).
+Diagrams are generated on-the-fly using a single reusable MutableBackBone,
+eliminating per-diagram allocation overhead.
 
 # Arguments
 
@@ -17,11 +17,9 @@ Memory usage is O(batch_size) instead of O(total_diagrams).
   - `solver_params::SolverParams`: Solver parameters
   - `diagram_type::Symbol`: Type of diagrams (`:propagator_diagram` or `:green_diagram`)
   - `comm::MPI.Comm`: MPI communicator
-  - `batch_size::Int`: Number of diagrams per batch (default: 100000)
 """
 function eval_diagrams!(solver_data::SolverData{T}, solver_params::SolverParams,
-        diagram_type::Symbol, comm::MPI.Comm;
-        batch_size::Int = 100000) where {T}
+        diagram_type::Symbol, comm::MPI.Comm) where {T}
     rank = MPI.Comm_rank(comm)
     propagator = get_propagator(solver_data.calc)
 
@@ -42,7 +40,7 @@ function eval_diagrams!(solver_data::SolverData{T}, solver_params::SolverParams,
             # Store diagram info: (n_topologies, n_directions, n_flavors_combo, n_exponents_combo, total)
             push!(solver_data.calc.propagator_diagram_info, (dims..., n_total))
 
-            eval_propagator_given_order!(solver_data, cache, comm; batch_size = batch_size)
+            eval_propagator_given_order!(solver_data, cache, comm)
 
             propagator_at_beta = extract_at_tau(
                 propagator.vals, solver_data.model.beta, solver_data.model.dlr_grid)
@@ -72,8 +70,7 @@ function eval_diagrams!(solver_data::SolverData{T}, solver_params::SolverParams,
             # Store diagram info: (n_topologies, n_directions, n_flavors_combo, n_exponents_combo, total)
             push!(solver_data.calc.green_diagram_info, (dims..., n_total))
 
-            eval_green_given_order!(solver_data, cache, solver_params.green.is_bold, comm;
-                batch_size = batch_size)
+            eval_green_given_order!(solver_data, cache, solver_params.green.is_bold, comm)
 
             push!(solver_data.calc.green_numerator_by_order,
                 copy(solver_data.calc.green.vals))
@@ -114,6 +111,17 @@ where:
 Only non-zero exponents contribute to the product.
 """
 function compute_diagram_prefactor(diagram::BackBone, K0_inverse::Vector{Float64})
+    prefactor = diagram.sign
+    for (idx, Kexp) in enumerate(diagram.prefactor_Kexps)
+        if Kexp != 0
+            prefactor *= K0_inverse[idx]^Kexp
+        end
+    end
+    return prefactor
+end
+
+# MutableBackBone version - same logic, different type
+function compute_diagram_prefactor(diagram::MutableBackBone, K0_inverse::Vector{Float64})
     prefactor = diagram.sign
     for (idx, Kexp) in enumerate(diagram.prefactor_Kexps)
         if Kexp != 0

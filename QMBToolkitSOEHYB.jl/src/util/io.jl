@@ -64,16 +64,11 @@ function read_input(file_path::String)
         dict["solver"]["dlr"]["rtol"]
     )
 
-    # Read batch_size for diagram evaluation (large default for small problems to behave like non-batched)
-    batch_size = get(dict["solver"], "batch_size", 100000)
-    @boundscheck @assert batch_size > 0 "batch_size must be positive, got: $batch_size"
-
     solver_params = SolverParams(
         propagator_params,
         green_params,
         dlr_params,
-        output_path,
-        batch_size
+        output_path
     )
 
     return Params(model_params, solver_params)
@@ -96,7 +91,6 @@ function print_parameters(params::Params)
     println("   hybridization_weights_file: ", params.model.hybridization_weights_file)
     println(" [solver]")
     println("   output_path: ", params.solver.output_path)
-    println("   batch_size: ", params.solver.batch_size)
     println("  [expansion]")
     println("    is_bold: ", params.solver.propagator.is_bold)
     println("    expansion_order: ", params.solver.propagator.expansion_order)

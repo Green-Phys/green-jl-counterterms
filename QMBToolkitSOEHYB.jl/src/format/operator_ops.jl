@@ -276,6 +276,125 @@ function _multiply_prop_prop!(
 end
 
 # ============================================================================
+# Fused K-factor × Matrix Multiplication Operations
+# ============================================================================
+
+"""
+    _multiply_op_prop_with_K!(result, A, B, K)
+
+Fused operator-propagator multiplication with K-factor scaling:
+result[:,:,k] = A * B[:,:,k] * K[k]
+
+Combines matrix multiplication with K-factor scaling in one function,
+saving one memory pass compared to separate multiply + hybridization calls.
+
+# Arguments
+
+  - `result::Propagator{T}`: Output buffer (will be overwritten)
+  - `A::Operator`: Static operator (time-independent)
+  - `B::Propagator{T}`: Time-dependent tensor (input)
+  - `K::AbstractVector{Float64}`: K-factor vector to apply after matmul
+"""
+function _multiply_op_prop_with_K!(
+        result::Propagator{T}, A::Operator, B::Propagator{T},
+        K::AbstractVector{Float64}) where {T <: Number}
+    @boundscheck @assert A.basis === B.basis "Operator and array must use same basis"
+    @boundscheck @assert result.basis === B.basis "Buffer must use same basis as input"
+    @boundscheck @assert !isempty(B.blocks) "Unexpected empty propagator"
+
+    n_tau = size(first(values(B.blocks)), 3)
+    basis = B.basis
+    n_sectors = length(basis.sectors)
+
+    result_flux = A.flux + B.flux
+    @boundscheck @assert result.flux == result_flux "Buffer flux must match result flux"
+
+    for (result_key, result_block) in result.blocks
+        (tgt, src) = result_key
+        fill!(result_block, zero(T))
+
+        # Matrix multiplication: result = A * B
+        @inbounds for mid in 1:n_sectors
+            A_key = (tgt, mid)
+            B_key = (mid, src)
+
+            if haskey(A.blocks, A_key) && haskey(B.blocks, B_key)
+                A_block = A.blocks[A_key]
+                B_block = B.blocks[B_key]
+
+                @inbounds for k in 1:n_tau
+                    mul!(view(result_block,:,:,k), A_block, view(B_block,:,:,k), 1.0, 1.0)
+                end
+            end
+        end
+
+        # K-factor scaling: result *= K
+        @inbounds for k in 1:n_tau
+            @views result_block[:, :, k] .*= K[k]
+        end
+    end
+
+    return result
+end
+
+"""
+    _multiply_prop_op_with_K!(result, A, B, K)
+
+Fused propagator-operator multiplication with K-factor scaling:
+result[:,:,k] = A[:,:,k] * B * K[k]
+
+Combines matrix multiplication with K-factor scaling in one function.
+
+# Arguments
+
+  - `result::Propagator{T}`: Output buffer (will be overwritten)
+  - `A::Propagator{T}`: Time-dependent tensor (input)
+  - `B::Operator`: Static operator (time-independent)
+  - `K::AbstractVector{Float64}`: K-factor vector to apply after matmul
+"""
+function _multiply_prop_op_with_K!(
+        result::Propagator{T}, A::Propagator{T}, B::Operator,
+        K::AbstractVector{Float64}) where {T <: Number}
+    @boundscheck @assert A.basis === B.basis "Array and operator must use same basis"
+    @boundscheck @assert result.basis === A.basis "Buffer must use same basis as input"
+    @boundscheck @assert !isempty(A.blocks) "Unexpected empty propagator"
+
+    n_tau = size(first(values(A.blocks)), 3)
+    basis = A.basis
+    n_sectors = length(basis.sectors)
+
+    result_flux = A.flux + B.flux
+    @boundscheck @assert result.flux == result_flux "Buffer flux must match result flux"
+
+    for (result_key, result_block) in result.blocks
+        (tgt, src) = result_key
+        fill!(result_block, zero(T))
+
+        # Matrix multiplication: result = A * B
+        @inbounds for mid in 1:n_sectors
+            A_key = (tgt, mid)
+            B_key = (mid, src)
+
+            if haskey(A.blocks, A_key) && haskey(B.blocks, B_key)
+                A_block = A.blocks[A_key]
+                B_block = B.blocks[B_key]
+
+                @inbounds for k in 1:n_tau
+                    mul!(view(result_block,:,:,k), view(A_block,:,:,k), B_block, 1.0, 1.0)
+                end
+            end
+        end
+
+        # K-factor scaling: result *= K
+        @inbounds for k in 1:n_tau
+            @views result_block[:, :, k] .*= K[k]
+        end
+    end
+
+    return result
+end
+
+# ============================================================================
 # Interface Implementations
 # ============================================================================
 
@@ -300,4 +419,16 @@ end
 # Trace over spatial indices
 function trace_prop!(result_buffer::Vector{<:Real}, prop::Propagator)
     _trace_prop!(result_buffer, prop)
+end
+
+# Fused operator-propagator multiplication with K-factor
+function multiply_op_prop_with_K!(result::Propagator{T}, op::Operator,
+        prop::Propagator{T}, K::AbstractVector{Float64}) where {T}
+    _multiply_op_prop_with_K!(result, op, prop, K)
+end
+
+# Fused propagator-operator multiplication with K-factor
+function multiply_prop_op_with_K!(result::Propagator{T}, prop::Propagator{T},
+        op::Operator, K::AbstractVector{Float64}) where {T}
+    _multiply_prop_op_with_K!(result, prop, op, K)
 end

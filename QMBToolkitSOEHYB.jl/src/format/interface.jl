@@ -53,8 +53,15 @@ function multiply_prop_op! end
 function multiply_prop_prop! end
 function trace_prop! end
 
+# Fused Operator × K-factor Operations (combines matrix mult with hybridization scaling)
+# multiply_op_prop_with_K!(result, op, prop, K) - result = op * prop * K[k]
+# multiply_prop_op_with_K!(result, prop, op, K) - result = prop * op * K[k]
+function multiply_op_prop_with_K! end
+function multiply_prop_op_with_K! end
+
 # Hybridization
 function apply_hybridization_inplace! end
+function get_K_vector end  # Get K-vector from HybridizationState (empty view for NoHyb)
 
 # Buffer Allocation
 function allocate_propagator_buffers end

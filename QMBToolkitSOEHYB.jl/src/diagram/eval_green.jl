@@ -9,13 +9,15 @@ Evaluate all Green's function diagrams at a given order using hierarchical group
 Uses flux pre-filtering to skip invalid diagrams before evaluation. Diagrams are
 grouped by (topology, direction, flavor) and distributed across MPI ranks.
 
+Uses zero-allocation MutableBackBone for diagram iteration - a single backbone
+is reset and reused for each diagram, eliminating per-diagram allocation overhead.
+
 # Arguments
 
   - `solver_data::SolverData{T}`: Solver data containing model and calculation results
   - `cache::DiagramConfigCache`: Pre-built configuration cache for this order
   - `is_bold::Bool`: Whether to use bold expansion
   - `comm::MPI.Comm`: MPI communicator for parallel evaluation
-  - `batch_size::Int`: Number of diagrams per batch (default: 100000)
 
 # Side Effects
 
@@ -24,12 +26,12 @@ grouped by (topology, direction, flavor) and distributed across MPI ranks.
 # Parallelization
 
   - Diagram groups are distributed across MPI ranks
-  - Each rank generates and evaluates its assigned groups in batches
+  - Each rank generates and evaluates its assigned groups
   - Results are summed across all ranks using MPI.Allreduce
 """
 function eval_green_given_order!(
         solver_data::SolverData{T}, cache::DiagramConfigCache, is_bold::Bool,
-        comm::MPI.Comm; batch_size::Int = 100000) where {T <: Number}
+        comm::MPI.Comm) where {T <: Number}
     rank = MPI.Comm_rank(comm)
     nprocs = MPI.Comm_size(comm)
 
@@ -48,31 +50,65 @@ function eval_green_given_order!(
     # Allocate evaluation buffers once
     buffers = allocate_green_buffers(solver_data, cache.order)
 
-    # Create group-based batch iterator for this rank's portion
-    iter = group_batch_iterator(cache, valid_groups, batch_size, rank, nprocs)
+    # Allocate single MutableBackBone for zero-allocation iteration
+    mutable_bb = allocate_mutable_backbone(cache)
 
-    # Process batches (all diagrams guaranteed to have valid flux)
-    for diagrams in iter
-        for diagram in diagrams
+    # Distribute groups across MPI ranks
+    n_groups = length(valid_groups)
+    if n_groups == 0
+        mpi_reduce_and_add!(solver_data.calc.green, local_result, comm)
+        return
+    end
+
+    # Compute this rank's group range
+    base_count = n_groups ÷ nprocs
+    remainder = n_groups % nprocs
+    if rank < remainder
+        start_group = rank * (base_count + 1) + 1
+        end_group = start_group + base_count
+    else
+        start_group = remainder * (base_count + 1) + (rank - remainder) * base_count + 1
+        end_group = start_group + base_count - 1
+    end
+    if start_group > n_groups
+        start_group = 1
+        end_group = 0
+    end
+
+    # Pre-cache frequently accessed values
+    K0_inverse = solver_data.model.K0_inverse
+    convolution_workspace = solver_data.model.convolution_workspace
+
+    # Process diagrams with zero-allocation loop
+    for group_idx in start_group:end_group
+        group = valid_groups[group_idx]
+
+        for exp_idx in 1:group.n_exponent_combos
+            # Reset and fill the mutable backbone
+            reset_backbone!(mutable_bb)
+            fill_backbone_from_group!(mutable_bb, cache, group, exp_idx)
+
+            # Get split point from mutable backbone
+            split_point = mutable_bb.external_opts_loc[2]
+
             contrib_0_to_tau = eval_green_forward_backbone(
-                diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
+                mutable_bb, split_point, solver_data, propagator, buffers
             )
 
             contrib_tau_to_beta_unreflected = eval_green_reverse_backbone(
-                diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
+                mutable_bb, split_point, solver_data, propagator, buffers
             )
 
             # Reflection: tau -> beta - tau (using pre-allocated buffers)
             flux = get_flux(contrib_tau_to_beta_unreflected)
             contrib_tau_to_beta = get_contrib_tau_to_beta_reflected(buffers, flux)
             reflection_dlr = get_reflection_dlr(buffers, flux)
-            convolution_workspace = solver_data.model.convolution_workspace
             do_reflection_tau2tau!(contrib_tau_to_beta, reflection_dlr, solver_data.model.dlr_grid,
                 contrib_tau_to_beta_unreflected, convolution_workspace.dlr_workspace;
                 τ_reflected = convolution_workspace.τ_reflected,
                 kernel_tau_reflected = convolution_workspace.kernel_tau_reflected)
 
-            prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
+            prefactor = compute_diagram_prefactor(mutable_bb, K0_inverse)
 
             @inbounds for ann_index in 1:solver_data.model.n_flavors_physical
                 # Apply annihilation operator: ann_opt * contrib_0_to_tau

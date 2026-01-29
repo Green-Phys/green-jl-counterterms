@@ -108,17 +108,16 @@ section_header("1. Hybridization Application")
 let
     prop_source = bare_prop.vals
     prop_working = SOE.allocate_buffer_for_flux(basis, zero_flux, n_tau, ComplexF64)
-    temp_buf = SOE.allocate_buffer_for_flux(basis, zero_flux, n_tau, ComplexF64)
     hyb_kp = SOE.KPlus(1)
     hyb_km = SOE.KMinus(1)
 
     b = @benchmark SOE.apply_hybridization_inplace!(
-        $temp_buf, $prop_working, $hyb_kp, $model_data
+        $prop_working, $hyb_kp, $model_data
     ) evals=1 setup=(copyto!($prop_working, $prop_source))
     print_bench("apply_hybridization_inplace! (KPlus)", b)
 
     b = @benchmark SOE.apply_hybridization_inplace!(
-        $temp_buf, $prop_working, $hyb_km, $model_data
+        $prop_working, $hyb_km, $model_data
     ) evals=1 setup=(copyto!($prop_working, $prop_source))
     print_bench("apply_hybridization_inplace! (KMinus)", b)
 end
@@ -309,7 +308,7 @@ let
     split_pt = diagram_g.external_opts_loc[2]
     rev_nodes = @view(diagram_g.nodes[split_pt:end])
     rev_edges = @view(diagram_g.edges[split_pt:end])
-    rev_buffers = buffers_g.convolution_buffers.rev_buffers
+    rev_buffers = buffers_g.rev_buffers
     b = @benchmark SOE.multiplication_convolution_reverse(
         $rev_nodes, $rev_edges, $dlr_grid, $model_data, $prop_vals, $rev_buffers
     ) evals=1
@@ -440,12 +439,11 @@ let
 
     # Hybridization
     prop_copy = SOE.allocate_buffer_for_flux(basis, zero_flux, n_tau, ComplexF64)
-    temp_buf = SOE.allocate_buffer_for_flux(basis, zero_flux, n_tau, ComplexF64)
     copyto!(prop_copy, bare_prop.vals)
     hyb_kp = SOE.KPlus(1)
-    SOE.apply_hybridization_inplace!(temp_buf, prop_copy, hyb_kp, model_data)
+    SOE.apply_hybridization_inplace!(prop_copy, hyb_kp, model_data)
     copyto!(prop_copy, bare_prop.vals)
-    stats = @timed SOE.apply_hybridization_inplace!(temp_buf, prop_copy, hyb_kp, model_data)
+    stats = @timed SOE.apply_hybridization_inplace!(prop_copy, hyb_kp, model_data)
     @printf("  apply_hybridization_inplace!:          %6d bytes, %.1f μs\n", stats[3], stats[2] * 1e6)
 end
 println()

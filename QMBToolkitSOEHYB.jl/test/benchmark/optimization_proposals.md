@@ -1,163 +1,162 @@
-# Optimization Proposals (Post-Benchmark Analysis)
+# QMBToolkitSOEHYB Optimization Proposals
 
-These proposals are based on benchmark data collected from the 3 orbital × 2 spin test case
-with 3 SOE poles, Euv=5, rtol=0.01 (16 DLR points), propagator order 2, Green order 3.
+## Phase 1: Hot Loop Optimizations (COMPLETED)
 
-## Implementation Status
+| ID | Target | Result |
+|----|--------|--------|
+| S5 | Reflected kernel cache | 25% faster, 0 allocs |
+| S2 | Hybridization in-place | 55% faster |
+| S1 | Convolution coefficients | Marginal |
+| M1 | Valid flux computation | 42% buffer reduction |
+| S7 | Workspace consolidation | Simplified code |
 
-| ID | Target | Status | Speed Impact | Alloc Reduction |
-|----|--------|--------|--------------|-----------------|
-| S5 | Reflected kernel cache | **DONE** | 25% on reflection | 36.5 KiB → 0 per call |
-| S2 | Hybridization in-place | **DONE** | 55% on hybridization | - |
-| S1 | Convolution coefficients | **DONE** | Marginal | - |
-| M1 | Valid flux computation | **DONE** | Early exit for zero diagrams | ~42% buffer reduction |
-| S7 | Workspace consolidation | **DONE** | Code simplification | Reduced workspace memory |
+**End-to-end improvement:** 54.6 KiB → 23.5 KiB per diagram (~57% reduction)
 
 ---
 
-## Completed Optimizations
+## Phase 2: Structural Optimizations
 
-### S5. Cache reflected kernel matrix - COMPLETED
-**Commits:** `de693fb` (Lehmann.jl), `5445660` + `899815b` (QMBToolkitDLR.jl), `e994b88` (QMBToolkitSOEHYB.jl)
+### Implementation Status
 
-Pre-computed `kernel_tau_reflected = K(β - τ, ω)` once in `ConvolutionWorkspace` and added
-`dlr2tau!(dest, coeffs, precomputed_kernel, workspace)` variant to Lehmann.jl.
+| ID | Target | Status | Impact |
+|----|--------|--------|--------|
+| A4 | Share empty propagators | **DONE** | Minor memory savings |
+| A2 | Remove dead code buffers | **DONE** | 2 buffer pools removed, simplified API |
+| A3 | Selective flux allocation | ANALYZED | Not worth complexity |
+| A1 | Unify buffer abstraction | **DONE** | Proper structs with typed accessors |
 
-**Results:**
-- Reflection: 133 μs → 101 μs (25% faster)
-- Allocations: 36.5 KiB → 0 KiB per call (100% reduction)
+---
 
-### S2. Hybridization in-place multiplication - COMPLETED
-**Commit:** `c406af9` (QMBToolkitSOEHYB.jl)
+### A1. Unify Buffer Abstraction
 
-Replaced copy-to-temp-then-copy-back with direct in-place `target_block[:, :, k] .*= vec[k]`.
+**Problem:** Accessor functions in `backbone_buffers.jl:251-265` reference fields that don't exist in `PropagatorEvalBuffers` struct:
+- `get_contrib_tau_to_beta_reflected()`
+- `get_reflection_dlr()`
+- `get_ann_product()`
+- `get_final_product()`
 
-**Results:**
-- Hybridization: 4.33 μs → 1.96 μs (55% faster)
+These work via duck-typing on the NamedTuple from `allocate_green_buffers()`, but this is fragile.
 
-### S1. Pre-compute convolution coefficient matrix - COMPLETED
-**Commit:** `899815b` (QMBToolkitDLR.jl)
+**Current architecture (after A2, A4, A1):**
+```
+PropagatorEvalBuffers{T, QN}           GreenEvalBuffers{T, QN}
+├── result_pool                        ├── fwd_buffers::PropagatorEvalBuffers{T, QN}
+├── op_product_pool                    ├── rev_buffers::PropagatorEvalBuffers{T, QN}
+├── result_dlr_pool                    ├── backbone_0_to_beta_with_ann::Vector{Propagator{T}}
+├── conv_operand                       ├── contrib_tau_to_beta_reflected_pool::Dict{QN, Propagator{T}}
+├── conv_dlr                           ├── reflection_dlr_pool::Dict{QN, Propagator{T}}
+├── empty_propagator_tau               ├── ann_product_pool::Dict{QN, Propagator{T}}
+└── empty_propagator_dlr               ├── final_product_pool::Dict{QN, Propagator{T}}
+                                       ├── cre_product::Propagator{T}
+                                       ├── trace_result_buffer::Vector{Float64}
+                                       ├── empty_propagator_tau (reused from fwd_buffers)
+                                       └── empty_propagator_dlr (reused from fwd_buffers)
+```
 
-Added `convolution_coeffs[k,j] = values[k] / (ω[k] - ω[j])` matrix to `KernelCache`,
-eliminating per-iteration division in convolution inner loop.
+**Solution options:**
 
-**Results:**
-- Marginal speedup (division overhead was small)
+**Option A: Extend PropagatorEvalBuffers for Green**
+Create `GreenBuffers` that wraps PropagatorEvalBuffers and adds Green-specific pools:
+```julia
+struct GreenBuffers{T, QN}
+    fwd::PropagatorEvalBuffers{T, QN}
+    rev::PropagatorEvalBuffers{T, QN}
+    contrib_tau_to_beta_reflected_pool::Dict{QN, Propagator{T}}
+    reflection_dlr_pool::Dict{QN, Propagator{T}}
+    ann_product_pool::Dict{QN, Propagator{T}}
+    final_product_pool::Dict{QN, Propagator{T}}
+    cre_product::Propagator{T}
+    trace_buffer::Vector{Float64}
+end
+```
 
-### M1. Compute valid flux set from sector structure - COMPLETED
+**Option B: Keep NamedTuple, fix accessors**
+Move the Green-specific accessor functions to accept NamedTuple explicitly, document the interface.
 
-**Files modified:**
-- `QMBToolkitSOEHYB.jl/src/format/backbone_buffers.jl`
-- `QMBToolkitSOEHYB.jl/src/format/operator_ops.jl`
-- `QMBToolkitSOEHYB.jl/src/diagram/backbone_eval.jl`
-- `QMBToolkitSOEHYB.jl/src/diagram/eval_propagator.jl`
-- `QMBToolkitSOEHYB.jl/src/diagram/eval_green.jl`
+---
 
-**Original problem:** `enumerate_possible_flux(QN_NSz, max_order)` generates 85 flux values
-for order 3, but only 49 have non-empty blocks. The 36 empty flux values waste memory.
+### A2. Remove Dead Code Buffers - COMPLETED
 
-**Initial blocker:** Intermediate fluxes during diagram evaluation can exceed what the sector
-structure supports. For example, processing n annihilation operators first accumulates flux
-`QN_N(n=-n)`, which may not correspond to any valid (target, source) sector pair.
-
-**Solution implemented:** Combined approach with early exit and type stability:
-
-1. **Use `compute_valid_fluxes(basis)`** for buffer allocation - only allocates buffers for
-   fluxes that have at least one valid (target, source) sector pair.
-
-2. **Early exit on invalid flux** - In `backbone_eval.jl`, check if the computed flux exists
-   in the buffer pool before proceeding:
-   ```julia
-   if !haskey(buffers.op_product_pool, new_flux)
-       return buffers.empty_propagator_tau  # Type-stable early exit
-   end
-   ```
-
-3. **Relaxed flux assertions** - In `operator_ops.jl`, allow flux mismatch for empty propagators:
-   ```julia
-   @assert isempty(temp_buffer.blocks) || temp_buffer.flux == result_flux
-   ```
-
-4. **Skip empty contributions** - In evaluation functions, check for empty results:
-   ```julia
-   if isempty(contribution.blocks)
-       continue  # Skip accumulation - diagram contributes zero
-   end
-   ```
-
-**Key insight:** When intermediate flux exceeds the Hilbert space capacity (|ΔN| > x where x
-is the number of spin-orbitals), no valid sector pair exists, so the propagator has no blocks.
-Operations on empty propagators produce zero, and the diagram contributes nothing. By detecting
-this early, we skip unnecessary computation.
-
-**Results:**
-- ~42% reduction in buffer allocations (from 85 to 49 fluxes at order 3)
-- Early exit skips remaining computation for zero-contribution diagrams
-- Type-stable implementation (always returns `Propagator{T}`)
-
-### S7. Workspace consolidation - COMPLETED
-
-**Files modified:**
-- `QMBToolkitDLR.jl/src/workspace.jl`
-- `QMBToolkitDLR.jl/src/convolution.jl`
-
-**Original problem:** The `ConvolutionWorkspace` had redundant 3D arrays (H1_dlr, H2_dlr,
-H1_tau, H2_tau, H_tau) that duplicated the functionality of the linear buffers (dlr_buffer1,
-dlr_buffer2, tau_buffer1, tau_buffer2, tau_result). The view path computed into the 3D
-arrays first, then copied to contiguous linear buffers for DLR transforms.
+**Problem found:** The `temp_buffer` parameter in `apply_hybridization_inplace!` was never used - the function modified `target` directly. This meant:
+- `hyb_temp_pool` in PropagatorEvalBuffers was allocated but never used
+- `conv_hyb_temp` buffer was allocated but never used
 
 **Solution implemented:**
 
-1. **Removed redundant 3D arrays** from `ConvolutionWorkspace`:
-   - Removed `H1_dlr`, `H2_dlr`, `H1_tau`, `H2_tau`, `H_tau` fields
-   - Renamed `view_dlr_buffer*` → `dlr_buffer*` and `view_tau_buffer*` → `tau_buffer*`
+1. Simplified `apply_hybridization_inplace!` signature:
+   ```julia
+   # Before: apply_hybridization_inplace!(temp_buffer, target, hyb, model_data; is_reverse)
+   # After:  apply_hybridization_inplace!(target, hyb, model_data; is_reverse)
+   ```
 
-2. **Unified direct and view paths** to use the same contiguous linear buffer approach:
-   - Both `_do_convolution_direct!` and `_do_convolution_view!` now reshape linear buffers
-   - Eliminated the intermediate copy step in view path (no more `copyto!`)
+2. Removed from `PropagatorEvalBuffers`:
+   - `hyb_temp_pool` (entire Dict of buffers)
+   - `conv_hyb_temp` (single buffer)
 
-**Results:**
-- Reduced workspace memory footprint (removed 6 arrays)
-- Simplified code by unifying direct and view path implementations
-- Convolution allocations unchanged (reshape wrappers are lightweight)
+3. Updated all call sites in `backbone_eval.jl`
 
----
-
-## Benchmark Summary (Post-Optimization)
-
-**Micro-benchmarks (per-call measurements):**
-
-| Operation | Before | After | Improvement |
-|-----------|--------|-------|-------------|
-| `apply_hybridization_inplace!` | 4.33 μs | 1.96 μs | 55% faster |
-| `do_reflection_tau2tau!` (cached) | 133 μs, 36.5 KiB | 101 μs, 0 KiB | 25% faster, 0 allocs |
-| `do_convolution_dlr2tau!` | 283 μs, 6.0 KiB | 286 μs, 6.0 KiB | No change |
-
-**End-to-end (Green order 3, 19,440 diagrams):**
-
-| Metric | Before | After |
-|--------|--------|-------|
-| Time per diagram | 1.89 ms | 1.86 ms |
-| Allocations per diagram | 54.6 KiB | 23.5 KiB |
-| Total allocations | ~1,036 MiB | ~446 MiB |
+**Result:** Reduced from 7 buffer roles to 5, simplified API, reduced memory usage.
 
 ---
 
-## Remaining Allocation Sources
+### A3. Selective Flux Allocation for Green Buffers - ANALYZED (Not Implemented)
 
-After all optimizations, the main remaining allocation sources in convolution (6.0 KiB) are:
-- Dict iteration overhead in block-sparse operations
-- ReshapedArray wrapper objects (lightweight, ~464 bytes total)
+**Problem:** `allocate_green_buffers()` allocates pools for ALL valid fluxes.
 
-These are acceptable overheads for the flexibility they provide in handling variable-size blocks.
+**Analysis performed:**
+
+1. **`final_product_pool`** - Already selective (only allocates for unique `ann_opt.flux` values)
+
+2. **`ann_product_pool`** - The flux depends on `contrib_0_to_tau`'s flux, which varies per diagram. We can't know in advance which diagrams will produce non-zero contributions.
+
+3. **`contrib_tau_to_beta_reflected_pool`** and **`reflection_dlr_pool`** - Same issue: flux depends on diagram evaluation results.
+
+**Correctness concern:** If we don't allocate for a flux that IS valid and IS needed, the accessor returns `empty_propagator_tau`. Subsequent operations (`fill!`, `multiply_op_prop!`) silently produce zero, leading to incorrect results.
+
+**Conclusion:** The current allocation strategy (all valid fluxes) is necessary for correctness. Selective allocation would require either:
+- Complex static analysis of all possible diagram structures
+- Runtime lazy allocation with Dict resize overhead
+
+Neither option provides enough benefit to justify the complexity. The current approach is safe and reasonably efficient.
 
 ---
 
-## Summary
+### A4. Share Empty Propagators
 
-All planned optimizations (S1, S2, S5, S7, M1) have been completed. Key improvements:
-- 55% faster hybridization operations
-- 25% faster reflection with 100% allocation elimination
-- ~42% reduction in buffer allocations via valid flux computation
-- Unified workspace structure with reduced memory footprint
-- Early exit for zero-contribution diagrams
+**Problem:** Empty propagators are allocated twice:
+1. In `PropagatorEvalBuffers` constructor (lines 175-176)
+2. In `allocate_green_buffers()` (lines 329-330)
+
+**Solution:** Create once and share:
+```julia
+# In allocate_green_buffers():
+fwd_buffers = PropagatorEvalBuffers{T}(basis, max_order, n_tau, n_dlr)
+rev_buffers = PropagatorEvalBuffers{T}(basis, max_order, n_tau, n_dlr)
+
+# Reuse from fwd_buffers instead of creating new ones
+empty_propagator_tau = fwd_buffers.empty_propagator_tau
+empty_propagator_dlr = fwd_buffers.empty_propagator_dlr
+```
+
+---
+
+## Implementation Summary
+
+| ID | Status | Notes |
+|----|--------|-------|
+| A4 | **DONE** | Reuse empty propagators from fwd_buffers |
+| A2 | **DONE** | Removed 2 unused buffer pools, simplified hybridization API |
+| A3 | **ANALYZED** | Not worth complexity - current allocation is necessary for correctness |
+| A1 | **DONE** | Created GreenEvalBuffers struct with typed accessors |
+
+---
+
+## Files Modified (Phase 2)
+
+| File | Changes |
+|------|---------|
+| `src/format/backbone_buffers.jl` | A4: Reuse empty propagators; A2: Remove hyb_temp_pool, conv_hyb_temp |
+| `src/format/hybridization.jl` | A2: Simplified apply_hybridization_inplace! signature |
+| `src/format/interface.jl` | A2: Removed unused function declarations |
+| `src/diagram/backbone_eval.jl` | A2: Updated hybridization call sites |
+| `test/benchmark/benchmark_core.jl` | A2: Updated benchmark calls |

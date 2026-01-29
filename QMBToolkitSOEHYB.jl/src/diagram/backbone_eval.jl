@@ -95,7 +95,7 @@ Starting from the rightmost edge, accumulates:
   - `dlr_grid::DLRGrid`: DLR grid for τ-space operations
   - `model_data::ModelData`: Model data with operators and hybridization
   - `propagator`: Propagator on DLR τ-grid
-  - `buffers`: Pre-allocated work buffers (BackboneBuffers)
+  - `buffers`: Pre-allocated work buffers (PropagatorEvalBuffers)
 
 # Returns
 
@@ -106,13 +106,11 @@ Reference to the result buffer containing diagram contribution on DLR τ-grid.
 Pre-allocated buffers are reused across all diagram evaluations for efficiency.
 All operations are in-place to minimize allocations.
 
-# Buffer Usage (7 roles)
+# Buffer Usage (5 roles)
 
   - `result`: Accumulates backbone result
-  - `hyb_temp`: Scratch for hybridization on result
   - `op_product`: Holds operator multiplication output
   - `conv_operand`: Propagator copy for convolution
-  - `conv_hyb_temp`: Scratch for hybridization on conv operand
   - `conv_dlr`: DLR transform of conv operand
   - `result_dlr`: DLR transform of result
 """
@@ -129,15 +127,12 @@ function multiplication_convolution(
     result = get_result(buffers, current_flux)
     copyto!(result, propagator)
 
-    # Get hyb_temp buffer for current flux
-    hyb_temp = get_hyb_temp(buffers, current_flux)
-
     # Process edges from right to left
     @inbounds for i in 1:(length(edges) - 1)
         edge = edges[i]
         if i == 1
             for hyb in edge.attached_hybs
-                apply_hybridization_inplace!(hyb_temp, result, hyb, model_data, is_reverse = false)
+                apply_hybridization_inplace!(result, hyb, model_data, is_reverse = false)
             end
         end
 
@@ -165,14 +160,10 @@ function multiplication_convolution(
             current_flux = new_flux
             result = get_result(buffers, current_flux)
             copyto!(result, op_product)
-
-            # Update hyb_temp to match new flux
-            hyb_temp = get_hyb_temp(buffers, current_flux)
         end
 
         # Apply hybridization attached to the node
-        apply_hybridization_inplace!(
-            hyb_temp, result, node.attached_hyb, model_data, is_reverse = false)
+        apply_hybridization_inplace!(result, node.attached_hyb, model_data, is_reverse = false)
 
         # Calculate the convolution with the next edge
         edge_plus1 = edges[i + 1]
@@ -181,12 +172,8 @@ function multiplication_convolution(
         conv_operand = get_conv_operand(buffers)
         copyto!(conv_operand, propagator)
 
-        # Get conv_hyb_temp buffer (fixed zero flux)
-        conv_hyb_temp = get_conv_hyb_temp(buffers)
-
         for hyb in edge_plus1.attached_hybs
-            apply_hybridization_inplace!(
-                conv_hyb_temp, conv_operand, hyb, model_data, is_reverse = false)
+            apply_hybridization_inplace!(conv_operand, hyb, model_data, is_reverse = false)
         end
 
         # Transform to DLR using buffers and workspace
@@ -240,15 +227,12 @@ function multiplication_convolution_reverse(
     result = get_result(buffers, current_flux)
     copyto!(result, propagator)
 
-    # Get hyb_temp buffer for current flux
-    hyb_temp = get_hyb_temp(buffers, current_flux)
-
     # Process edges from left to right
     @inbounds for i in length(edges):-1:2
         edge = edges[i]
         if i == length(edges)
             for hyb in edge.attached_hybs
-                apply_hybridization_inplace!(hyb_temp, result, hyb, model_data, is_reverse = false)
+                apply_hybridization_inplace!(result, hyb, model_data, is_reverse = false)
             end
         end
 
@@ -275,14 +259,10 @@ function multiplication_convolution_reverse(
             current_flux = new_flux
             result = get_result(buffers, current_flux)
             copyto!(result, op_product)
-
-            # Update hyb_temp to match new flux
-            hyb_temp = get_hyb_temp(buffers, current_flux)
         end
 
         # Apply hybridization with is_reverse=true (swaps K+ ↔ K-)
-        apply_hybridization_inplace!(
-            hyb_temp, result, node.attached_hyb, model_data, is_reverse = true)
+        apply_hybridization_inplace!(result, node.attached_hyb, model_data, is_reverse = true)
 
         # Calculate the convolution with the next edge
         edge_minus1 = edges[i - 1]
@@ -291,12 +271,8 @@ function multiplication_convolution_reverse(
         conv_operand = get_conv_operand(buffers)
         copyto!(conv_operand, propagator)
 
-        # Get conv_hyb_temp buffer (fixed zero flux)
-        conv_hyb_temp = get_conv_hyb_temp(buffers)
-
         for hyb in edge_minus1.attached_hybs
-            apply_hybridization_inplace!(
-                conv_hyb_temp, conv_operand, hyb, model_data, is_reverse = false)
+            apply_hybridization_inplace!(conv_operand, hyb, model_data, is_reverse = false)
         end
 
         # Transform to DLR using buffers and workspace (note: order reversed)
@@ -376,7 +352,7 @@ function eval_green_forward_backbone(diagram::BackBone, split_point::Int,
         solver_data.model.dlr_grid,
         solver_data.model,
         propagator,
-        buffers.convolution_buffers.fwd_buffers
+        buffers.fwd_buffers
     )
 end
 
@@ -405,6 +381,6 @@ function eval_green_reverse_backbone(diagram::BackBone, split_point::Int,
         solver_data.model.dlr_grid,
         solver_data.model,
         propagator,
-        buffers.convolution_buffers.rev_buffers
+        buffers.rev_buffers
     )
 end

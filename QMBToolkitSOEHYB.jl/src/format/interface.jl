@@ -23,7 +23,7 @@ written once and work with any format.
 - `trace_prop!(result_buffer, prop)`: Trace over spatial indices
 
 ## Hybridization
-- `apply_hybridization_inplace!(buffer, prop, hyb, model_data; is_reverse)`: Apply hybridization
+- `apply_hybridization_inplace!(prop, hyb, model_data; is_reverse)`: Apply hybridization in-place
 
 ## Buffer Allocation
 - `allocate_propagator_buffers(solver_data, expansion_order)`: Allocate buffers for propagator evaluation
@@ -74,18 +74,16 @@ function compute_new_flux_reverse end
 
 # Buffer accessors (used in backbone evaluation)
 function get_result end
-function get_hyb_temp end
 function get_op_product end
 function get_result_dlr end
 function get_conv_operand end
-function get_conv_hyb_temp end
 function get_conv_dlr end
 
-# Buffer accessors (used in Green's function evaluation)
+# Buffer accessors (used in Green's function evaluation - GreenEvalBuffers)
 function get_contrib_tau_to_beta_reflected end
 function get_reflection_dlr end
 function get_ann_product end
 function get_final_product end
-
-# get_cre_product: generic accessor (cre_product always has zero flux)
-get_cre_product(buffers) = buffers.cre_product
+function get_cre_product end
+function get_fwd_buffers end
+function get_rev_buffers end

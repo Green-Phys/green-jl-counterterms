@@ -1,18 +1,13 @@
-# Normal diagrams structure
-
-# Convert a normal diagram to a list of BackBone diagrams
-
-# BackBone structure
-
-"""
-    BackBone of M nodes and M-1 edges:
-    |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
-    We assume it accompanies of L decomposed hybridization functions:
-    - Propagator diagram of the bare expansion: L = (M-2)/2
-    - Self-energy diagram of the bold expansion: L = (M-2)/2 # there is one undecomposed hybridization line connected to 0
-    - Green's function diagram: L = (M-3)/2
-    We assume each of the L decomposed hybridization functions can be in p states
-"""
+# Diagram backbone structure
+#
+# BackBone of M nodes and M-1 edges:
+#   |Node(M)| --- Edge(M-1) --- |Node(M-1)| --- Edge(M-2) --- ... --- Edge(1) --- |Node(1)|
+#
+# Accompanies L decomposed hybridization functions:
+#   - Propagator diagram of bare expansion: L = (M-2)/2
+#   - Self-energy diagram of bold expansion: L = (M-2)/2 (one undecomposed hyb line to 0)
+#   - Green's function diagram: L = (M-3)/2
+# Each of the L decomposed hybridization functions can be in p states.
 
 """
     HybridizationState
@@ -47,19 +42,6 @@ struct BackBoneNode
     flavor::Int # spin-orbital index associated with the creation or annihilation operator; -1 for :empty nodes
     bar_index::Int # can take 1 to p if the operator has bar, otherwise -1
     attached_hyb::HybridizationState # can be NoHyb, KPlus(l), or KMinus(l)
-end
-
-struct BackBoneEdge
-    attached_hybs::Vector{HybridizationState} # length <=L, each can be KPlus(l) or KMinus(l)
-end
-
-struct BackBone
-    diagram_type::Symbol # :propagator_diagram, :selfenergy_diagram, :green_diagram
-    sign::Float64 # the overall prefactor is sign * 1/(K_{1}^{sign_{1}}(0))^{Kexp_{1}} * ... * 1/(K_{p}^{sign_{p}}(0))^{Kexp_{p}}; sign_{i} is - if K_exp{i} <=0 else +
-    prefactor_Kexps::Vector{Int} # Length p
-    nodes::Vector{BackBoneNode} # length M
-    edges::Vector{BackBoneEdge} # length M-1
-    external_opts_loc::Vector{Int} # only for green_diagram, record the location of external operators (annihilation and creation); empty vector for other diagram types
 end
 
 #=============================================================================
@@ -165,12 +147,6 @@ function active_hybs(edge::MutableBackBoneEdge)
     return view(edge.attached_hybs, 1:edge._length)
 end
 
-# Unified accessor for both edge types (enables duck typing in backbone_eval)
-get_attached_hybs(edge::BackBoneEdge) = edge.attached_hybs
+# Accessors for MutableBackBone
 get_attached_hybs(edge::MutableBackBoneEdge) = active_hybs(edge)
-
-# Unified accessor for external_opts_loc
-# BackBone: returns the vector directly
-# MutableBackBone: returns view of the 2-element array
-get_external_opts(bb::BackBone) = bb.external_opts_loc
 get_external_opts(bb::MutableBackBone) = view(bb.external_opts_loc, 1:2)

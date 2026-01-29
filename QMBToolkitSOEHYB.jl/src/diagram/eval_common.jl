@@ -95,7 +95,7 @@ function eval_diagrams!(solver_data::SolverData{T}, solver_params::SolverParams,
 end
 
 """
-    compute_diagram_prefactor(diagram::BackBone, K0_inverse::Vector{Float64})
+    compute_diagram_prefactor(diagram::MutableBackBone, K0_inverse::Vector{Float64})
 
 Compute the overall prefactor for a diagram.
 
@@ -110,17 +110,6 @@ where:
 
 Only non-zero exponents contribute to the product.
 """
-function compute_diagram_prefactor(diagram::BackBone, K0_inverse::Vector{Float64})
-    prefactor = diagram.sign
-    for (idx, Kexp) in enumerate(diagram.prefactor_Kexps)
-        if Kexp != 0
-            prefactor *= K0_inverse[idx]^Kexp
-        end
-    end
-    return prefactor
-end
-
-# MutableBackBone version - same logic, different type
 function compute_diagram_prefactor(diagram::MutableBackBone, K0_inverse::Vector{Float64})
     prefactor = diagram.sign
     for (idx, Kexp) in enumerate(diagram.prefactor_Kexps)

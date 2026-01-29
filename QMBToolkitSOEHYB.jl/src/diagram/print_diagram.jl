@@ -205,7 +205,7 @@ end
 
 Draw hybridization labels on the diagram lines.
 """
-function draw_hybridizations!(hyb_lines::Vector{Vector{Char}}, edges::Vector{BackBoneEdge},
+function draw_hybridizations!(hyb_lines::Vector{Vector{Char}}, edges::AbstractVector,
         node_center_pos::Vector{Int}, min_overall_coord::Int,
         total_width::Int)
     max_hybs = length(hyb_lines)
@@ -213,8 +213,9 @@ function draw_hybridizations!(hyb_lines::Vector{Vector{Char}}, edges::Vector{Bac
 
     for k in 1:max_hybs
         for i in 1:(M - 1)
-            if k <= length(edges[i].attached_hybs)
-                hyb = edges[i].attached_hybs[k]
+            edge_hybs = get_attached_hybs(edges[i])
+            if k <= length(edge_hybs)
+                hyb = edge_hybs[k]
                 hyb_str = format_hyb(hyb)
 
                 edge_start_unshifed = node_center_pos[i] + 1
@@ -241,26 +242,27 @@ function draw_hybridizations!(hyb_lines::Vector{Vector{Char}}, edges::Vector{Bac
     end
 end
 
-function print_diagram(backbone::BackBone)
+function print_diagram(backbone::MutableBackBone)
     println("Diagram type: ", backbone.diagram_type)
     println("Sign: ", backbone.sign)
     println("Prefactor K exponents: ", backbone.prefactor_Kexps)
 
-    # Prepare node information
-    nodes = reverse(backbone.nodes)
-    edges = reverse(backbone.edges)
-    M = length(nodes)
+    # Prepare node information (use only active nodes/edges)
+    M = backbone.M
+    nodes = reverse(@view(backbone.nodes[1:M]))
+    edges = reverse(@view(backbone.edges[1:(M - 1)]))
 
     if M == 0
         return
     end
 
-    external_opts_loc = isempty(backbone.external_opts_loc) ? Int[] :
-                        [M-i+1 for i in backbone.external_opts_loc]
+    external_opts = get_external_opts(backbone)
+    external_opts_loc = backbone.diagram_type == :green_diagram ?
+                        [M - i + 1 for i in external_opts] : Int[]
     node_infos = [format_node(
                       nodes[i],
                       !isempty(external_opts_loc) && i in external_opts_loc,
-                      !isempty(external_opts_loc) && i == external_opts_loc[2],
+                      !isempty(external_opts_loc) && i == external_opts_loc[2]
                   ) for i in 1:M]
     node_strs = [info[1] for info in node_infos]
     node_widths = [max(1, length(s)) for s in node_strs]
@@ -273,7 +275,7 @@ function print_diagram(backbone::BackBone)
     # Determine maximum hybridizations per edge
     max_hybs = 0
     if !isempty(edges)
-        max_hybs = maximum(length(e.attached_hybs) for e in edges)
+        max_hybs = maximum(length(get_attached_hybs(e)) for e in edges)
     end
 
     # Create char arrays for lines

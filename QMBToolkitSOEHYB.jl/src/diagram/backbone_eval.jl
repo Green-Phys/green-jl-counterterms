@@ -302,7 +302,7 @@ end
 =============================================================================#
 
 """
-    eval_propagator_forward_backbone(diagram, solver_data, buffers)
+    eval_propagator_forward_backbone(diagram::MutableBackBone, solver_data, buffers)
 
 Evaluate a single propagator diagram using the unified backbone evaluation.
 
@@ -310,7 +310,7 @@ Called by `eval_propagator_given_order!`.
 
 # Arguments
 
-  - `diagram::BackBone`: The diagram to evaluate
+  - `diagram::MutableBackBone`: The diagram to evaluate
   - `solver_data::SolverData{T}`: Solver data containing model information
   - `buffers`: Pre-allocated work buffers
 
@@ -318,18 +318,6 @@ Called by `eval_propagator_given_order!`.
 
 Diagram contribution in imaginary time (Propagator type).
 """
-function eval_propagator_forward_backbone(diagram::BackBone, solver_data::SolverData{T}, buffers) where {T <:
-                                                                                                         Number}
-    bare_propagator = get_bare_propagator(solver_data.model)
-    return multiplication_convolution(
-        diagram.nodes, diagram.edges,
-        solver_data.model.dlr_grid, solver_data.model,
-        bare_propagator.vals,
-        buffers
-    )
-end
-
-# MutableBackBone version - uses views of active nodes/edges
 function eval_propagator_forward_backbone(diagram::MutableBackBone, solver_data::SolverData{T}, buffers) where {T <:
                                                                                                                 Number}
     bare_propagator = get_bare_propagator(solver_data.model)
@@ -347,13 +335,13 @@ end
 =============================================================================#
 
 """
-    eval_green_forward_backbone(diagram, split_point, solver_data, propagator, buffers)
+    eval_green_forward_backbone(diagram::MutableBackBone, split_point, solver_data, propagator, buffers)
 
 Evaluate forward backbone contribution from node 1 to split_point.
 
 # Arguments
 
-  - `diagram::BackBone`: The diagram being evaluated
+  - `diagram::MutableBackBone`: The diagram being evaluated
   - `split_point::Int`: Position of the external annihilation operator
   - `solver_data::SolverData{T}`: Solver data containing model information
   - `propagator`: Propagator to use
@@ -363,19 +351,6 @@ Evaluate forward backbone contribution from node 1 to split_point.
 
 Forward backbone contribution on DLR τ-grid.
 """
-function eval_green_forward_backbone(diagram::BackBone, split_point::Int,
-        solver_data::SolverData{T}, propagator, buffers) where {T}
-    return multiplication_convolution(
-        @view(diagram.nodes[1:split_point]),
-        @view(diagram.edges[1:(split_point - 1)]),
-        solver_data.model.dlr_grid,
-        solver_data.model,
-        propagator,
-        buffers.fwd_buffers
-    )
-end
-
-# MutableBackBone version
 function eval_green_forward_backbone(diagram::MutableBackBone, split_point::Int,
         solver_data::SolverData{T}, propagator, buffers) where {T}
     return multiplication_convolution(
@@ -389,13 +364,13 @@ function eval_green_forward_backbone(diagram::MutableBackBone, split_point::Int,
 end
 
 """
-    eval_green_reverse_backbone(diagram, split_point, solver_data, propagator, buffers)
+    eval_green_reverse_backbone(diagram::MutableBackBone, split_point, solver_data, propagator, buffers)
 
 Evaluate reverse backbone contribution from split_point to end.
 
 # Arguments
 
-  - `diagram::BackBone`: The diagram being evaluated
+  - `diagram::MutableBackBone`: The diagram being evaluated
   - `split_point::Int`: Position of the external annihilation operator
   - `solver_data::SolverData{T}`: Solver data containing model information
   - `propagator`: Propagator to use
@@ -405,19 +380,6 @@ Evaluate reverse backbone contribution from split_point to end.
 
 Reverse backbone contribution on DLR τ-grid.
 """
-function eval_green_reverse_backbone(diagram::BackBone, split_point::Int,
-        solver_data::SolverData{T}, propagator, buffers) where {T}
-    return multiplication_convolution_reverse(
-        @view(diagram.nodes[split_point:end]),
-        @view(diagram.edges[split_point:end]),
-        solver_data.model.dlr_grid,
-        solver_data.model,
-        propagator,
-        buffers.rev_buffers
-    )
-end
-
-# MutableBackBone version - uses M field for correct end index
 function eval_green_reverse_backbone(diagram::MutableBackBone, split_point::Int,
         solver_data::SolverData{T}, propagator, buffers) where {T}
     return multiplication_convolution_reverse(

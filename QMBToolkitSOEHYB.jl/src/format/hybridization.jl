@@ -48,20 +48,16 @@ depending on prior operator multiplications in the diagram evaluation.
         vec = use_kplus ? @view(model_data.hyb.KPlus_on_DLRtau[:, l]) :
               @view(model_data.hyb.KMinus_on_DLRtau[:, l])
 
-        # Apply element-wise multiplication to each block
+        # Apply element-wise multiplication to each block in-place
         # Note: Hybridization is a scalar multiplication, so it applies to all blocks
         # (both diagonal and off-diagonal) in the target array
-        for (block_key, target_block) in target.blocks
-            temp_block = temp_buffer.blocks[block_key]
+        for (_, target_block) in target.blocks
             n_tau = size(target_block, 3)  # layout: (dim1, dim2, n_tau)
 
-            # Element-wise multiplication: temp_block[:, :, k] = vec[k] * target_block[:, :, k]
+            # In-place element-wise multiplication: target_block[:, :, k] *= vec[k]
             @inbounds for k in 1:n_tau
-                @views temp_block[:, :, k] .= vec[k] .* target_block[:, :, k]
+                @views target_block[:, :, k] .*= vec[k]
             end
-
-            # Copy back to target
-            copyto!(target_block, temp_block)
         end
     end
     # For NoHyb, do nothing (target unchanged)

@@ -14,7 +14,11 @@ Provides functions to build Hamiltonians from hopping matrix and Coulomb tensor 
 Construct a Hamiltonian from hopping and Coulomb interaction inputs.
 
 The Hamiltonian has the form:
-    H = Σ_{ij} t_{ij} c_i' c_j + 0.5 Σ_{ijkl} U_{ijkl} c_i' c_j' c_k c_l
+    H = Σ_{ij} t_{ij} c_i' c_j + Σ_{ijkl} U_{ijkl} c_i' c_k' c_l c_j
+
+This uses chemist (Mulliken) notation where U_{ijkl} corresponds to the two-electron
+integral (ij|kl), with index order [cre1, ann2, cre2, ann1].
+Note: No 0.5 prefactor - the tensor should already account for antisymmetry.
 
 Arguments:
 - `basis::Basis`: The many-body basis (must match nflavors in input files)
@@ -115,7 +119,8 @@ function build_hamiltonian(
         sum(hop_terms)
     end
 
-    # Build interaction Hamiltonian: H_int = 0.5 Σ_{ijkl} U_{ijkl} c_i' c_j' c_k c_l
+    # Build interaction Hamiltonian: H_int = Σ_{ijkl} U_{ijkl} c_i' c_k' c_l c_j
+    # Uses chemist (Mulliken) notation: U[i,j,k,l] -> c†_i c†_k c_l c_j
     # Collect all terms, then sum once
     int_terms = Operator[]
 
@@ -133,7 +138,8 @@ function build_hamiltonian(
                 continue
             end
 
-            push!(int_terms, 0.5 * val * (c[fl_i]' * c[fl_j]' * c[fl_k] * c[fl_l]))
+            # Chemist notation: U[i,j,k,l] c†_i c†_k c_l c_j (no 0.5 prefactor)
+            push!(int_terms, val * (c[fl_i]' * c[fl_k]' * c[fl_l] * c[fl_j]))
         end
     end
 

@@ -71,56 +71,16 @@ struct BackboneBuffers{T <: Number, QN <: QuantumNumber}
 end
 
 """
-    enumerate_possible_flux(::Type{QN_N}, max_order::Int)
-
-Enumerate all possible flux values for QN_N (particle number only).
-For expansion order N, flux can range from -N to +N.
-
-Note: This function is deprecated in favor of `compute_valid_fluxes` which
-computes only fluxes that have non-empty block structure.
-"""
-function enumerate_possible_flux(::Type{QN_N}, max_order::Int)
-    return [QN_N(n) for n in (-max_order):max_order]
-end
-
-"""
-    enumerate_possible_flux(::Type{QN_NSz}, max_order::Int)
-
-Enumerate all possible flux values for QN_NSz (particle number + spin).
-For expansion order N with 2N operators, both n and sz can range from -2N to +2N.
-We include all combinations where (n + sz) is even (parity constraint from operators).
-
-Note: During intermediate steps of diagram evaluation, fluxes outside the final
-physical constraint |sz| <= |n| can occur. We must allocate buffers for all
-such intermediate fluxes to avoid KeyError during evaluation.
-
-Note: This function is deprecated in favor of `compute_valid_fluxes` which
-computes only fluxes that have non-empty block structure.
-"""
-function enumerate_possible_flux(::Type{QN_NSz}, max_order::Int)
-    fluxes = QN_NSz[]
-    max_val = 2 * max_order
-    for delta_n in (-max_val):max_val
-        for delta_sz in (-max_val):max_val
-            if (delta_n + delta_sz) % 2 == 0
-                push!(fluxes, QN_NSz(delta_n, delta_sz))
-            end
-        end
-    end
-    return fluxes
-end
-
-"""
     compute_valid_fluxes(basis::Basis)
 
 Compute the set of flux values that have non-empty block structure.
-A flux is "valid" here if there exists at least one pair of sectors (tgt, src)
+A flux is "valid" if there exists at least one pair of sectors (tgt, src)
 such that tgt.qn = src.qn + flux.
 
-Note: This function is for analysis/benchmarking purposes only. It cannot be used
-to optimize buffer allocation because intermediate fluxes during diagram evaluation
-may not correspond to any valid sector pair, but still need buffer allocation.
-Use `enumerate_possible_flux(QN, max_order)` for buffer allocation instead.
+This function is used for buffer allocation. When diagram evaluation encounters
+an intermediate flux outside this valid set, it means no valid sector pair exists,
+so the propagator has empty blocks and the diagram contributes zero. The backbone
+evaluation detects this via `haskey` check and exits early.
 
 # Returns
 

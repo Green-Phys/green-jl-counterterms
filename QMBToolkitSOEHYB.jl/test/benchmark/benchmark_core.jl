@@ -451,29 +451,27 @@ end
 println()
 
 # Flux enumeration analysis
-section_header("10. Flux Enumeration Analysis")
+section_header("10. Flux Enumeration Analysis (M1 Optimization)")
 
 let
     QN = typeof(basis.sectors[1].qn)
-    println("  Analyzing flux value validity for QN_NSz basis with $(length(basis.sectors)) sectors:")
+    println("  Analyzing valid flux values for QN_NSz basis with $(length(basis.sectors)) sectors:")
     println()
 
-    for max_o in [1, 2, 3]
-        fluxes = SOE.enumerate_possible_flux(QN, max_o)
-        nonempty_count = 0
-        for f in fluxes
-            blocks = SOE.compute_blocks_for_flux(basis, f)
-            if !isempty(blocks)
-                nonempty_count += 1
-            end
-        end
-        @printf("    max_order=%d: %3d total fluxes, %3d non-empty (%d%% waste)\n",
-            max_o, length(fluxes), nonempty_count,
-            round(Int, 100 * (1 - nonempty_count / length(fluxes))))
-    end
+    valid_fluxes = SOE.compute_valid_fluxes(basis)
+    @printf("    Valid fluxes (used for buffer allocation): %d\n", length(valid_fluxes))
     println()
-    println("  Note: Empty flux values waste buffer allocation time and memory.")
-    println("  Fix: Compute valid fluxes from sector structure (see optimization_proposals.md M1)")
+
+    # Show theoretical maximum range for comparison
+    # For n_orbitals=3 with 2 spins, max |ΔN| = 6, so theoretical max for order 3 would be
+    # much larger than the actual valid set
+    n_sectors = length(basis.sectors)
+    println("    Basis has $n_sectors sectors, so maximum |ΔN| = $(n_sectors-1)")
+    println("    Only fluxes with valid (target, source) sector pairs are allocated.")
+    println()
+    println("  M1 optimization: Using compute_valid_fluxes instead of enumerate_possible_flux")
+    println("  - Reduces buffer allocation by only allocating for valid fluxes")
+    println("  - Early exit when invalid flux detected (diagram contributes zero)")
 end
 println()
 

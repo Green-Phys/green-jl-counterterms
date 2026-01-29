@@ -69,6 +69,9 @@ end
 
 Enumerate all possible flux values for QN_N (particle number only).
 For expansion order N, flux can range from -N to +N.
+
+Note: This function is deprecated in favor of `compute_valid_fluxes` which
+computes only fluxes that have non-empty block structure.
 """
 function enumerate_possible_flux(::Type{QN_N}, max_order::Int)
     return [QN_N(n) for n in (-max_order):max_order]
@@ -84,6 +87,9 @@ We include all combinations where (n + sz) is even (parity constraint from opera
 Note: During intermediate steps of diagram evaluation, fluxes outside the final
 physical constraint |sz| <= |n| can occur. We must allocate buffers for all
 such intermediate fluxes to avoid KeyError during evaluation.
+
+Note: This function is deprecated in favor of `compute_valid_fluxes` which
+computes only fluxes that have non-empty block structure.
 """
 function enumerate_possible_flux(::Type{QN_NSz}, max_order::Int)
     fluxes = QN_NSz[]
@@ -96,6 +102,35 @@ function enumerate_possible_flux(::Type{QN_NSz}, max_order::Int)
         end
     end
     return fluxes
+end
+
+"""
+    compute_valid_fluxes(basis::Basis)
+
+Compute the set of flux values that have non-empty block structure.
+A flux is "valid" here if there exists at least one pair of sectors (tgt, src)
+such that tgt.qn = src.qn + flux.
+
+Note: This function is for analysis/benchmarking purposes only. It cannot be used
+to optimize buffer allocation because intermediate fluxes during diagram evaluation
+may not correspond to any valid sector pair, but still need buffer allocation.
+Use `enumerate_possible_flux(QN, max_order)` for buffer allocation instead.
+
+# Returns
+
+  - Vector of flux quantum numbers with non-empty blocks
+"""
+function compute_valid_fluxes(basis::Basis)
+    QN = typeof(basis.sectors[1].qn)
+    valid_fluxes = Set{QN}()
+    for src_sector in basis.sectors
+        for tgt_sector in basis.sectors
+            # flux = tgt_qn - src_qn, computed as tgt_qn + (-src_qn)
+            flux = tgt_sector.qn + (-src_sector.qn)
+            push!(valid_fluxes, flux)
+        end
+    end
+    return collect(valid_fluxes)
 end
 
 """
@@ -151,6 +186,9 @@ function BackboneBuffers{T}(
         basis::Basis, max_order::Int, n_tau::Int, n_dlr::Int) where {T <: Number}
     QN = typeof(basis.sectors[1].qn)
 
+    # Must use enumerate_possible_flux (not compute_valid_fluxes) because
+    # intermediate fluxes during diagram evaluation may not correspond to
+    # any valid sector pair, but still need buffer allocation
     possible_fluxes = enumerate_possible_flux(QN, max_order)
 
     result_pool = Dict{QN, Propagator{T}}()

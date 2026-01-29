@@ -60,7 +60,8 @@ function _multiply_op_prop!(
 
     # Result flux is composition of input fluxes
     result_flux = A.flux + B.flux
-    @boundscheck @assert temp_buffer.flux == result_flux "Buffer flux must match result flux"
+    # Allow flux mismatch for empty buffers (they represent zero regardless of flux)
+    @boundscheck @assert isempty(temp_buffer.blocks) || temp_buffer.flux == result_flux "Buffer flux must match result flux"
 
     # For each result block, compute: result[tgt, src](τ) = Σ_mid A[tgt, mid] * B[mid, src](τ)
     # Use direct dict lookups instead of building temporary index structures
@@ -136,7 +137,8 @@ function _multiply_prop_op!(
 
     # Result flux is composition of input fluxes
     result_flux = A.flux + B.flux
-    @boundscheck @assert temp_buffer.flux == result_flux "Buffer flux must match result flux"
+    # Allow flux mismatch for empty buffers (they represent zero regardless of flux)
+    @boundscheck @assert isempty(temp_buffer.blocks) || temp_buffer.flux == result_flux "Buffer flux must match result flux"
 
     # For each result block, compute: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src]
     # Use direct dict lookups instead of building temporary index structures
@@ -259,7 +261,8 @@ function _multiply_prop_prop!(
 
     # Result flux is composition of input fluxes
     result_flux = A.flux + B.flux
-    @boundscheck @assert temp_buffer.flux == result_flux "Buffer flux must match result flux"
+    # Allow flux mismatch for empty buffers (they represent zero regardless of flux)
+    @boundscheck @assert isempty(temp_buffer.blocks) || temp_buffer.flux == result_flux "Buffer flux must match result flux"
 
     # For each result block, compute: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src](τ)
     # Use direct dict lookups instead of building temporary index structures

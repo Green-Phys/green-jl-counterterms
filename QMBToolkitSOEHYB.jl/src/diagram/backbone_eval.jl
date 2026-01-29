@@ -149,6 +149,11 @@ function multiplication_convolution(
             # Compute new flux after operator multiplication
             new_flux = compute_new_flux(current_flux, op)
 
+            # Early exit: if flux is invalid, diagram contributes zero
+            if !haskey(buffers.op_product_pool, new_flux)
+                return buffers.empty_propagator_tau
+            end
+
             # Get op_product buffer for the new flux
             op_product = get_op_product(buffers, new_flux)
             fill!(op_product, zero(T))
@@ -253,6 +258,11 @@ function multiplication_convolution_reverse(
 
             # Compute new flux after operator multiplication (reverse direction)
             new_flux = compute_new_flux_reverse(current_flux, op)
+
+            # Early exit: if flux is invalid, diagram contributes zero
+            if !haskey(buffers.op_product_pool, new_flux)
+                return buffers.empty_propagator_tau
+            end
 
             # Get op_product buffer for the new flux
             op_product = get_op_product(buffers, new_flux)

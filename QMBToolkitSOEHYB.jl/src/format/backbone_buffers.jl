@@ -52,10 +52,16 @@ struct BackboneBuffers{T <: Number, QN <: QuantumNumber}
     n_dlr::Int
 
     # Variable-flux pools (indexed by QuantumNumber)
+    # Only contains entries for fluxes with non-empty block structure
     result_pool::Dict{QN, Propagator{T}}
     hyb_temp_pool::Dict{QN, Propagator{T}}
     op_product_pool::Dict{QN, Propagator{T}}
     result_dlr_pool::Dict{QN, Propagator{T}}
+
+    # Shared empty propagators for fluxes with no valid blocks
+    # These are returned for intermediate fluxes that don't exist in the pools
+    empty_propagator_tau::Propagator{T}
+    empty_propagator_dlr::Propagator{T}
 
     # Fixed zero-flux buffers
     zero_flux::QN
@@ -186,22 +192,28 @@ function BackboneBuffers{T}(
         basis::Basis, max_order::Int, n_tau::Int, n_dlr::Int) where {T <: Number}
     QN = typeof(basis.sectors[1].qn)
 
-    # Must use enumerate_possible_flux (not compute_valid_fluxes) because
-    # intermediate fluxes during diagram evaluation may not correspond to
-    # any valid sector pair, but still need buffer allocation
-    possible_fluxes = enumerate_possible_flux(QN, max_order)
+    # Use compute_valid_fluxes to only allocate buffers for fluxes with non-empty blocks.
+    # Intermediate fluxes during diagram evaluation that have no valid sector pairs
+    # will use shared empty propagators (returned by getters for missing keys).
+    valid_fluxes = compute_valid_fluxes(basis)
 
     result_pool = Dict{QN, Propagator{T}}()
     hyb_temp_pool = Dict{QN, Propagator{T}}()
     op_product_pool = Dict{QN, Propagator{T}}()
     result_dlr_pool = Dict{QN, Propagator{T}}()
 
-    for flux_qn in possible_fluxes
+    for flux_qn in valid_fluxes
         result_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
         hyb_temp_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
         op_product_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
         result_dlr_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_dlr, T)
     end
+
+    # Create shared empty propagators for intermediate fluxes with no valid blocks.
+    # These are used for fluxes not in the pools (operations on them produce zero).
+    # We use zero(QN) as a placeholder flux - the empty blocks dict is what matters.
+    empty_propagator_tau = Propagator{T}(basis, zero(QN), Dict{Tuple{Int, Int}, Array{T, 3}}())
+    empty_propagator_dlr = Propagator{T}(basis, zero(QN), Dict{Tuple{Int, Int}, Array{T, 3}}())
 
     zero_flux = zero(QN)
     conv_operand = allocate_buffer_for_flux(basis, zero_flux, n_tau, T)
@@ -211,6 +223,7 @@ function BackboneBuffers{T}(
     return BackboneBuffers{T, QN}(
         basis, n_tau, n_dlr,
         result_pool, hyb_temp_pool, op_product_pool, result_dlr_pool,
+        empty_propagator_tau, empty_propagator_dlr,
         zero_flux, conv_operand, conv_hyb_temp, conv_dlr
     )
 end
@@ -256,19 +269,19 @@ is_zero_flux(flux::QuantumNumber) = flux == zero(typeof(flux))
 =============================================================================#
 
 function get_result(buffers::BackboneBuffers{T, QN}, flux::QN) where {T, QN}
-    return buffers.result_pool[flux]
+    return get(buffers.result_pool, flux, buffers.empty_propagator_tau)
 end
 
 function get_hyb_temp(buffers::BackboneBuffers{T, QN}, flux::QN) where {T, QN}
-    return buffers.hyb_temp_pool[flux]
+    return get(buffers.hyb_temp_pool, flux, buffers.empty_propagator_tau)
 end
 
 function get_op_product(buffers::BackboneBuffers{T, QN}, flux::QN) where {T, QN}
-    return buffers.op_product_pool[flux]
+    return get(buffers.op_product_pool, flux, buffers.empty_propagator_tau)
 end
 
 function get_result_dlr(buffers::BackboneBuffers{T, QN}, flux::QN) where {T, QN}
-    return buffers.result_dlr_pool[flux]
+    return get(buffers.result_dlr_pool, flux, buffers.empty_propagator_dlr)
 end
 
 get_conv_operand(buffers::BackboneBuffers) = buffers.conv_operand
@@ -276,19 +289,19 @@ get_conv_hyb_temp(buffers::BackboneBuffers) = buffers.conv_hyb_temp
 get_conv_dlr(buffers::BackboneBuffers) = buffers.conv_dlr
 
 function get_contrib_tau_to_beta_reflected(buffers, flux::QuantumNumber)
-    return buffers.contrib_tau_to_beta_reflected_pool[flux]
+    return get(buffers.contrib_tau_to_beta_reflected_pool, flux, buffers.empty_propagator_tau)
 end
 
 function get_reflection_dlr(buffers, flux::QuantumNumber)
-    return buffers.reflection_dlr_pool[flux]
+    return get(buffers.reflection_dlr_pool, flux, buffers.empty_propagator_dlr)
 end
 
 function get_ann_product(buffers, flux::QuantumNumber)
-    return buffers.ann_product_pool[flux]
+    return get(buffers.ann_product_pool, flux, buffers.empty_propagator_tau)
 end
 
 function get_final_product(buffers, flux::QuantumNumber)
-    return buffers.final_product_pool[flux]
+    return get(buffers.final_product_pool, flux, buffers.empty_propagator_tau)
 end
 
 #=============================================================================
@@ -333,21 +346,28 @@ function allocate_green_buffers(solver_data::SolverData{T}, expansion_order::Int
     )
 
     QN = typeof(basis.sectors[1].qn)
-    possible_fluxes = enumerate_possible_flux(QN, max_order)
+    # Use compute_valid_fluxes to only allocate buffers for fluxes with non-empty blocks.
+    # Missing fluxes will use empty propagators (operations on them produce zero).
+    valid_fluxes = compute_valid_fluxes(basis)
+
     contrib_tau_to_beta_reflected_pool = Dict{QN, Propagator{T}}()
-    for flux_qn in possible_fluxes
+    for flux_qn in valid_fluxes
         contrib_tau_to_beta_reflected_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
     end
 
     reflection_dlr_pool = Dict{QN, Propagator{T}}()
-    for flux_qn in possible_fluxes
+    for flux_qn in valid_fluxes
         reflection_dlr_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_dlr, T)
     end
 
     ann_product_pool = Dict{QN, Propagator{T}}()
-    for flux_qn in possible_fluxes
+    for flux_qn in valid_fluxes
         ann_product_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
     end
+
+    # Shared empty propagators for fluxes with no valid blocks
+    empty_propagator_tau = Propagator{T}(basis, zero(QN), Dict{Tuple{Int, Int}, Array{T, 3}}())
+    empty_propagator_dlr = Propagator{T}(basis, zero(QN), Dict{Tuple{Int, Int}, Array{T, 3}}())
 
     final_product_pool = Dict{QN, Propagator{T}}()
     for idx in 1:n_flavors
@@ -369,6 +389,8 @@ function allocate_green_buffers(solver_data::SolverData{T}, expansion_order::Int
         reflection_dlr_pool = reflection_dlr_pool,
         ann_product_pool = ann_product_pool,
         final_product_pool = final_product_pool,
-        cre_product = cre_product
+        cre_product = cre_product,
+        empty_propagator_tau = empty_propagator_tau,
+        empty_propagator_dlr = empty_propagator_dlr
     )
 end

@@ -45,6 +45,10 @@ function eval_propagator_given_order!(
     for (indices, diagrams) in iter
         for diagram in diagrams
             contribution = eval_propagator_forward_backbone(diagram, solver_data, buffers)
+            # Skip if contribution is empty (invalid flux encountered - diagram contributes zero)
+            if isempty(contribution.blocks)
+                continue
+            end
             prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
             add_scaled!(local_result, prefactor, contribution)
         end

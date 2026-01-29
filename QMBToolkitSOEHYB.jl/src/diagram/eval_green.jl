@@ -52,9 +52,18 @@ function eval_green_given_order!(
             contrib_0_to_tau = eval_green_forward_backbone(
                 diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
             )
+            # Skip if contribution is empty (invalid flux encountered - diagram contributes zero)
+            if isempty(contrib_0_to_tau.blocks)
+                continue
+            end
+
             contrib_tau_to_beta_unreflected = eval_green_reverse_backbone(
                 diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
             )
+            # Skip if contribution is empty (invalid flux encountered - diagram contributes zero)
+            if isempty(contrib_tau_to_beta_unreflected.blocks)
+                continue
+            end
 
             # Reflection: tau -> beta - tau (using pre-allocated buffers)
             flux = get_flux(contrib_tau_to_beta_unreflected)

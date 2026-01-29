@@ -88,7 +88,6 @@ function get_conv_dlr end
 
 # Buffer accessors (used in Green's function evaluation - GreenEvalBuffers)
 function get_contrib_tau_to_beta_reflected end
-function get_reflection_dlr end
 function get_ann_product end
 function get_final_product end
 function get_cre_product end

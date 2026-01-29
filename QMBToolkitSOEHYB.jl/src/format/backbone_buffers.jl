@@ -205,10 +205,9 @@ Invalid (α) combinations during evaluation are skipped via haskey check.
 
   - `backbone_0_to_beta_with_ann`: Accumulated backbone with annihilation operator [n_flavors]
 
-## Reflection pools (indexed by flux):
+## Reflection pool (indexed by flux):
 
   - `contrib_tau_to_beta_reflected_pool`: τ-space buffer for reflected contribution
-  - `reflection_dlr_pool`: DLR-space buffer for reflection transform
 
 ## Operator product pools:
 
@@ -228,9 +227,8 @@ struct GreenEvalBuffers{T <: Number, QN <: QuantumNumber}
     # Accumulation buffer for each flavor
     backbone_0_to_beta_with_ann::Vector{Propagator{T}}
 
-    # Reflection pools (indexed by flux)
+    # Reflection pool (indexed by flux)
     contrib_tau_to_beta_reflected_pool::Dict{QN, Propagator{T}}
-    reflection_dlr_pool::Dict{QN, Propagator{T}}
 
     # Operator product pools
     ann_product_pool::Dict{QN, Propagator{T}}
@@ -306,10 +304,6 @@ function get_contrib_tau_to_beta_reflected(buffers::GreenEvalBuffers{T, QN}, flu
     return buffers.contrib_tau_to_beta_reflected_pool[flux]
 end
 
-function get_reflection_dlr(buffers::GreenEvalBuffers{T, QN}, flux::QN) where {T, QN}
-    return buffers.reflection_dlr_pool[flux]
-end
-
 # With flux pre-filtering including external operators, all accessed fluxes are valid
 function get_ann_product(buffers::GreenEvalBuffers{T, QN}, flux::QN) where {T, QN}
     return buffers.ann_product_pool[flux]
@@ -371,12 +365,10 @@ function allocate_green_buffers(solver_data::SolverData{T}, expansion_order::Int
     # Allocate buffers for all valid fluxes.
     valid_fluxes = compute_valid_fluxes(basis)
 
-    # Reflection pools
+    # Reflection pool
     contrib_tau_to_beta_reflected_pool = Dict{QN, Propagator{T}}()
-    reflection_dlr_pool = Dict{QN, Propagator{T}}()
     for flux_qn in valid_fluxes
         contrib_tau_to_beta_reflected_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
-        reflection_dlr_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_dlr, T)
     end
 
     # Annihilation product pool
@@ -403,7 +395,6 @@ function allocate_green_buffers(solver_data::SolverData{T}, expansion_order::Int
         rev_buffers,
         backbone_0_to_beta_with_ann,
         contrib_tau_to_beta_reflected_pool,
-        reflection_dlr_pool,
         ann_product_pool,
         final_product_pool,
         cre_product,

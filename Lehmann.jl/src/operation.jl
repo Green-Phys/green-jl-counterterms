@@ -1062,3 +1062,51 @@ function dlr2tau!(
 
     return dest
 end
+
+"""
+    dlr2tau!(dest::AbstractArray{T,3}, dlrcoeff::AbstractArray{T,3},
+             precomputed_kernel::AbstractMatrix, workspace::DLRWorkspace{T}) where T
+
+In-place transform from DLR coefficients to τ-space using a pre-computed kernel matrix.
+This is the most efficient version for repeated transforms with the same τ grid (e.g., reflection).
+
+# Arguments
+- `dest`: Output array of shape (dim1, dim2, n_tau) for τ values
+- `dlrcoeff`: Input array of shape (dim1, dim2, n_dlr) with DLR coefficients
+- `precomputed_kernel`: Pre-computed kernel matrix of shape (n_tau, n_dlr)
+- `workspace`: Pre-allocated DLRWorkspace
+
+# Notes
+- This function uses the provided kernel matrix directly, avoiding recomputation
+- Ideal for reflection operations where the reflected kernel K(β-τ, ω) can be cached
+"""
+function dlr2tau!(
+    dest::AbstractArray{TC,3},
+    dlrcoeff::AbstractArray{TC,3},
+    precomputed_kernel::AbstractMatrix,
+    workspace::DLRWorkspace{TC},
+) where {TC<:Number}
+    dim1, dim2, n_dlr_in = size(dlrcoeff)
+    n_tau, n_dlr = size(precomputed_kernel)
+
+    @boundscheck begin
+        @assert size(dest) == (dim1, dim2, n_tau) "dest size $(size(dest)) != expected ($dim1, $dim2, $n_tau)"
+        @assert n_dlr_in == n_dlr "Input DLR dimension $n_dlr_in != kernel column count $n_dlr"
+        @assert workspace.n_dlr >= max(n_dlr, n_tau) "Workspace n_dlr $(workspace.n_dlr) < required $(max(n_dlr, n_tau))"
+        @assert workspace.n_other >= dim1 * dim2 "Workspace n_other $(workspace.n_other) < required $(dim1*dim2)"
+    end
+
+    # Copy input to contiguous buffer: dlrcoeff(dim1, dim2, n_dlr) -> buffer1(n_dlr, dim1*dim2)
+    buffer_in = view(workspace.buffer1, 1:n_dlr, 1:(dim1*dim2))
+    buffer_out = view(workspace.buffer2, 1:n_tau, 1:(dim1*dim2))
+    _tensor3_to_matrix!(buffer_in, dlrcoeff)
+
+    # Matrix multiply: dest = kernel * coeff
+    # precomputed_kernel is (n_tau, n_dlr), buffer_in is (n_dlr, n_other), result is (n_tau, n_other)
+    mul!(buffer_out, precomputed_kernel, buffer_in)
+
+    # Copy result back: buffer_out(n_tau, dim1*dim2) -> dest(dim1, dim2, n_tau)
+    _matrix_to_tensor3!(dest, buffer_out)
+
+    return dest
+end

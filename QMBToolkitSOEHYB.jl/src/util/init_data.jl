@@ -103,9 +103,10 @@ function _check_spin_conservation(hopping_path::String, interaction_path::String
             continue
         end
 
-        # Check spin conservation: spin(i) + spin(j) == spin(k) + spin(l)
-        spin_in = _get_spin(fl_i) + _get_spin(fl_j)
-        spin_out = _get_spin(fl_k) + _get_spin(fl_l)
+        # Check spin conservation for chemist notation: U[i,j,k,l] c†_i c†_k c_l c_j
+        # Creation operators: i, k; Annihilation operators: l, j
+        spin_in = _get_spin(fl_i) + _get_spin(fl_k)
+        spin_out = _get_spin(fl_l) + _get_spin(fl_j)
 
         if spin_in != spin_out
             @warn "Spin conservation violated in Coulomb: U[$fl_i,$fl_j,$fl_k,$fl_l] != 0 but spin change is $(spin_in - spin_out), using QN_N"

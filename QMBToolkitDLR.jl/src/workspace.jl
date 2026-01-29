@@ -42,6 +42,7 @@ Supports non-square matrix convolutions: F (d1 × d2 × r) * G (d2 × d3 × r) -
 - `view_dlr_buffer1`, `view_dlr_buffer2`: Contiguous linear buffers for view-path DLR data
 - `view_tau_buffer1`, `view_tau_buffer2`, `view_tau_result`: Contiguous linear buffers for view-path tau data
 - `τ_reflected`: Pre-computed β - τ for reflection operations (avoids allocation in hot loops)
+- `kernel_tau_reflected`: Pre-computed kernel matrix K(β - τ, ω) for reflection operations
 """
 struct ConvolutionWorkspace{T<:Number}
     H1_dlr::Array{T,3}
@@ -64,6 +65,8 @@ struct ConvolutionWorkspace{T<:Number}
     view_tau_result::Vector{T}
     # Pre-computed reflected tau grid for reflection operations
     τ_reflected::Vector{Float64}
+    # Pre-computed kernel matrix for reflection: K(β - τ, ω)
+    kernel_tau_reflected::Matrix{Float64}
 end
 
 """
@@ -107,6 +110,17 @@ function ConvolutionWorkspace{T}(
     max_tau_size = d1 * d3 * n_tau
     # Pre-compute reflected tau grid: β - τ
     τ_reflected = dlr_grid.β .- dlr_grid.τ
+    # Pre-compute the kernel matrix for reflection: K(β - τ, ω)
+    # This avoids recomputing the kernel on every reflection operation
+    kernel_tau_reflected = Spectral.kernelT(
+        Float64,
+        Val(dlr_grid.isFermi),
+        Val(dlr_grid.symmetry),
+        τ_reflected,
+        dlr_grid.ω,
+        dlr_grid.β,
+        true,
+    )
     return ConvolutionWorkspace{T}(
         zeros(T, d1, d3, r),        # H1_dlr
         zeros(T, d1, d3, r),        # H2_dlr
@@ -126,6 +140,7 @@ function ConvolutionWorkspace{T}(
         zeros(T, max_tau_size),     # view_tau_buffer2
         zeros(T, max_tau_size),     # view_tau_result
         τ_reflected,                # Pre-computed β - τ for reflection
+        kernel_tau_reflected,       # Pre-computed kernel K(β - τ, ω) for reflection
     )
 end
 

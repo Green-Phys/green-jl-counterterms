@@ -76,15 +76,17 @@ function eval_green_given_order!(
 
             @inbounds for ann_index in 1:solver_data.model.n_flavors_physical
                 # Apply annihilation operator: ann_opt * contrib_0_to_tau
+                # Pre-filtering guarantees at least one valid (α, β) exists,
+                # but not all α may be valid. Skip invalid ones.
                 ann_opt = ann_opts[ann_index]
                 ann_product_flux = compute_new_flux(get_flux(contrib_0_to_tau), ann_opt)
-                ann_product = get_ann_product(buffers, ann_product_flux)
 
-                # Skip if flux is outside valid set (ann_product is empty sentinel)
-                if isempty(ann_product.blocks)
+                # Skip if this α produces invalid flux (diagram may be valid for other α)
+                if !haskey(buffers.ann_product_pool, ann_product_flux)
                     continue
                 end
 
+                ann_product = get_ann_product(buffers, ann_product_flux)
                 fill!(ann_product, zero(T))
                 multiply_op_prop!(ann_product, ann_opt, contrib_0_to_tau)
 

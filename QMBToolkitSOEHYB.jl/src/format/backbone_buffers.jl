@@ -243,9 +243,6 @@ struct GreenEvalBuffers{T <: Number, QN <: QuantumNumber}
 
     # Trace computation
     trace_result_buffer::Vector{Float64}
-
-    # Sentinel for post-backbone fluxes that may be outside valid set
-    empty_propagator_tau::Propagator{T}
 end
 
 #=============================================================================
@@ -317,14 +314,13 @@ function get_reflection_dlr(buffers::GreenEvalBuffers{T, QN}, flux::QN) where {T
     return buffers.reflection_dlr_pool[flux]
 end
 
-# Post-backbone accessors use fallback since ann_opt application can produce
-# fluxes outside the valid set (ann_product_flux = backbone_flux + ann_opt.flux)
+# With flux pre-filtering including external operators, all accessed fluxes are valid
 function get_ann_product(buffers::GreenEvalBuffers{T, QN}, flux::QN) where {T, QN}
-    return get(buffers.ann_product_pool, flux, buffers.empty_propagator_tau)
+    return buffers.ann_product_pool[flux]
 end
 
 function get_final_product(buffers::GreenEvalBuffers{T, QN}, flux::QN) where {T, QN}
-    return get(buffers.final_product_pool, flux, buffers.empty_propagator_tau)
+    return buffers.final_product_pool[flux]
 end
 
 get_cre_product(buffers::GreenEvalBuffers) = buffers.cre_product
@@ -406,10 +402,6 @@ function allocate_green_buffers(solver_data::SolverData{T}, expansion_order::Int
     cre_product = allocate_buffer_for_flux(basis, zero(QN), n_tau, T)
     trace_buffer = zeros(Float64, n_tau)
 
-    # Empty propagator sentinel for post-backbone fluxes outside valid set
-    # Used when ann_opt application produces a flux not in ann_product_pool
-    empty_propagator_tau = Propagator{T}(basis, zero(QN), Dict{Tuple{Int, Int}, Array{T, 3}}())
-
     return GreenEvalBuffers{T, QN}(
         fwd_buffers,
         rev_buffers,
@@ -419,7 +411,6 @@ function allocate_green_buffers(solver_data::SolverData{T}, expansion_order::Int
         ann_product_pool,
         final_product_pool,
         cre_product,
-        trace_buffer,
-        empty_propagator_tau
+        trace_buffer
     )
 end

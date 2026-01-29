@@ -493,6 +493,10 @@ Check if the operator sequence produces only valid intermediate fluxes.
 Returns true if all intermediate fluxes encountered during backbone evaluation
 would have non-empty block structure in the given basis.
 
+For propagator diagrams: single flux evolution through the entire backbone.
+For Green's function diagrams: separate forward and reverse backbone evolutions,
+plus validation that external operators can produce valid combined fluxes.
+
 # Arguments
 
   - `topo_config::TopologyConfig`: Topology configuration
@@ -522,12 +526,10 @@ function check_flux_sequence(
         end
     end
 
-    # Build operator sequence with their fluxes
-    # Nodes are processed in order during backbone evaluation (right to left for forward)
     M = topo_config.M
 
-    # Create array of (node_position, operator_flux) for non-empty nodes
-    # We need to track which nodes have operators and what their flux is
+    # Build operator sequence with their fluxes
+    # Each entry: (node_position, operator_flux)
     node_fluxes = Vector{Tuple{Int, QN}}()
 
     for (idx, (i, j)) in enumerate(topo_config.pairing)
@@ -545,49 +547,107 @@ function check_flux_sequence(
         end
     end
 
-    # Sort by node position (backbone evaluation processes in specific order)
-    # For forward backbone: processes from right to left (high index to low)
-    # But the flux accumulation happens as we encounter operators
+    # Sort by node position
     sort!(node_fluxes, by = x -> x[1])
 
-    # Simulate flux evolution
-    # Start from zero flux (bare propagator has zero flux)
-    current_flux = zero(QN)
+    if diagram_type == :propagator_diagram
+        # Propagator: single flux evolution through entire backbone
+        # Nodes 1 and M are empty (boundary)
+        current_flux = zero(QN)
 
-    # For propagator diagrams: evaluate right to left, so reverse order
-    # For green diagrams: similar pattern
-    # The key insight: we process operators in the order they appear in the backbone
-    # which is determined by the pairing structure
-
-    # Actually, the backbone evaluation in multiplication_convolution processes
-    # nodes[i+1] for i in 1:(length(edges)-1), which is nodes[2], nodes[3], ...
-    # So we need to simulate this order
-
-    # For propagator: nodes 1 and M are empty (boundary)
-    # For green: nodes 1, annihilation_pos, and M are empty
-
-    for (node_pos, op_flux) in node_fluxes
-        # Skip boundary nodes (they are :empty)
-        if diagram_type == :propagator_diagram
+        for (node_pos, op_flux) in node_fluxes
             if node_pos == 1 || node_pos == M
                 continue
             end
-        else  # :green_diagram
-            if node_pos == 1 || node_pos == M || node_pos == topo_config.annihilation_pos
-                continue
+
+            current_flux = current_flux + op_flux
+
+            if current_flux ∉ valid_fluxes
+                return false
             end
         end
 
-        # Apply operator flux
-        current_flux = current_flux + op_flux
+        return true
+    else  # :green_diagram
+        # Green's function: SEPARATE forward and reverse backbone evolutions
+        # Forward: nodes 1 to split_point (1 and split_point are empty)
+        # Reverse: nodes split_point to M (split_point and M are empty)
+        # Each starts from zero flux independently!
 
-        # Check if this intermediate flux is valid
-        if current_flux ∉ valid_fluxes
-            return false
+        split_point = topo_config.annihilation_pos
+
+        # Check forward backbone flux evolution (nodes 2 to split_point-1)
+        fwd_flux = zero(QN)
+        for (node_pos, op_flux) in node_fluxes
+            if node_pos <= 1 || node_pos >= split_point
+                continue  # Not in forward backbone
+            end
+
+            fwd_flux = fwd_flux + op_flux
+
+            if fwd_flux ∉ valid_fluxes
+                return false
+            end
         end
-    end
 
-    return true
+        # Check reverse backbone flux evolution (nodes split_point+1 to M-1)
+        # IMPORTANT: reverse backbone processes nodes in DECREASING order (M-1 down to split_point+1)
+        # We need to check intermediate fluxes in the same order
+        rev_node_fluxes = [(pos, flux) for (pos, flux) in node_fluxes
+                           if pos > split_point && pos < M]
+        sort!(rev_node_fluxes, by = x -> -x[1])  # Sort in decreasing order
+
+        rev_flux = zero(QN)
+        for (node_pos, op_flux) in rev_node_fluxes
+            rev_flux = rev_flux + op_flux
+
+            if rev_flux ∉ valid_fluxes
+                return false
+            end
+        end
+
+        # Check that there exists at least one (α, β) combination where:
+        # 1. ann_product_flux = fwd_flux + (-flavor_qn[α]) is valid
+        # 2. final_flux = rev_flux + ann_product_flux is valid (for multiplication)
+        # 3. total_flux = final_flux + flavor_qn[β] = 0 (for trace)
+        #
+        # Condition 3 means: rev_flux + fwd_flux - qn[α] + qn[β] = 0
+        # So: qn[β] - qn[α] = -(fwd_flux + rev_flux)
+        #
+        # We need to check if there exists valid (α, β) pair
+
+        n_flavors = length(basis.flavor_qns)
+        has_valid_external = false
+
+        for α in 1:n_flavors
+            α_qn = basis.flavor_qns[α]
+            ann_product_flux = fwd_flux + (-α_qn)
+
+            # Check if ann_product_flux is valid
+            if ann_product_flux ∉ valid_fluxes
+                continue
+            end
+
+            for β in 1:n_flavors
+                β_qn = basis.flavor_qns[β]
+                # After multiplying with reverse backbone: rev_flux + ann_product_flux
+                # After applying c†_β: rev_flux + ann_product_flux + β_qn
+                # For non-zero trace, this must be zero
+                total_flux = rev_flux + ann_product_flux + β_qn
+
+                if total_flux == zero(QN)
+                    has_valid_external = true
+                    break
+                end
+            end
+
+            if has_valid_external
+                break
+            end
+        end
+
+        return has_valid_external
+    end
 end
 
 """

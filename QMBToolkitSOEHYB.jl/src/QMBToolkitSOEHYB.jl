@@ -32,7 +32,6 @@ include("diagram/backbone_eval.jl")
 include("diagram/eval_common.jl")
 include("diagram/eval_propagator.jl")
 include("diagram/eval_green.jl")
-include("diagram/eval_selfenergy.jl")
 
 export run
 

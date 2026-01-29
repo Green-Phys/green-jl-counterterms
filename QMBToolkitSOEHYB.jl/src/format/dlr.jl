@@ -88,16 +88,23 @@ end
     do_reflection_tau2tau_propagator!(dest::Propagator{T}, dlr_buffer::Propagator{T},
                                       dlr_grid::DLRGrid, prop_tau::Propagator{T},
                                       dlr_workspace::DLRWorkspace{T};
-                                      τ_reflected::AbstractVector{Float64}) where T
+                                      τ_reflected::AbstractVector{Float64},
+                                      kernel_tau_reflected::Union{Nothing,AbstractMatrix{Float64}}=nothing) where T
 
 In-place reflection operation on tau-space data: dest = prop_tau(beta - tau).
 Writes result to dest's existing blocks. Uses dlr_buffer and dlr_workspace to avoid allocations.
 Requires pre-computed τ_reflected (β - τ) to avoid allocations in hot loops.
+
+# Arguments
+
+  - `kernel_tau_reflected`: Optional pre-computed kernel matrix K(β - τ, ω). When provided,
+    avoids recomputing the kernel on each call (significant allocation savings).
 """
 function do_reflection_tau2tau_propagator!(dest::Propagator{T}, dlr_buffer::Propagator{T},
         dlr_grid::DLRGrid, prop_tau::Propagator{T},
         dlr_workspace::DLRWorkspace{T};
-        τ_reflected::AbstractVector{Float64}) where {T}
+        τ_reflected::AbstractVector{Float64},
+        kernel_tau_reflected::Union{Nothing, AbstractMatrix{Float64}} = nothing) where {T}
     @boundscheck @assert dest.basis === prop_tau.basis "Destination and source must have same basis"
     @boundscheck @assert dest.flux == prop_tau.flux "Destination and source must have same flux"
     @boundscheck @assert dlr_buffer.flux == prop_tau.flux "DLR buffer must have same flux"
@@ -116,7 +123,13 @@ function do_reflection_tau2tau_propagator!(dest::Propagator{T}, dlr_buffer::Prop
         if dlr_workspace.n_dlr >= n_dlr && dlr_workspace.n_other >= dim1 * dim2
             Lehmann.tau2dlr!(block_dlr, dlr_grid, block_tau, dlr_workspace)
             # Transform back to tau at reflected points
-            Lehmann.dlr2tau!(dest_block, dlr_grid, block_dlr, τ_reflected, dlr_workspace)
+            if kernel_tau_reflected !== nothing
+                # Use pre-computed kernel (avoids allocation)
+                Lehmann.dlr2tau!(dest_block, block_dlr, kernel_tau_reflected, dlr_workspace)
+            else
+                # Compute kernel on-the-fly (allocates)
+                Lehmann.dlr2tau!(dest_block, dlr_grid, block_dlr, τ_reflected, dlr_workspace)
+            end
         else
             # Fallback to allocating version for blocks larger than workspace
             block_dlr_tmp = QMBToolkitDLR.tau2dlr(dlr_grid, block_tau, dlr_grid.τ; axis = 3)
@@ -253,7 +266,8 @@ dlr2tau(dlr_grid::DLRGrid, prop_dlr::Propagator{T}, tau_grid::Vector{Float64}) w
 # Reflection (in-place only)
 do_reflection_tau2tau!(dest::Propagator{T}, dlr_buffer::Propagator{T}, dlr_grid::DLRGrid,
     prop_tau::Propagator{T}, dlr_workspace::DLRWorkspace{T};
-    τ_reflected::AbstractVector{Float64}) where {T} = do_reflection_tau2tau_propagator!(dest, dlr_buffer, dlr_grid, prop_tau, dlr_workspace; τ_reflected = τ_reflected)
+    τ_reflected::AbstractVector{Float64},
+    kernel_tau_reflected::Union{Nothing, AbstractMatrix{Float64}} = nothing) where {T} = do_reflection_tau2tau_propagator!(dest, dlr_buffer, dlr_grid, prop_tau, dlr_workspace; τ_reflected = τ_reflected, kernel_tau_reflected = kernel_tau_reflected)
 
 # Extract at tau
 extract_at_tau(propagator::Propagator{T}, tau::Float64, dlr_grid::DLRGrid) where {T} = extract_at_tau_propagator(propagator, tau, dlr_grid)

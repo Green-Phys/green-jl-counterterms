@@ -63,7 +63,8 @@ function eval_green_given_order!(
             convolution_workspace = solver_data.model.convolution_workspace
             do_reflection_tau2tau!(contrib_tau_to_beta, reflection_dlr, solver_data.model.dlr_grid,
                 contrib_tau_to_beta_unreflected, convolution_workspace.dlr_workspace;
-                τ_reflected = convolution_workspace.τ_reflected)
+                τ_reflected = convolution_workspace.τ_reflected,
+                kernel_tau_reflected = convolution_workspace.kernel_tau_reflected)
 
             prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
 

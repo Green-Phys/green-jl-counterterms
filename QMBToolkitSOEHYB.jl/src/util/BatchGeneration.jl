@@ -198,3 +198,163 @@ function Base.iterate(iter::BatchIterator, state::Int = iter.start_idx)
 
     return ((indices, diagrams), end_idx + 1)
 end
+
+#=============================================================================
+# Group-Based Batch Iterator (Hierarchical Iteration)
+=============================================================================#
+
+"""
+    GroupBatchIterator
+
+Iterator that processes diagram groups hierarchically, generating all exponent
+combinations for each valid group.
+
+This iterator distributes diagram groups (not individual diagrams) across MPI ranks,
+ensuring better cache locality and enabling flux pre-filtering.
+
+# Fields
+
+  - `cache::DiagramConfigCache`: The configuration cache
+  - `groups::Vector{DiagramGroup}`: Valid diagram groups (pre-filtered by flux)
+  - `batch_size::Int`: Maximum diagrams per batch
+  - `start_group_idx::Int`: First group index for this rank (1-based)
+  - `end_group_idx::Int`: Last group index for this rank (1-based)
+"""
+struct GroupBatchIterator{L}
+    cache::DiagramConfigCache{L}
+    groups::Vector{DiagramGroup}
+    batch_size::Int
+    start_group_idx::Int
+    end_group_idx::Int
+end
+
+"""
+    group_batch_iterator(cache, groups, batch_size, rank, nprocs)
+
+Create a GroupBatchIterator for MPI-distributed group-based iteration.
+
+Distributes groups (not individual diagrams) across MPI ranks for better
+load balancing when many diagrams are filtered by flux pre-validation.
+
+# Arguments
+
+  - `cache::DiagramConfigCache`: The configuration cache
+  - `groups::Vector{DiagramGroup}`: Valid diagram groups
+  - `batch_size::Int`: Maximum diagrams per batch
+  - `rank::Int`: MPI rank (0-based)
+  - `nprocs::Int`: Number of MPI processes
+
+# Returns
+
+  - `GroupBatchIterator`: Iterator for this rank's portion of groups
+"""
+function group_batch_iterator(
+        cache::DiagramConfigCache{L},
+        groups::Vector{DiagramGroup},
+        batch_size::Int,
+        rank::Int,
+        nprocs::Int
+) where {L}
+    n_groups = length(groups)
+
+    if n_groups == 0
+        return GroupBatchIterator{L}(cache, groups, batch_size, 1, 0)
+    end
+
+    # Distribute groups across ranks
+    base_count = n_groups ÷ nprocs
+    remainder = n_groups % nprocs
+
+    if rank < remainder
+        start_idx = rank * (base_count + 1) + 1
+        end_idx = start_idx + base_count
+    else
+        start_idx = remainder * (base_count + 1) + (rank - remainder) * base_count + 1
+        end_idx = start_idx + base_count - 1
+    end
+
+    # Handle edge cases
+    if start_idx > n_groups
+        return GroupBatchIterator{L}(cache, groups, batch_size, 1, 0)
+    end
+    end_idx = min(end_idx, n_groups)
+
+    return GroupBatchIterator{L}(cache, groups, batch_size, start_idx, end_idx)
+end
+
+"""
+    GroupBatchIterator(cache, groups, batch_size)
+
+Create a GroupBatchIterator that processes all groups (single-process usage).
+"""
+function GroupBatchIterator(
+        cache::DiagramConfigCache{L}, groups::Vector{DiagramGroup}, batch_size::Int) where {L}
+    return GroupBatchIterator{L}(cache, groups, batch_size, 1, length(groups))
+end
+
+# Iterator state: (current_group_idx, current_exp_idx_in_group)
+struct GroupIteratorState
+    group_idx::Int
+    exp_idx::Int
+end
+
+function Base.length(iter::GroupBatchIterator)
+    if iter.end_group_idx < iter.start_group_idx
+        return 0
+    end
+    # Count total diagrams in our groups
+    total = sum(iter.groups[i].n_exponent_combos for i in iter.start_group_idx:iter.end_group_idx)
+    return cld(total, iter.batch_size)
+end
+
+function Base.iterate(iter::GroupBatchIterator)
+    if iter.end_group_idx < iter.start_group_idx || isempty(iter.groups)
+        return nothing
+    end
+    return Base.iterate(iter, GroupIteratorState(iter.start_group_idx, 1))
+end
+
+function Base.iterate(iter::GroupBatchIterator{L}, state::GroupIteratorState) where {L}
+    group_idx = state.group_idx
+    exp_idx = state.exp_idx
+
+    # Check if we're done
+    if group_idx > iter.end_group_idx
+        return nothing
+    end
+
+    # Collect diagrams for this batch
+    diagrams = BackBone[]
+    remaining = iter.batch_size
+
+    while remaining > 0 && group_idx <= iter.end_group_idx
+        group = iter.groups[group_idx]
+        n_exp = group.n_exponent_combos
+
+        # How many diagrams can we take from this group?
+        available = n_exp - exp_idx + 1
+        take = min(available, remaining)
+
+        # Generate diagrams from this group
+        for i in 0:(take - 1)
+            diagram = generate_diagram_from_group(iter.cache, group, exp_idx + i)
+            push!(diagrams, diagram)
+        end
+
+        remaining -= take
+        exp_idx += take
+
+        # Move to next group if we exhausted this one
+        if exp_idx > n_exp
+            group_idx += 1
+            exp_idx = 1
+        end
+    end
+
+    if isempty(diagrams)
+        return nothing
+    end
+
+    next_state = GroupIteratorState(group_idx, exp_idx)
+    return (diagrams, next_state)
+end

@@ -4,10 +4,10 @@ using MPI
 """
     eval_propagator_given_order!(solver_data, cache, comm; batch_size=100000)
 
-Evaluate all propagator diagrams at a given order using batched generation.
+Evaluate all propagator diagrams at a given order using hierarchical group-based iteration.
 
-Memory-efficient version that generates and evaluates diagrams in batches,
-avoiding storing all diagrams in memory simultaneously.
+Uses flux pre-filtering to skip invalid diagrams before evaluation. Diagrams are
+grouped by (topology, direction, flavor) and distributed across MPI ranks.
 
 # Arguments
 
@@ -22,8 +22,8 @@ avoiding storing all diagrams in memory simultaneously.
 
 # Parallelization
 
-  - Diagrams are distributed across MPI ranks in contiguous chunks
-  - Each rank generates and evaluates its assigned diagrams in batches
+  - Diagram groups are distributed across MPI ranks
+  - Each rank generates and evaluates its assigned groups in batches
   - Results are summed across all ranks using MPI.Allreduce
 """
 function eval_propagator_given_order!(
@@ -35,24 +35,23 @@ function eval_propagator_given_order!(
     propagator = get_propagator(solver_data.calc)
     local_result = zeros_like(propagator.vals)
 
+    # Build valid groups with flux pre-filtering
+    basis = get_bare_propagator(solver_data.model).vals.basis
+    valid_groups = build_valid_groups(cache, basis)
+
     # Allocate evaluation buffers once
     buffers = allocate_propagator_buffers(solver_data, cache.order)
 
-    # Create batch iterator for this rank's portion
-    iter = batch_iterator(cache, batch_size, rank, nprocs)
+    # Create group-based batch iterator for this rank's portion
+    iter = group_batch_iterator(cache, valid_groups, batch_size, rank, nprocs)
 
-    # Process batches
-    for (indices, diagrams) in iter
+    # Process batches (all diagrams guaranteed to have valid flux)
+    for diagrams in iter
         for diagram in diagrams
             contribution = eval_propagator_forward_backbone(diagram, solver_data, buffers)
-            # Skip if contribution is empty (invalid flux encountered - diagram contributes zero)
-            if isempty(contribution.blocks)
-                continue
-            end
             prefactor = compute_diagram_prefactor(diagram, solver_data.model.K0_inverse)
             add_scaled!(local_result, prefactor, contribution)
         end
-        # Batch is discarded after this iteration, freeing memory
     end
 
     # Sum results from all ranks

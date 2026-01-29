@@ -4,9 +4,10 @@ using MPI
 """
     eval_green_given_order!(solver_data, cache, is_bold, comm; batch_size=100000)
 
-Evaluate all Green's function diagrams at a given order using batched generation.
+Evaluate all Green's function diagrams at a given order using hierarchical group-based iteration.
 
-Memory-efficient version that generates and evaluates diagrams in batches.
+Uses flux pre-filtering to skip invalid diagrams before evaluation. Diagrams are
+grouped by (topology, direction, flavor) and distributed across MPI ranks.
 
 # Arguments
 
@@ -22,8 +23,8 @@ Memory-efficient version that generates and evaluates diagrams in batches.
 
 # Parallelization
 
-  - Diagrams are distributed across MPI ranks in contiguous chunks
-  - Each rank generates and evaluates its assigned diagrams in batches
+  - Diagram groups are distributed across MPI ranks
+  - Each rank generates and evaluates its assigned groups in batches
   - Results are summed across all ranks using MPI.Allreduce
 """
 function eval_green_given_order!(
@@ -40,30 +41,26 @@ function eval_green_given_order!(
 
     local_result = zeros(T, size(solver_data.calc.green.vals)...)
 
+    # Build valid groups with flux pre-filtering
+    basis = get_bare_propagator(solver_data.model).vals.basis
+    valid_groups = build_valid_groups(cache, basis)
+
     # Allocate evaluation buffers once
     buffers = allocate_green_buffers(solver_data, cache.order)
 
-    # Create batch iterator for this rank's portion
-    iter = batch_iterator(cache, batch_size, rank, nprocs)
+    # Create group-based batch iterator for this rank's portion
+    iter = group_batch_iterator(cache, valid_groups, batch_size, rank, nprocs)
 
-    # Process batches
-    for (indices, diagrams) in iter
+    # Process batches (all diagrams guaranteed to have valid flux)
+    for diagrams in iter
         for diagram in diagrams
             contrib_0_to_tau = eval_green_forward_backbone(
                 diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
             )
-            # Skip if contribution is empty (invalid flux encountered - diagram contributes zero)
-            if isempty(contrib_0_to_tau.blocks)
-                continue
-            end
 
             contrib_tau_to_beta_unreflected = eval_green_reverse_backbone(
                 diagram, diagram.external_opts_loc[2], solver_data, propagator, buffers
             )
-            # Skip if contribution is empty (invalid flux encountered - diagram contributes zero)
-            if isempty(contrib_tau_to_beta_unreflected.blocks)
-                continue
-            end
 
             # Reflection: tau -> beta - tau (using pre-allocated buffers)
             flux = get_flux(contrib_tau_to_beta_unreflected)
@@ -82,6 +79,12 @@ function eval_green_given_order!(
                 ann_opt = ann_opts[ann_index]
                 ann_product_flux = compute_new_flux(get_flux(contrib_0_to_tau), ann_opt)
                 ann_product = get_ann_product(buffers, ann_product_flux)
+
+                # Skip if flux is outside valid set (ann_product is empty sentinel)
+                if isempty(ann_product.blocks)
+                    continue
+                end
+
                 fill!(ann_product, zero(T))
                 multiply_op_prop!(ann_product, ann_opt, contrib_0_to_tau)
 
@@ -94,7 +97,6 @@ function eval_green_given_order!(
                 add_scaled!(buffers.backbone_0_to_beta_with_ann[ann_index], prefactor, final_product)
             end
         end
-        # Batch is discarded after this iteration, freeing memory
     end
 
     # Compute final Green's function by applying creation operators and taking trace

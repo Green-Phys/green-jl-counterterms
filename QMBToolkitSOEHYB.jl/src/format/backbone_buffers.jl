@@ -26,6 +26,9 @@ Provides 5 distinct buffer roles for scratch space during evaluation.
 Buffer pools are indexed by quantum number (flux), allowing pre-allocation of
 buffers for all possible flux values encountered during diagram evaluation.
 
+Note: With flux pre-filtering (build_valid_groups), all diagrams are guaranteed
+to have valid intermediate fluxes, so no empty propagator sentinels are needed.
+
 # Type Parameters
 
   - `T`: Numeric element type
@@ -54,11 +57,6 @@ struct PropagatorEvalBuffers{T <: Number, QN <: QuantumNumber}
     result_pool::Dict{QN, Propagator{T}}
     op_product_pool::Dict{QN, Propagator{T}}
     result_dlr_pool::Dict{QN, Propagator{T}}
-
-    # Shared empty propagators for fluxes with no valid blocks
-    # These are returned for intermediate fluxes that don't exist in the pools
-    empty_propagator_tau::Propagator{T}
-    empty_propagator_dlr::Propagator{T}
 
     # Fixed zero-flux buffers
     zero_flux::QN
@@ -148,9 +146,9 @@ function PropagatorEvalBuffers{T}(
         basis::Basis, max_order::Int, n_tau::Int, n_dlr::Int) where {T <: Number}
     QN = typeof(basis.sectors[1].qn)
 
-    # Use compute_valid_fluxes to only allocate buffers for fluxes with non-empty blocks.
-    # Intermediate fluxes during diagram evaluation that have no valid sector pairs
-    # will use shared empty propagators (returned by getters for missing keys).
+    # Allocate buffers for all valid fluxes (fluxes with non-empty block structure).
+    # With flux pre-filtering (build_valid_groups), all diagrams are guaranteed
+    # to only encounter valid fluxes during evaluation.
     valid_fluxes = compute_valid_fluxes(basis)
 
     result_pool = Dict{QN, Propagator{T}}()
@@ -163,12 +161,6 @@ function PropagatorEvalBuffers{T}(
         result_dlr_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_dlr, T)
     end
 
-    # Create shared empty propagators for intermediate fluxes with no valid blocks.
-    # These are used for fluxes not in the pools (operations on them produce zero).
-    # We use zero(QN) as a placeholder flux - the empty blocks dict is what matters.
-    empty_propagator_tau = Propagator{T}(basis, zero(QN), Dict{Tuple{Int, Int}, Array{T, 3}}())
-    empty_propagator_dlr = Propagator{T}(basis, zero(QN), Dict{Tuple{Int, Int}, Array{T, 3}}())
-
     zero_flux = zero(QN)
     conv_operand = allocate_buffer_for_flux(basis, zero_flux, n_tau, T)
     conv_dlr = allocate_buffer_for_flux(basis, zero_flux, n_dlr, T)
@@ -176,7 +168,6 @@ function PropagatorEvalBuffers{T}(
     return PropagatorEvalBuffers{T, QN}(
         basis, n_tau, n_dlr,
         result_pool, op_product_pool, result_dlr_pool,
-        empty_propagator_tau, empty_propagator_dlr,
         zero_flux, conv_operand, conv_dlr
     )
 end
@@ -192,6 +183,11 @@ Buffers for Green's function diagram evaluation.
 
 Contains forward/reverse backbone buffers plus additional pools for
 reflection, annihilation/creation operator products, and trace computation.
+
+Note: With flux pre-filtering (build_valid_groups), backbone diagrams are guaranteed
+to have valid intermediate fluxes. However, post-backbone operations (ann_product)
+may produce fluxes outside the valid set, so empty propagator sentinels are kept
+for those accessors.
 
 # Type Parameters
 
@@ -224,10 +220,9 @@ reflection, annihilation/creation operator products, and trace computation.
 
   - `trace_result_buffer`: Accumulates trace values [n_tau]
 
-## Shared sentinels:    # Backbone evaluation buffers
+## Sentinels:
 
-  - `empty_propagator_tau`: Empty propagator for missing τ-space fluxes
-  - `empty_propagator_dlr`: Empty propagator for missing DLR-space fluxes
+  - `empty_propagator_tau`: Empty propagator for post-backbone fluxes outside valid set
 """
 struct GreenEvalBuffers{T <: Number, QN <: QuantumNumber}
     # Backbone evaluation buffers
@@ -249,9 +244,8 @@ struct GreenEvalBuffers{T <: Number, QN <: QuantumNumber}
     # Trace computation
     trace_result_buffer::Vector{Float64}
 
-    # Shared sentinels (reused from fwd_buffers)
+    # Sentinel for post-backbone fluxes that may be outside valid set
     empty_propagator_tau::Propagator{T}
-    empty_propagator_dlr::Propagator{T}
 end
 
 #=============================================================================
@@ -294,30 +288,37 @@ is_zero_flux(flux::QuantumNumber) = flux == zero(typeof(flux))
 # Buffer Accessors
 =============================================================================#
 
+# PropagatorEvalBuffers accessors
+# With flux pre-filtering, all accessed fluxes are guaranteed to exist in pools
+
 function get_result(buffers::PropagatorEvalBuffers{T, QN}, flux::QN) where {T, QN}
-    return get(buffers.result_pool, flux, buffers.empty_propagator_tau)
+    return buffers.result_pool[flux]
 end
 
 function get_op_product(buffers::PropagatorEvalBuffers{T, QN}, flux::QN) where {T, QN}
-    return get(buffers.op_product_pool, flux, buffers.empty_propagator_tau)
+    return buffers.op_product_pool[flux]
 end
 
 function get_result_dlr(buffers::PropagatorEvalBuffers{T, QN}, flux::QN) where {T, QN}
-    return get(buffers.result_dlr_pool, flux, buffers.empty_propagator_dlr)
+    return buffers.result_dlr_pool[flux]
 end
 
 get_conv_operand(buffers::PropagatorEvalBuffers) = buffers.conv_operand
 get_conv_dlr(buffers::PropagatorEvalBuffers) = buffers.conv_dlr
 
-# GreenEvalBuffers accessors (properly typed)
+# GreenEvalBuffers accessors
+# With flux pre-filtering, all accessed fluxes are guaranteed to exist in pools
+
 function get_contrib_tau_to_beta_reflected(buffers::GreenEvalBuffers{T, QN}, flux::QN) where {T, QN}
-    return get(buffers.contrib_tau_to_beta_reflected_pool, flux, buffers.empty_propagator_tau)
+    return buffers.contrib_tau_to_beta_reflected_pool[flux]
 end
 
 function get_reflection_dlr(buffers::GreenEvalBuffers{T, QN}, flux::QN) where {T, QN}
-    return get(buffers.reflection_dlr_pool, flux, buffers.empty_propagator_dlr)
+    return buffers.reflection_dlr_pool[flux]
 end
 
+# Post-backbone accessors use fallback since ann_opt application can produce
+# fluxes outside the valid set (ann_product_flux = backbone_flux + ann_opt.flux)
 function get_ann_product(buffers::GreenEvalBuffers{T, QN}, flux::QN) where {T, QN}
     return get(buffers.ann_product_pool, flux, buffers.empty_propagator_tau)
 end
@@ -374,8 +375,8 @@ function allocate_green_buffers(solver_data::SolverData{T}, expansion_order::Int
         [zeros(Propagator{T}, basis, ann_opts[idx].flux, n_tau) for idx in 1:n_flavors]
     )
 
-    # Use compute_valid_fluxes to only allocate buffers for fluxes with non-empty blocks.
-    # Missing fluxes will use empty propagators (operations on them produce zero).
+    # With flux pre-filtering (build_valid_groups), all diagrams have valid fluxes.
+    # Allocate buffers for all valid fluxes.
     valid_fluxes = compute_valid_fluxes(basis)
 
     # Reflection pools
@@ -405,9 +406,9 @@ function allocate_green_buffers(solver_data::SolverData{T}, expansion_order::Int
     cre_product = allocate_buffer_for_flux(basis, zero(QN), n_tau, T)
     trace_buffer = zeros(Float64, n_tau)
 
-    # Reuse empty propagators from fwd_buffers
-    empty_propagator_tau = fwd_buffers.empty_propagator_tau
-    empty_propagator_dlr = fwd_buffers.empty_propagator_dlr
+    # Empty propagator sentinel for post-backbone fluxes outside valid set
+    # Used when ann_opt application produces a flux not in ann_product_pool
+    empty_propagator_tau = Propagator{T}(basis, zero(QN), Dict{Tuple{Int, Int}, Array{T, 3}}())
 
     return GreenEvalBuffers{T, QN}(
         fwd_buffers,
@@ -419,7 +420,6 @@ function allocate_green_buffers(solver_data::SolverData{T}, expansion_order::Int
         final_product_pool,
         cre_product,
         trace_buffer,
-        empty_propagator_tau,
-        empty_propagator_dlr
+        empty_propagator_tau
     )
 end

@@ -43,14 +43,8 @@ function _multiply_op_prop!(
     @boundscheck @assert A.basis === B.basis "Operator and array must use same basis"
     @boundscheck @assert temp_buffer.basis === B.basis "Buffer must use same basis as input"
 
-    # Handle empty B case (propagator with no blocks)
-    if isempty(B.blocks)
-        # Result is also empty - fill temp_buffer blocks with zeros
-        for (key, block) in temp_buffer.blocks
-            fill!(block, zero(T))
-        end
-        return
-    end
+    # With flux pre-filtering, propagators should never be empty
+    @boundscheck @assert !isempty(B.blocks) "Unexpected empty propagator in multiply_op_prop!"
 
     # Get time dimension and basis
     # All blocks should have same n_tau, so get from any block (layout: dim1, dim2, n_tau)
@@ -61,7 +55,7 @@ function _multiply_op_prop!(
     # Result flux is composition of input fluxes
     result_flux = A.flux + B.flux
     # Allow flux mismatch for empty buffers (they represent zero regardless of flux)
-    @boundscheck @assert isempty(temp_buffer.blocks) || temp_buffer.flux == result_flux "Buffer flux must match result flux"
+    @boundscheck @assert temp_buffer.flux == result_flux "Buffer flux must match result flux"
 
     # For each result block, compute: result[tgt, src](τ) = Σ_mid A[tgt, mid] * B[mid, src](τ)
     # Use direct dict lookups instead of building temporary index structures
@@ -122,13 +116,8 @@ function _multiply_prop_op!(
     @boundscheck @assert A.basis === B.basis "Array and operator must use same basis"
     @boundscheck @assert temp_buffer.basis === A.basis "Buffer must use same basis as input"
 
-    # Handle empty A case
-    if isempty(A.blocks)
-        for (key, block) in temp_buffer.blocks
-            fill!(block, zero(T))
-        end
-        return
-    end
+    # With flux pre-filtering, propagators should never be empty
+    @boundscheck @assert !isempty(A.blocks) "Unexpected empty propagator in multiply_prop_op!"
 
     # Get time dimension and basis (layout: dim1, dim2, n_tau)
     n_tau = size(first(values(A.blocks)), 3)
@@ -138,7 +127,7 @@ function _multiply_prop_op!(
     # Result flux is composition of input fluxes
     result_flux = A.flux + B.flux
     # Allow flux mismatch for empty buffers (they represent zero regardless of flux)
-    @boundscheck @assert isempty(temp_buffer.blocks) || temp_buffer.flux == result_flux "Buffer flux must match result flux"
+    @boundscheck @assert temp_buffer.flux == result_flux "Buffer flux must match result flux"
 
     # For each result block, compute: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src]
     # Use direct dict lookups instead of building temporary index structures
@@ -184,11 +173,8 @@ In-place version: writes trace results to trace_buffer.
   - `trace_buffer`: The input buffer with trace values written
 """
 function _trace_prop!(trace_buffer::Vector{<:Real}, A::Propagator{<:Number})
-    # Handle empty case
-    if isempty(A.blocks)
-        fill!(trace_buffer, 0.0)
-        return trace_buffer
-    end
+    # With flux pre-filtering, propagators should never be empty
+    @boundscheck @assert !isempty(A.blocks) "Unexpected empty propagator in trace_prop!"
 
     # Get time dimension from any block (layout: dim1, dim2, n_tau)
     n_tau = size(first(values(A.blocks)), 3)
@@ -246,13 +232,9 @@ function _multiply_prop_prop!(
     @boundscheck @assert A.basis === B.basis "Both arrays must use same basis"
     @boundscheck @assert temp_buffer.basis === A.basis "Buffer must use same basis as inputs"
 
-    # Handle empty A or B case
-    if isempty(A.blocks) || isempty(B.blocks)
-        for (key, block) in temp_buffer.blocks
-            fill!(block, zero(T))
-        end
-        return temp_buffer
-    end
+    # With flux pre-filtering, propagators should never be empty
+    @boundscheck @assert !isempty(A.blocks) "Unexpected empty propagator A in multiply_prop_prop!"
+    @boundscheck @assert !isempty(B.blocks) "Unexpected empty propagator B in multiply_prop_prop!"
 
     # Get time dimension and basis (layout: dim1, dim2, n_tau)
     n_tau = size(first(values(A.blocks)), 3)
@@ -261,8 +243,7 @@ function _multiply_prop_prop!(
 
     # Result flux is composition of input fluxes
     result_flux = A.flux + B.flux
-    # Allow flux mismatch for empty buffers (they represent zero regardless of flux)
-    @boundscheck @assert isempty(temp_buffer.blocks) || temp_buffer.flux == result_flux "Buffer flux must match result flux"
+    @boundscheck @assert temp_buffer.flux == result_flux "Buffer flux must match result flux"
 
     # For each result block, compute: result[tgt, src](τ) = Σ_mid A[tgt, mid](τ) * B[mid, src](τ)
     # Use direct dict lookups instead of building temporary index structures

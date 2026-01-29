@@ -457,3 +457,212 @@ function generate_diagram_at_index(cache::DiagramConfigCache, linear_idx::Int)
     topo_config, directions, flavors, exponent_indices = get_configs_at_index(cache, linear_idx)
     return generate_diagram_from_configs(cache, topo_config, directions, flavors, exponent_indices)
 end
+
+#=============================================================================
+# Flux Pre-Filtering Infrastructure
+=============================================================================#
+
+using QMBToolkitED: Basis, QuantumNumber
+
+"""
+    DiagramGroup
+
+A group of diagrams sharing the same (topology, direction, flavor) configuration.
+All diagrams in a group have the same flux sequence and operator structure,
+differing only in exponent indices.
+
+# Fields
+
+  - `topo_idx::Int`: Index into cache.topologies
+  - `dir_idx::Int`: Index into cache.directions
+  - `flav_idx::Int`: Index into cache.flavors
+  - `n_exponent_combos::Int`: Number of exponent combinations (diagrams in this group)
+"""
+struct DiagramGroup
+    topo_idx::Int
+    dir_idx::Int
+    flav_idx::Int
+    n_exponent_combos::Int
+end
+
+"""
+    check_flux_sequence(topo_config, directions, flavors, basis, diagram_type) -> Bool
+
+Check if the operator sequence produces only valid intermediate fluxes.
+
+Returns true if all intermediate fluxes encountered during backbone evaluation
+would have non-empty block structure in the given basis.
+
+# Arguments
+
+  - `topo_config::TopologyConfig`: Topology configuration
+  - `directions::NTuple{L,Symbol}`: Direction for each hybridization line
+  - `flavors::NTuple{L,Int}`: Flavor index for each hybridization line
+  - `basis::Basis`: The basis defining valid fluxes
+  - `diagram_type::Symbol`: :propagator_diagram or :green_diagram
+
+# Returns
+
+  - `Bool`: true if all intermediate fluxes are valid, false otherwise
+"""
+function check_flux_sequence(
+        topo_config::TopologyConfig,
+        directions::NTuple{L, Symbol},
+        flavors::NTuple{L, Int},
+        basis::Basis,
+        diagram_type::Symbol
+) where {L}
+    # Get quantum number type and compute valid fluxes
+    QN = typeof(basis.sectors[1].qn)
+    valid_fluxes = Set{QN}()
+    for src_sector in basis.sectors
+        for tgt_sector in basis.sectors
+            flux = tgt_sector.qn + (-src_sector.qn)
+            push!(valid_fluxes, flux)
+        end
+    end
+
+    # Build operator sequence with their fluxes
+    # Nodes are processed in order during backbone evaluation (right to left for forward)
+    M = topo_config.M
+
+    # Create array of (node_position, operator_flux) for non-empty nodes
+    # We need to track which nodes have operators and what their flux is
+    node_fluxes = Vector{Tuple{Int, QN}}()
+
+    for (idx, (i, j)) in enumerate(topo_config.pairing)
+        flavor = flavors[idx]
+        flavor_qn = basis.flavor_qns[flavor]
+
+        if directions[idx] == :forward
+            # cdag at node i, c at node j
+            push!(node_fluxes, (i, flavor_qn))      # cdag adds +flavor_qn
+            push!(node_fluxes, (j, -flavor_qn))     # c adds -flavor_qn
+        else  # :backward
+            # c at node i, cdag at node j
+            push!(node_fluxes, (i, -flavor_qn))     # c adds -flavor_qn
+            push!(node_fluxes, (j, flavor_qn))      # cdag adds +flavor_qn
+        end
+    end
+
+    # Sort by node position (backbone evaluation processes in specific order)
+    # For forward backbone: processes from right to left (high index to low)
+    # But the flux accumulation happens as we encounter operators
+    sort!(node_fluxes, by = x -> x[1])
+
+    # Simulate flux evolution
+    # Start from zero flux (bare propagator has zero flux)
+    current_flux = zero(QN)
+
+    # For propagator diagrams: evaluate right to left, so reverse order
+    # For green diagrams: similar pattern
+    # The key insight: we process operators in the order they appear in the backbone
+    # which is determined by the pairing structure
+
+    # Actually, the backbone evaluation in multiplication_convolution processes
+    # nodes[i+1] for i in 1:(length(edges)-1), which is nodes[2], nodes[3], ...
+    # So we need to simulate this order
+
+    # For propagator: nodes 1 and M are empty (boundary)
+    # For green: nodes 1, annihilation_pos, and M are empty
+
+    for (node_pos, op_flux) in node_fluxes
+        # Skip boundary nodes (they are :empty)
+        if diagram_type == :propagator_diagram
+            if node_pos == 1 || node_pos == M
+                continue
+            end
+        else  # :green_diagram
+            if node_pos == 1 || node_pos == M || node_pos == topo_config.annihilation_pos
+                continue
+            end
+        end
+
+        # Apply operator flux
+        current_flux = current_flux + op_flux
+
+        # Check if this intermediate flux is valid
+        if current_flux ∉ valid_fluxes
+            return false
+        end
+    end
+
+    return true
+end
+
+"""
+    build_valid_groups(cache::DiagramConfigCache, basis::Basis) -> Vector{DiagramGroup}
+
+Build list of valid diagram groups by pre-filtering invalid flux sequences.
+
+A group is valid if its (topology, direction, flavor) combination produces
+only valid intermediate fluxes during backbone evaluation.
+
+# Arguments
+
+  - `cache::DiagramConfigCache`: The configuration cache
+  - `basis::Basis`: The basis defining valid fluxes
+
+# Returns
+
+  - `Vector{DiagramGroup}`: List of valid groups, each containing n_exponent_combos diagrams
+"""
+function build_valid_groups(cache::DiagramConfigCache{L}, basis::Basis) where {L}
+    groups = DiagramGroup[]
+
+    for topo_idx in 1:cache.n_topologies
+        topo_config = cache.topologies[topo_idx]
+
+        for dir_idx in 1:cache.n_directions
+            directions = cache.directions[dir_idx]
+
+            for flav_idx in 1:cache.n_flavors_combo
+                flavors = cache.flavors[flav_idx]
+
+                # Check if this combination has valid flux sequence
+                if check_flux_sequence(topo_config, directions, flavors, basis, cache.diagram_type)
+                    push!(groups, DiagramGroup(
+                        topo_idx, dir_idx, flav_idx, cache.n_exponents_combo
+                    ))
+                end
+            end
+        end
+    end
+
+    return groups
+end
+
+"""
+    total_diagrams_in_groups(groups::Vector{DiagramGroup}) -> Int
+
+Get total number of diagrams across all valid groups.
+"""
+function total_diagrams_in_groups(groups::Vector{DiagramGroup})
+    return sum(g.n_exponent_combos for g in groups; init = 0)
+end
+
+"""
+    generate_diagram_from_group(cache::DiagramConfigCache, group::DiagramGroup, exp_idx::Int)
+
+Generate a diagram from a group and exponent index.
+
+# Arguments
+
+  - `cache::DiagramConfigCache`: The configuration cache
+  - `group::DiagramGroup`: The diagram group
+  - `exp_idx::Int`: Index into cache.exponent_indices (1-based)
+
+# Returns
+
+  - `BackBone`: The generated diagram
+"""
+function generate_diagram_from_group(
+        cache::DiagramConfigCache{L}, group::DiagramGroup, exp_idx::Int) where {L}
+    return generate_diagram_from_configs(
+        cache,
+        cache.topologies[group.topo_idx],
+        cache.directions[group.dir_idx],
+        cache.flavors[group.flav_idx],
+        cache.exponent_indices[exp_idx]
+    )
+end

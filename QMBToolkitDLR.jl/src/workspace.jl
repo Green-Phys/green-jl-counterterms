@@ -41,8 +41,7 @@ Supports non-square matrix convolutions: F (d1 × d2 × r) * G (d2 × d3 × r) -
 - `dlr_workspace`: Workspace for in-place DLR transformations
 - `dlr_buffer1`, `dlr_buffer2`: Contiguous linear buffers for DLR data (can be reshaped)
 - `tau_buffer1`, `tau_buffer2`, `tau_result`: Contiguous linear buffers for tau data (can be reshaped)
-- `τ_reflected`: Pre-computed β - τ for reflection operations (avoids allocation in hot loops)
-- `kernel_tau_reflected`: Pre-computed kernel matrix K(β - τ, ω) for reflection operations
+- `reflection_matrix`: Pre-computed direct reflection matrix R = K(β-τ,ω) * inv(K(τ,ω))
 """
 struct ConvolutionWorkspace{T<:Number}
     term1::Array{T,2}
@@ -57,10 +56,9 @@ struct ConvolutionWorkspace{T<:Number}
     tau_buffer1::Vector{T}
     tau_buffer2::Vector{T}
     tau_result::Vector{T}
-    # Pre-computed reflected tau grid for reflection operations
-    τ_reflected::Vector{Float64}
-    # Pre-computed kernel matrix for reflection: K(β - τ, ω)
-    kernel_tau_reflected::Matrix{Float64}
+    # Pre-computed direct reflection matrix: R = kernel_tau_reflected * inv(kernel_tau)
+    # Allows reflection in single matrix multiply instead of tau2dlr + dlr2tau
+    reflection_matrix::Matrix{Float64}
 end
 
 """
@@ -102,10 +100,10 @@ function ConvolutionWorkspace{T}(
     n_tau = length(dlr_grid.τ)
     max_dlr_size = d1 * d3 * r
     max_tau_size = d1 * d3 * n_tau
-    # Pre-compute reflected tau grid: β - τ
+
+    # Pre-compute the direct reflection matrix: R = K(β-τ, ω) * inv(K(τ, ω))
+    # This allows reflection in a single matrix multiply instead of tau2dlr + dlr2tau
     τ_reflected = dlr_grid.β .- dlr_grid.τ
-    # Pre-compute the kernel matrix for reflection: K(β - τ, ω)
-    # This avoids recomputing the kernel on every reflection operation
     kernel_tau_reflected = Spectral.kernelT(
         Float64,
         Val(dlr_grid.isFermi),
@@ -115,6 +113,19 @@ function ConvolutionWorkspace{T}(
         dlr_grid.β,
         true,
     )
+    # Ensure kernel_τ is computed
+    kernel_tau = Spectral.kernelT(
+        Float64,
+        Val(dlr_grid.isFermi),
+        Val(dlr_grid.symmetry),
+        dlr_grid.τ,
+        dlr_grid.ω,
+        dlr_grid.β,
+        true,
+    )
+    # R = K_reflected * inv(K_tau), computed as K_reflected / K_tau
+    reflection_matrix = kernel_tau_reflected / kernel_tau
+
     return ConvolutionWorkspace{T}(
         zeros(T, d1, d2),           # term1 (accumulates F slices)
         zeros(T, d2, d3),           # term2 (accumulates G slices)
@@ -128,8 +139,7 @@ function ConvolutionWorkspace{T}(
         zeros(T, max_tau_size),     # tau_buffer1
         zeros(T, max_tau_size),     # tau_buffer2
         zeros(T, max_tau_size),     # tau_result
-        τ_reflected,                # Pre-computed β - τ for reflection
-        kernel_tau_reflected,       # Pre-computed kernel K(β - τ, ω) for reflection
+        reflection_matrix,          # Pre-computed direct reflection matrix
     )
 end
 

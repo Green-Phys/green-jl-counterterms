@@ -161,7 +161,16 @@ end
     end
 
     H_tau = dlr2tau(dlr_grid, H_dlr, dlr_grid.τ; axis = 3)
-    G_tau = do_reflection_tau2tau(dlr_grid, H_tau)
+
+    # Create workspace (contains pre-computed reflection_matrix) and DLR workspace
+    workspace = ConvolutionWorkspace(dlr_grid, 2, 2)
+    G_tau = similar(H_tau)
+    do_reflection_tau2tau!(
+        G_tau,
+        H_tau,
+        workspace.reflection_matrix,
+        workspace.dlr_workspace,
+    )
     G_dlr = tau2dlr(dlr_grid, G_tau, dlr_grid.τ; axis = 3)
 
     tau_grid_test = collect(LinRange(0.0, beta, 10000))

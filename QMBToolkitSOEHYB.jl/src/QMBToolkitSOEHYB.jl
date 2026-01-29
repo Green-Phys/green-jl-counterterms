@@ -19,7 +19,6 @@ include("diagram/DiagramStructure.jl")
 include("diagram/print_diagram.jl")
 include("diagram/gen_common.jl")
 include("diagram/DiagramConfig.jl")
-include("util/BatchGeneration.jl")
 
 # Format operations
 include("format/dlr.jl")

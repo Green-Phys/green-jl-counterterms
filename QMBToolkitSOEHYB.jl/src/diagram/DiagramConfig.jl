@@ -1,21 +1,22 @@
 #=
-DiagramConfig.jl - Configuration caching for diagram generation
+DiagramConfig.jl - Configuration caching for zero-allocation diagram generation
 
 This module provides infrastructure for memory-efficient diagram generation by:
 1. Caching all configuration combinations (topology, direction, flavor, exponent)
-2. Enabling index-based diagram generation without storing all diagrams
-3. Supporting single diagram generation from cached configs
+2. Pre-filtering invalid flux sequences via build_valid_groups
+3. Zero-allocation diagram generation using MutableBackBone
 
 Key types:
 - TopologyConfig: Stores pairing structure and crossing information
 - DiagramConfigCache: Complete cache for an expansion order
+- DiagramGroup: Group of diagrams sharing (topology, direction, flavor)
 
 Key functions:
 - build_config_cache: Build configuration cache for a given order
-- total_diagrams: Get total diagram count from cache
-- linear_to_config_indices: Map linear index to 4D config indices
-- generate_diagram_from_configs: Generate single diagram from configs
-- generate_diagram_at_index: Generate single diagram at linear index
+- build_valid_groups: Pre-filter groups by flux validity
+- allocate_mutable_backbone: Allocate reusable MutableBackBone
+- fill_backbone_from_configs!: Fill MutableBackBone from configs (zero-allocation)
+- fill_backbone_from_group!: Fill MutableBackBone from group (zero-allocation)
 =#
 
 #=============================================================================
@@ -354,108 +355,6 @@ function get_configs_at_index(cache::DiagramConfigCache, linear_idx::Int)
         cache.flavors[flav_idx],
         cache.exponent_indices[exp_idx]
     )
-end
-
-#=============================================================================
-# Single Diagram Generation
-=============================================================================#
-
-"""
-    generate_diagram_from_configs(cache::DiagramConfigCache, topo_config::TopologyConfig,
-                                   directions::NTuple, flavors::NTuple, exponent_indices::NTuple)
-
-Generate a single BackBone diagram from pre-cached configuration tuples.
-
-This function creates a single diagram without storing all diagrams in memory,
-enabling memory-efficient batched generation.
-
-# Arguments
-
-  - `cache::DiagramConfigCache`: The configuration cache (provides exponents, n_flavors, diagram_type)
-  - `topo_config::TopologyConfig`: Topology configuration (pairing, crossing_parity, annihilation_pos, M)
-  - `directions::NTuple`: Direction for each hybridization line (:forward or :backward)
-  - `flavors::NTuple`: Flavor index for each hybridization line
-  - `exponent_indices::NTuple`: Exponent index for each hybridization line
-
-# Returns
-
-  - `BackBone`: The generated diagram
-"""
-function generate_diagram_from_configs(
-        cache::DiagramConfigCache{L},
-        topo_config::TopologyConfig,
-        directions::NTuple{L, Symbol},
-        flavors::NTuple{L, Int},
-        exponent_indices::NTuple{L, Int}
-) where {L}
-    M = topo_config.M
-    p = length(cache.exponents)
-
-    # Set up base_nodes based on diagram type
-    empty_node = BackBoneNode(:empty, -1, -1, NoHyb())
-    base_nodes = Vector{BackBoneNode}(undef, M)
-
-    if cache.diagram_type == :propagator_diagram
-        # Propagator: only boundary nodes are empty
-        base_nodes[1] = empty_node
-        base_nodes[M] = empty_node
-        external_opts_loc = Int[]
-        base_sign = topo_config.crossing_parity
-    elseif cache.diagram_type == :green_diagram
-        # Green: boundary nodes and annihilation_pos are empty
-        base_nodes[1] = empty_node
-        base_nodes[topo_config.annihilation_pos] = empty_node
-        base_nodes[M] = empty_node
-        external_opts_loc = [1, topo_config.annihilation_pos]
-        base_sign = -1.0 * topo_config.crossing_parity  # -1 from Green's function definition
-    else
-        error("Unsupported diagram type: $(cache.diagram_type)")
-    end
-
-    # Initialize working state
-    nodes = copy(base_nodes)
-    edges = [BackBoneEdge(HybridizationState[]) for _ in 1:(M - 1)]
-    prefactor_Kexps = zeros(Int, p)
-    sign = base_sign
-
-    # Process each connected pair
-    connected_pairs = topo_config.pairing
-    for (idx, (i, j)) in enumerate(connected_pairs)
-        sign = process_connected_pair!(
-            i, j,
-            directions[idx],
-            flavors[idx],
-            exponent_indices[idx],
-            cache.exponents,
-            nodes,
-            edges,
-            prefactor_Kexps,
-            sign
-        )
-    end
-
-    return BackBone(cache.diagram_type, sign, prefactor_Kexps, nodes, edges, external_opts_loc)
-end
-
-"""
-    generate_diagram_at_index(cache::DiagramConfigCache, linear_idx::Int)
-
-Generate a single diagram at the given linear index.
-
-Convenience function that combines index mapping and diagram generation.
-
-# Arguments
-
-  - `cache::DiagramConfigCache`: The configuration cache
-  - `linear_idx::Int`: Linear index (1-based)
-
-# Returns
-
-  - `BackBone`: The generated diagram
-"""
-function generate_diagram_at_index(cache::DiagramConfigCache, linear_idx::Int)
-    topo_config, directions, flavors, exponent_indices = get_configs_at_index(cache, linear_idx)
-    return generate_diagram_from_configs(cache, topo_config, directions, flavors, exponent_indices)
 end
 
 #=============================================================================
@@ -799,32 +698,6 @@ Get total number of diagrams across all valid groups.
 """
 function total_diagrams_in_groups(groups::Vector{DiagramGroup})
     return sum(g.n_exponent_combos for g in groups; init = 0)
-end
-
-"""
-    generate_diagram_from_group(cache::DiagramConfigCache, group::DiagramGroup, exp_idx::Int)
-
-Generate a diagram from a group and exponent index.
-
-# Arguments
-
-  - `cache::DiagramConfigCache`: The configuration cache
-  - `group::DiagramGroup`: The diagram group
-  - `exp_idx::Int`: Index into cache.exponent_indices (1-based)
-
-# Returns
-
-  - `BackBone`: The generated diagram
-"""
-function generate_diagram_from_group(
-        cache::DiagramConfigCache{L}, group::DiagramGroup, exp_idx::Int) where {L}
-    return generate_diagram_from_configs(
-        cache,
-        cache.topologies[group.topo_idx],
-        cache.directions[group.dir_idx],
-        cache.flavors[group.flav_idx],
-        cache.exponent_indices[exp_idx]
-    )
 end
 
 """

@@ -119,7 +119,7 @@ function build_hamiltonian(
         sum(hop_terms)
     end
 
-    # Build interaction Hamiltonian: H_int = Σ_{ijkl} U_{ijkl} c_i' c_k' c_l c_j
+    # Build interaction Hamiltonian: H_int = 1/2 Σ_{ijkl} U_{ijkl} c_i' c_k' c_l c_j
     # Uses chemist (Mulliken) notation: U[i,j,k,l] -> c†_i c†_k c_l c_j
     # Collect all terms, then sum once
     int_terms = Operator[]
@@ -138,8 +138,8 @@ function build_hamiltonian(
                 continue
             end
 
-            # Chemist notation: U[i,j,k,l] c†_i c†_k c_l c_j (no 0.5 prefactor)
-            push!(int_terms, val * (c[fl_i]' * c[fl_k]' * c[fl_l] * c[fl_j]))
+            # Chemist notation: U[i,j,k,l] c†_i c†_k c_l c_j (with 0.5 prefactor)
+            push!(int_terms, 0.5 * val * (c[fl_i]' * c[fl_k]' * c[fl_l] * c[fl_j]))
         end
     end
 

@@ -98,8 +98,8 @@ function generate_impurity_interaction_tensor(U::Float64, J::Float64, Uprime::Fl
     for o in 1:n_orbital_impurity
         upindex = (o - 1) * n_spin_impurity + 1
         downindex = (o - 1) * n_spin_impurity + 2
-        interaction_tensor[upindex, upindex, downindex, downindex] = U / 2
-        interaction_tensor[downindex, downindex, upindex, upindex] = U / 2
+        interaction_tensor[upindex, upindex, downindex, downindex] = U 
+        interaction_tensor[downindex, downindex, upindex, upindex] = U 
     end
 
     # Inter-orbital antiparallel spin interaction U': U' * n_{o1,up} * n_{o2,down} + U' * n_{o1,down} * n_{o2,up}
@@ -111,11 +111,11 @@ function generate_impurity_interaction_tensor(U::Float64, J::Float64, Uprime::Fl
                 downindex1 = (o1 - 1) * n_spin_impurity + 2
                 downindex2 = (o2 - 1) * n_spin_impurity + 2
                 # n_{o1,up} * n_{o2,down}: c†_{up1} c†_{down2} c_{down2} c_{up1}
-                interaction_tensor[upindex1, upindex1, downindex2, downindex2] = Uprime / 2
-                interaction_tensor[downindex2, downindex2, upindex1, upindex1] = Uprime / 2
+                interaction_tensor[upindex1, upindex1, downindex2, downindex2] = Uprime 
+                interaction_tensor[downindex2, downindex2, upindex1, upindex1] = Uprime 
                 # n_{o1,down} * n_{o2,up}: c†_{down1} c†_{up2} c_{up2} c_{down1}
-                interaction_tensor[downindex1, downindex1, upindex2, upindex2] = Uprime / 2
-                interaction_tensor[upindex2, upindex2, downindex1, downindex1] = Uprime / 2
+                interaction_tensor[downindex1, downindex1, upindex2, upindex2] = Uprime 
+                interaction_tensor[upindex2, upindex2, downindex1, downindex1] = Uprime 
             end
         end
     end
@@ -129,11 +129,11 @@ function generate_impurity_interaction_tensor(U::Float64, J::Float64, Uprime::Fl
                 downindex1 = (o1 - 1) * n_spin_impurity + 2
                 downindex2 = (o2 - 1) * n_spin_impurity + 2
                 # n_{o1,up} * n_{o2,up}: c†_{up1} c†_{up2} c_{up2} c_{up1}
-                interaction_tensor[upindex1, upindex1, upindex2, upindex2] = (Uprime - J) / 2
-                interaction_tensor[upindex2, upindex2, upindex1, upindex1] = (Uprime - J) / 2
+                interaction_tensor[upindex1, upindex1, upindex2, upindex2] = (Uprime - J) 
+                interaction_tensor[upindex2, upindex2, upindex1, upindex1] = (Uprime - J) 
                 # n_{o1,down} * n_{o2,down}: c†_{down1} c†_{down2} c_{down2} c_{down1}
-                interaction_tensor[downindex1, downindex1, downindex2, downindex2] = (Uprime - J) / 2
-                interaction_tensor[downindex2, downindex2, downindex1, downindex1] = (Uprime - J) / 2
+                interaction_tensor[downindex1, downindex1, downindex2, downindex2] = (Uprime - J) 
+                interaction_tensor[downindex2, downindex2, downindex1, downindex1] = (Uprime - J) 
             end
         end
     end
@@ -147,11 +147,11 @@ function generate_impurity_interaction_tensor(U::Float64, J::Float64, Uprime::Fl
                 downindex1 = (o1 - 1) * n_spin_impurity + 2
                 downindex2 = (o2 - 1) * n_spin_impurity + 2
                 # c†_{up1} c†_{down1} c_{down2} c_{up2}: i=up1, k=down1, l=down2, j=up2 -> U[up1,up2,down1,down2]
-                interaction_tensor[upindex1, upindex2, downindex1, downindex2] = J / 2
-                interaction_tensor[downindex1, downindex2, upindex1, upindex2] = J / 2
+                interaction_tensor[upindex1, upindex2, downindex1, downindex2] = J 
+                interaction_tensor[downindex1, downindex2, upindex1, upindex2] = J 
                 # h.c.: c†_{up2} c†_{down2} c_{down1} c_{up1}
-                interaction_tensor[upindex2, upindex1, downindex2, downindex1] = J / 2
-                interaction_tensor[downindex2, downindex1, upindex2, upindex1] = J / 2
+                interaction_tensor[upindex2, upindex1, downindex2, downindex1] = J 
+                interaction_tensor[downindex2, downindex1, upindex2, upindex1] = J 
             end
         end
     end
@@ -165,11 +165,11 @@ function generate_impurity_interaction_tensor(U::Float64, J::Float64, Uprime::Fl
                 downindex1 = (o1 - 1) * n_spin_impurity + 2
                 downindex2 = (o2 - 1) * n_spin_impurity + 2
                 # c†_{up1} c†_{down2} c_{down1} c_{up2}: i=up1, k=down2, l=down1, j=up2 -> U[up1,up2,down2,down1]
-                interaction_tensor[upindex1, upindex2, downindex2, downindex1] = J / 2
-                interaction_tensor[downindex2, downindex1, upindex1, upindex2] = J / 2
+                interaction_tensor[upindex1, upindex2, downindex2, downindex1] = J 
+                interaction_tensor[downindex2, downindex1, upindex1, upindex2] = J 
                 # h.c.: c†_{up2} c†_{down1} c_{down2} c_{up1}
-                interaction_tensor[upindex2, upindex1, downindex1, downindex2] = J / 2
-                interaction_tensor[downindex1, downindex2, upindex2, upindex1] = J / 2
+                interaction_tensor[upindex2, upindex1, downindex1, downindex2] = J 
+                interaction_tensor[downindex1, downindex2, upindex2, upindex1] = J 
             end
         end
     end

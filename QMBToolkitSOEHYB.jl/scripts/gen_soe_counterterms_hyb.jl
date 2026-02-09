@@ -440,35 +440,28 @@ end
 function _read_delta_tau_from_txt(filename, beta)
     data = readdlm(filename)
 
+    # All indices in file are 0-based
     tau_indices = Int.(data[:, 1])
     i_indices = Int.(data[:, 2])
     j_indices = Int.(data[:, 3])
     real_parts = data[:, 4]
 
     n_tau = maximum(tau_indices) + 1
+    n_flav = max(maximum(i_indices), maximum(j_indices)) + 1
 
-    # Convert tau indices to actual tau values
-    # Indices go from 0 to n_tau-1, mapping to tau in [0, beta]
+    # Convert tau indices to actual tau values: [0, beta]
     tau_grid = collect(0:n_tau-1) .* (beta / (n_tau - 1))
-
-    min_flav = min(minimum(i_indices), minimum(j_indices))
-    max_flav = max(maximum(i_indices), maximum(j_indices))
-
-    offset = min_flav == 0 ? 1 : 0
-    n_flav = max_flav - min_flav + 1
 
     delta_tau = zeros(Float64, n_tau, n_flav, n_flav)
 
     for k in 1:size(data, 1)
-        t = tau_indices[k] + 1  # Convert 0-based to 1-based
-        i = i_indices[k] + offset
-        j = j_indices[k] + offset
-
-        delta_tau[t, i, j] = real_parts[k]
+        # Convert 0-based to 1-based for Julia arrays
+        delta_tau[tau_indices[k] + 1, i_indices[k] + 1, j_indices[k] + 1] = real_parts[k]
     end
 
     return tau_grid, delta_tau
 end
+
 
 
 function gen_hyb(n_tau::Int, n_matsubara::Int, beta::Float64, n_spin_impurity::Int, n_orbital_impurity::Int, hyb_type::String; off_diagonal_prefactor::Float64 = 0.0, file_name::String = "", init_dlr_euv::Float64 = 2.0)

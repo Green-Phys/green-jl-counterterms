@@ -214,12 +214,12 @@ function _obtain_hyb_general(poles, weights; svdtol = 1e-7, separate_spins = fal
 
     for i in 1:n_bath
         # Spin-up bath orbital at odd index
-        counterterms_energy[2*i - 1] = energy_up[i]
-        counterterms_hyb[2*i - 1, flavor_indices_up] = hyb_up[i, :]
+        counterterms_energy[2 * i - 1] = energy_up[i]
+        counterterms_hyb[2 * i - 1, flavor_indices_up] = hyb_up[i, :]
 
         # Spin-down bath orbital at even index
-        counterterms_energy[2*i] = energy_dn[i]
-        counterterms_hyb[2*i, flavor_indices_dn] = hyb_dn[i, :]
+        counterterms_energy[2 * i] = energy_dn[i]
+        counterterms_hyb[2 * i, flavor_indices_dn] = hyb_dn[i, :]
     end
 
     return counterterms_energy, counterterms_hyb
@@ -367,7 +367,7 @@ function parse_commandline()
     end
     return parse_args(s)
 end
-#! format: on
+
 
 function print_input(args)
     println("--- Input parameters ---")
@@ -426,7 +426,7 @@ function _freq_to_matsubara_index(freq, β)
     return @. round(Int, (freq * β / π - 1) / 2)
 end
 
-function _read_delta_iw_from_seet(filename, beta)
+function _read_delta_iw_from_h5(filename, beta)
     h5open(filename, "r") do f
         freq = read(f, "freq")
         # Reverse dimensions to match Python convention: (n_freq, n_spin, n_orb, n_orb)
@@ -435,6 +435,40 @@ function _read_delta_iw_from_seet(filename, beta)
         matsubara_indices = _freq_to_matsubara_index(freq, beta)
         return matsubara_indices, delta_iw
     end
+end
+
+function _read_delta_tau_from_txt(filename)
+    data = readdlm(filename)
+
+    tau_grid = data[:, 1]
+    i_indices = Int.(data[:, 2])
+    j_indices = Int.(data[:, 3])
+    real_parts = data[:, 4]
+    imag_parts = data[:, 5]
+
+    unique_tau = sort(unique(tau_grid))
+    n_tau = length(unique_tau)
+
+    min_flav = min(minimum(i_indices), minimum(j_indices))
+    max_flav = max(maximum(i_indices), maximum(j_indices))
+
+    offset = min_flav == 0 ? 1 : 0
+    n_flav = max_flav - min_flav + 1
+
+    delta_tau = zeros(Float64, n_tau, n_flav, n_flav)
+
+    # Create a mapping from tau value to index
+    tau_to_idx = Dict(tau => idx for (idx, tau) in enumerate(unique_tau))
+
+    for k in 1:size(data, 1)
+        t_idx = tau_to_idx[tau_grid[k]]
+        i = i_indices[k] + offset
+        j = j_indices[k] + offset
+
+        delta_tau[t_idx, i, j] = real_parts[k] 
+    end
+
+    return unique_tau, delta_tau
 end
 
 
@@ -472,12 +506,19 @@ function gen_hyb(n_tau::Int, n_matsubara::Int, beta::Float64, n_spin_impurity::I
         end
         return GData(G_tau_tensor, tau_grid, G_iwn_tensor, wn_grid)
     elseif hyb_type == "from_seet" && file_name != ""
-        matsubara_indices, delta_iw = _read_delta_iw_from_seet(file_name, beta)
         n_flavors_expected = n_spin_impurity * n_orbital_impurity
-        n_flavors_read = size(delta_iw, 2)
-        @assert n_flavors_read == n_flavors_expected "Dimension mismatch: n_spin_impurity * n_orbital_impurity = $n_flavors_expected but delta_iw has $n_flavors_read flavors"
         dlrGrid = DLRGrid(init_dlr_euv, beta, 1e-14, true)
-        dlr = matfreq2dlr(dlrGrid::DLRGrid, delta_iw, matsubara_indices)
+        if endswith(file_name, ".h5")
+            matsubara_indices, delta_iw = _read_delta_iw_from_h5(file_name, beta)
+            n_flavors_read = size(delta_iw, 2)
+            @assert n_flavors_read == n_flavors_expected "Dimension mismatch: n_spin_impurity * n_orbital_impurity = $n_flavors_expected but delta_iw has $n_flavors_read flavors"
+            dlr = matfreq2dlr(dlrGrid, delta_iw, matsubara_indices)
+        else
+            tau_grid_in, delta_tau = _read_delta_tau_from_txt(file_name)
+            n_flavors_read = size(delta_tau, 2)
+            @assert n_flavors_read == n_flavors_expected "Dimension mismatch: n_spin_impurity * n_orbital_impurity = $n_flavors_expected but delta_tau has $n_flavors_read flavors"
+            dlr = tau2dlr(dlrGrid, real(delta_tau), tau_grid_in)
+        end
         G_tau_tensor = dlr2tau(dlrGrid, dlr, tau_grid)
         G_iwn_tensor = dlr2matfreq(dlrGrid, dlr, n_grid)
         return GData(real(G_tau_tensor), tau_grid, G_iwn_tensor, wn_grid)

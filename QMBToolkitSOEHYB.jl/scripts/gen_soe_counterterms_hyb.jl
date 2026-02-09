@@ -676,13 +676,11 @@ function main()
             error("For subtraction trick, dlr_eps_hybridization must be smaller than dlr_eps_counterterms and n_soe_hybridization must be larger than n_soe_counterterms")
         end
         println("Using subtraction trick for remaining hybridization SOE fitting...")
-        poles_original, weights_original, error_original = gen_soe(args["beta"], G_data, args["soe_subroutine_counterterms"], args["n_soe_counterterms"], args["dlr_eps_counterterms"], separate_spins = false)
-        println("SOE inf-norm error (do_subtraction_trick): ", @sprintf("%.6e", error_original))
         poles_precise, weights_precise, error_precise = gen_soe(args["beta"], G_data, args["soe_subroutine_hyb"], args["n_soe_hybridization"], args["dlr_eps_hybridization"], separate_spins = false)
         # Now the remaining hybridization is the difference between the two SOE fits
         println("The number of precise SOE terms: ", length(poles_precise))
-        poles_remain = vcat(poles_precise, poles_original)
-        weights_remain = vcat(weights_precise, -1.0*weights_original)
+        poles_remain = vcat(poles_precise, poles)
+        weights_remain = vcat(weights_precise, -1.0*weights)
         error_remain = _inf_error(remaining_G_data.G_tau, _reconstruct_green(poles_remain, weights_remain, remaining_G_data.tau_grid, args["beta"]))
     end
     println("Max remain hybridization: ", maximum(abs.(remaining_G_data.G_tau)))

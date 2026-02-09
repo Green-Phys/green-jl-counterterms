@@ -437,17 +437,19 @@ function _read_delta_iw_from_h5(filename, beta)
     end
 end
 
-function _read_delta_tau_from_txt(filename)
+function _read_delta_tau_from_txt(filename, beta)
     data = readdlm(filename)
 
-    tau_grid = data[:, 1]
+    tau_indices = Int.(data[:, 1])
     i_indices = Int.(data[:, 2])
     j_indices = Int.(data[:, 3])
     real_parts = data[:, 4]
-    imag_parts = data[:, 5]
 
-    unique_tau = sort(unique(tau_grid))
-    n_tau = length(unique_tau)
+    n_tau = maximum(tau_indices) + 1
+
+    # Convert tau indices to actual tau values
+    # Indices go from 0 to n_tau-1, mapping to tau in [0, beta]
+    tau_grid = collect(0:n_tau-1) .* (beta / (n_tau - 1))
 
     min_flav = min(minimum(i_indices), minimum(j_indices))
     max_flav = max(maximum(i_indices), maximum(j_indices))
@@ -457,18 +459,15 @@ function _read_delta_tau_from_txt(filename)
 
     delta_tau = zeros(Float64, n_tau, n_flav, n_flav)
 
-    # Create a mapping from tau value to index
-    tau_to_idx = Dict(tau => idx for (idx, tau) in enumerate(unique_tau))
-
     for k in 1:size(data, 1)
-        t_idx = tau_to_idx[tau_grid[k]]
+        t = tau_indices[k] + 1  # Convert 0-based to 1-based
         i = i_indices[k] + offset
         j = j_indices[k] + offset
 
-        delta_tau[t_idx, i, j] = real_parts[k] 
+        delta_tau[t, i, j] = real_parts[k]
     end
 
-    return unique_tau, delta_tau
+    return tau_grid, delta_tau
 end
 
 
@@ -514,10 +513,10 @@ function gen_hyb(n_tau::Int, n_matsubara::Int, beta::Float64, n_spin_impurity::I
             @assert n_flavors_read == n_flavors_expected "Dimension mismatch: n_spin_impurity * n_orbital_impurity = $n_flavors_expected but delta_iw has $n_flavors_read flavors"
             dlr = matfreq2dlr(dlrGrid, delta_iw, matsubara_indices)
         else
-            tau_grid_in, delta_tau = _read_delta_tau_from_txt(file_name)
+            tau_grid_in, delta_tau = _read_delta_tau_from_txt(file_name, beta)
             n_flavors_read = size(delta_tau, 2)
             @assert n_flavors_read == n_flavors_expected "Dimension mismatch: n_spin_impurity * n_orbital_impurity = $n_flavors_expected but delta_tau has $n_flavors_read flavors"
-            dlr = tau2dlr(dlrGrid, real(delta_tau), tau_grid_in)
+            dlr = tau2dlr(dlrGrid, delta_tau, tau_grid_in)
         end
         G_tau_tensor = dlr2tau(dlrGrid, dlr, tau_grid)
         G_iwn_tensor = dlr2matfreq(dlrGrid, dlr, n_grid)

@@ -64,11 +64,15 @@ function read_input(file_path::String)
         dict["solver"]["dlr"]["rtol"]
     )
 
+    # Optional parameter with default value
+    prune_threshold = get(dict["solver"], "prune_threshold", 0.0)
+
     solver_params = SolverParams(
         propagator_params,
         green_params,
         dlr_params,
-        output_path
+        output_path,
+        prune_threshold
     )
 
     return Params(model_params, solver_params)
@@ -101,6 +105,7 @@ function print_parameters(params::Params)
     println("  [dlr]")
     println("    Euv: ", params.solver.dlr.Euv)
     println("    rtol: ", params.solver.dlr.rtol)
+    println("  prune_threshold: ", params.solver.prune_threshold)
 end
 
 """

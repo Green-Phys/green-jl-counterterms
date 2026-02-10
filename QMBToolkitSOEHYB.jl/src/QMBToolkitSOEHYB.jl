@@ -55,7 +55,7 @@ function run(input_file::String)
 
     params = read_input(input_file)
 
-    model_data = init_model_data(params.model, params.solver.dlr)
+    model_data = init_model_data(params.model, params.solver, rank)
 
     solver_data = init_solver_data(model_data) # solver_data contains model_data and calculation_data
 

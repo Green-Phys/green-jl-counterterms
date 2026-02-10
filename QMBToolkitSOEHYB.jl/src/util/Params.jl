@@ -39,6 +39,7 @@ struct SolverParams
     green::GreenParams
     dlr::DLRParams
     output_path::String
+    prune_threshold::Float64  # Threshold for pruning small bare propagator sectors (0 = no pruning)
 end
 
 """

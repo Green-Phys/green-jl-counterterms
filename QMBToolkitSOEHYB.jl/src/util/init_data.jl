@@ -123,20 +123,24 @@ end
 =============================================================================#
 
 """
-    init_model_data(model_params::ModelParams, dlr_params::DLRParams)
+    init_model_data(model_params::ModelParams, solver_params::SolverParams, rank::Int)
 
 Initialize a `ModelData` object from input parameters.
 
 # Arguments
 
   - `model_params::ModelParams`: Model parameters from TOML file
-  - `dlr_params::DLRParams`: DLR parameters from TOML file
+  - `solver_params::SolverParams`: Solver parameters from TOML file
+  - `rank::Int`: MPI rank (for controlling print output)
 
 # Returns
 
   - `ModelData{T}`: Initialized model data
 """
-function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
+function init_model_data(model_params::ModelParams, solver_params::SolverParams, rank::Int)
+    dlr_params = solver_params.dlr
+    is_root = (rank == 0)
+
     # Load Hamiltonian paths and build basis
     hopping_path, interaction_path = _load_hamiltonian_paths(model_params)
     basis = _build_basis(hopping_path, interaction_path)
@@ -144,7 +148,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     # Build and solve Hamiltonian
     H, ann_opts_raw = build_hamiltonian(basis, hopping_path, interaction_path)
     result = solve_hamiltonian(H)
-    println("Exact diagonalization complete")
+    is_root && println("Exact diagonalization complete")
 
     eigenvalues = result.eigenvalues
     eigenvectors = result.eigenvectors
@@ -155,13 +159,15 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     # Transform operators to eigenbasis
     ann_opts = _transform_to_eigenbasis(ann_opts_raw, eigenvectors)
     cre_opts = [adjoint(c) for c in ann_opts]
+    is_root && println("Eigenbasis transformation complete")
 
     # Initialize DLR grid
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
 
     # Build bare propagator (diagonal in eigenbasis)
     E_shift = _get_E_shift(eigenvalues)
-    bare_propagator_tau = _build_bare_propagator(T, eigenvalues, dlr_grid.τ, E_shift)
+    bare_propagator_tau = _build_bare_propagator(T, eigenvalues, dlr_grid.τ, E_shift,
+        model_params.beta, solver_params.prune_threshold, is_root)
 
     # Load hybridization data
     hyb_soe, n_flavors_physical = _load_hybridization_data(model_params, n_flavors, dlr_grid)
@@ -180,6 +186,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     # Precompute barred operators
     ann_opts_bar = _gen_opts_bar(ann_opts, hyb_soe.coeffs, :annihilation)
     cre_opts_bar = _gen_opts_bar(cre_opts, hyb_soe.coeffs, :creation)
+    is_root && println("Barred operators complete")
 
     # Calculate partition function for counter-terms
     Z_counterterms = _calculate_Z_counterterms(model_params, n_flavors, n_flavors_physical)
@@ -359,7 +366,7 @@ function _get_E_shift(eigenvalues::DiagonalOperator)
 end
 
 """
-    _build_bare_propagator(T, eigenvalues::DiagonalOperator, tau_grid, E_shift)
+    _build_bare_propagator(T, eigenvalues, tau_grid, E_shift, beta, prune_threshold, is_root)
 
 Build bare propagator on tau grid from eigenvalues.
 
@@ -367,9 +374,13 @@ The propagator is diagonal in the eigenbasis:
 G[sector](%CF%84) = diag(exp(-τ * (E - E_shift)))
 
 No eigenvector transformation is needed since we work in the eigenbasis.
+
+If `prune_threshold > 0`, sectors where max(exp(-β * (E - E_shift))) < prune_threshold
+are pruned (not included in the propagator).
 """
 function _build_bare_propagator(::Type{T}, eigenvalues::DiagonalOperator,
-        tau_grid::Vector{Float64}, E_shift::Float64) where {T}
+        tau_grid::Vector{Float64}, E_shift::Float64,
+        beta::Float64, prune_threshold::Float64, is_root::Bool) where {T}
     basis = eigenvalues.basis
     n_tau = length(tau_grid)
 
@@ -378,16 +389,35 @@ function _build_bare_propagator(::Type{T}, eigenvalues::DiagonalOperator,
 
     blocks = Dict{Tuple{Int, Int}, Array{T, 3}}()
 
+    n_total = length(basis.sectors)
+    n_pruned = 0
+
+    if is_root && prune_threshold > 0
+        println("Bare propagator sector pruning (threshold = $prune_threshold):")
+    end
+
     # Build diagonal blocks only (propagator conserves quantum numbers)
     for (sector_idx, sector) in enumerate(basis.sectors)
-        sector_dim = sector.dim
         sector_evals = eigenvalues.sector_diags[sector_idx]
 
         # Shift eigenvalues
         evals_shifted = sector_evals .- E_shift
 
+        # Check if sector should be pruned: max value at τ=β is exp(-β * min_E)
+        min_eval_shifted = minimum(evals_shifted)
+        max_val_at_beta = exp(-beta * min_eval_shifted)
+
+        if prune_threshold > 0 && max_val_at_beta < prune_threshold
+            n_pruned += 1
+            if is_root
+                println("  Pruned sector $sector_idx: QN = $(sector.qn), dim = $(sector.dim), max_val_at_β = $max_val_at_beta")
+            end
+            continue
+        end
+
         # Construct propagator for this sector (diagonal in eigenbasis)
         # Layout: (dim1, dim2, n_tau) for contiguous BLAS access
+        sector_dim = sector.dim
         block = zeros(T, sector_dim, sector_dim, n_tau)
 
         for (k, tau) in enumerate(tau_grid)
@@ -397,6 +427,11 @@ function _build_bare_propagator(::Type{T}, eigenvalues::DiagonalOperator,
         end
 
         blocks[(sector_idx, sector_idx)] = block
+    end
+
+    if is_root
+        println("Bare propagator: kept $(n_total - n_pruned) / $n_total sectors" *
+                (n_pruned > 0 ? " (pruned $n_pruned)" : ""))
     end
 
     return Propagator{T}(basis, flux, blocks)

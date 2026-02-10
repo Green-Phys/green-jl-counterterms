@@ -21,10 +21,10 @@ Pkg.test()
 ```
 
 The test suite runs two test cases comparing against analytical results:
-- `test/bare_dense/` - Dense format test with 1 orbital
-- `test/bare_blockdense/` - BlockDense format test with 1 orbital
+- `test/data/` - Single-orbital test case
+- `test/data_2spin/` - Two-spin test case with independent equivalent spins
 
-Both validate partition function and Green's function to 12-digit precision against Mathematica results in `test/bare_dense/analytic.nb`.
+Both validate partition function and Green's function to 12-digit precision against Mathematica results.
 
 ### Running the Solver
 
@@ -41,7 +41,7 @@ QMBToolkitSOEHYB.run("path/to/input.toml")
 
 **Direct Julia invocation (for testing):**
 ```bash
-julia --project=. -e 'using QMBToolkitSOEHYB; QMBToolkitSOEHYB.run("test/bare_dense/input.toml")'
+julia --project=. -e 'using QMBToolkitSOEHYB; QMBToolkitSOEHYB.run("test/data/input.toml")'
 ```
 
 Note: The solver is MPI-enabled and uses `mpiexecjl` internally.
@@ -59,20 +59,33 @@ Note: The solver is MPI-enabled and uses `mpiexecjl` internally.
 
 **ModelData** (`src/solver/Data.jl`):
 - Hamiltonian eigenvalues/eigenvectors from exact diagonalization
-- Creation/annihilation operators in energy eigenbasis
+- Creation/annihilation operators in energy eigenbasis (stored in `ModelDataStorage`)
 - SOE representation: `SOEData` with coefficients, exponents, and K±(τ) on DLR grid
-- Bare propagator as `DLRData`
+- Bare propagator as `DLRPropagator`
 - Pre-computed caches: `KernelCache`, `ConvolutionWorkspace`
-- Format-dependent fields for operators
 
 **CalculationData** (`src/solver/Data.jl`):
-- Propagator and self-energy (format-dependent storage)
-- Green's function (always dense - physical observable)
-- `partition_function_by_order`, `green_by_order` arrays
+- Propagator and self-energy as `DLRPropagator` (stored in `CalculationDataStorage`)
+- Green's function as `GreenDLR` (physical observable in orbital space)
+- `partition_function_by_order`, `green_numerator_by_order`, `green_by_order` arrays
 
 **SolverData** (`src/solver/Data.jl`):
 - Combines `ModelData` and `CalculationData`
-- Parametrized by `{T<:Number, Format<:HilbertSpaceFormat}`
+- Parametrized by `{T<:Number}` (typically `ComplexF64`)
+
+### Propagator Types
+
+**Propagator** (`src/format/propagator.jl`):
+- Block-sparse time-dependent propagator exploiting quantum number conservation
+- Blocks stored as `Dict{Tuple{Int,Int}, Array{T,3}}` indexed by `(target_sector, source_sector)`
+- Each block has shape `(row_dim, col_dim, time_points)` for contiguous matrix operations
+
+**DLRPropagator** (`src/format/propagator.jl`):
+- Wraps two `Propagator` instances: `vals` (values on DLR tau grid) and `coeffs` (DLR expansion coefficients)
+
+**GreenDLR** (`src/format/GreenFunction.jl`):
+- Dense Green's function in orbital space (physical observable)
+- Shape: `(n_orb, n_orb, n_tau)`
 
 ### Diagram Structure
 
@@ -88,7 +101,7 @@ Uses zero-allocation iteration: a single `MutableBackBone` is pre-allocated and 
 - `opt_type`: `:c` (annihilation), `:cdag` (creation), or `:empty`
 - `flavor`: orbital index
 - `bar_index`: SOE index (1 to p) or -1 for undecorated
-- `attached_hyb`: K⁺ₗ, K⁻ₗ, or NoHyb
+- `attached_hyb`: K⁺ₗ, K⁻ₗ, or NoHyb (encoded as `HybridizationState`)
 
 **HybridizationState** (efficient integer encoding):
 - `index == 0`: NoHyb
@@ -118,16 +131,18 @@ Diagrams are generated on-the-fly with zero allocation using hierarchical groupi
 
 ### Format Interface Pattern
 
-The codebase uses a format-agnostic interface pattern (`src/format/interface.jl`) that allows diagram evaluation code to work with both Dense and BlockDense formats. Key interface functions:
+The codebase uses a format-agnostic interface pattern (`src/format/interface.jl`) that allows diagram evaluation code to work with block-sparse propagators. Key interface functions:
 
-- **Propagator Operations**: `zeros_like`, `add_scaled!`, `get_data`
-- **DLR Operations**: `tau2dlr`, `dlr2tau`, `do_reflection_tau2tau`, `extract_at_tau`, `do_convolution_dlr2tau!`
+- **Propagator Operations**: `zeros_like`, `add_scaled!`
+- **DLR Operations**: `tau2dlr`, `dlr2tau`, `do_reflection_tau2tau!`, `extract_at_tau`, `do_convolution_dlr2tau!`
 - **Operator Operations**: `multiply_op_prop!`, `multiply_prop_op!`, `multiply_prop_prop!`, `trace_prop!`
-- **Convolution**: `multiplication_convolution`, `multiplication_convolution_reverse`
-- **Buffer Management**: `allocate_propagator_buffers`, `allocate_green_buffers`, `get_result`, `get_hyb_temp`, etc.
+- **Fused Operations**: `multiply_op_prop_with_K!`, `multiply_prop_op_with_K!` (combines matrix mult with hybridization scaling)
+- **Hybridization**: `apply_hybridization_inplace!`, `get_K_vector`
+- **Buffer Management**: `allocate_propagator_buffers`, `allocate_green_buffers`, `get_result`, `get_op_product`, etc.
+- **Flux Handling**: `get_flux`, `compute_new_flux`, `compute_new_flux_reverse`
 - **MPI**: `mpi_reduce_and_add!`
 
-Each format (Dense/BlockDense) implements these interfaces in its respective subdirectory under `src/format/`.
+Implementations are in `src/format/` files: `dlr.jl`, `operator_ops.jl`, `hybridization.jl`, `backbone_buffers.jl`.
 
 ### Key Architectural Points
 
@@ -138,15 +153,17 @@ Each format (Dense/BlockDense) implements these interfaces in its respective sub
 where K⁺(τ,ω) = exp(-ωτ)/(1+exp(-βω)) and K⁻(τ,-ω) for the adjoint.
 
 **DLR Integration**:
-- `DLRData.vals`: Values on DLR τ-grid
-- `DLRData.coeffs`: DLR expansion coefficients
+- `DLRPropagator.vals`: Values on DLR τ-grid
+- `DLRPropagator.coeffs`: DLR expansion coefficients
 - Efficient τ ↔ ω transformations via QMBToolkitDLR
+
+**Block-Sparse Structure**: Propagators exploit quantum number conservation - only blocks allowed by the flux are allocated and computed.
 
 **Energy Shift**: Hamiltonian shifted by E_shift = min(eigenvalues) for numerical stability. Partition function corrected in post-processing.
 
 **Bare vs Bold Expansion**:
 - Both must be consistently bare or both bold
-- Propagator order must equal Green's function order - 1 (propagator order and self-energy order is defined as the number of hybridization lines, while the order of Green's function is defined as the number of hybridziation liens plus one.)
+- Propagator order must equal Green's function order - 1 (propagator order and self-energy order is defined as the number of hybridization lines, while the order of Green's function is defined as the number of hybridization lines plus one.)
 
 ### File Organization
 
@@ -154,8 +171,7 @@ where K⁺(τ,ω) = exp(-ωτ)/(1+exp(-βω)) and K⁻(τ,-ω) for the adjoint.
 src/
 ├── QMBToolkitSOEHYB.jl       # Main module, run() entry point
 ├── solver/
-│   ├── Data.jl               # ModelData, CalculationData, SolverData
-│   ├── HilbertSpaceFormat.jl # DenseFormat, BlockDenseFormat type traits
+│   ├── Data.jl               # ModelData, CalculationData, SolverData, storage types
 │   └── solve.jl              # Main control loop
 ├── util/
 │   ├── io.jl                 # TOML parsing, HDF5 output
@@ -170,29 +186,15 @@ src/
 │   ├── eval_green.jl         # Green's function evaluation with zero-allocation iteration
 │   ├── backbone_eval.jl      # Unified backbone evaluation (uses interface)
 │   └── print_diagram.jl      # Visualization utilities
-└── format/                   # Format-specific implementations
-    ├── interface.jl          # Abstract interface for format-agnostic operations
-    ├── dense/                # Dense matrix operations
-    │   ├── DensePropagator.jl    # DensePropagator type
-    │   ├── dlr.jl                # DLR transformations (tau2dlr, dlr2tau, etc.)
-    │   ├── operator_ops.jl       # multiply_op_prop!, multiply_prop_op!, etc.
-    │   ├── hybridization.jl      # apply_hybridization_inplace!
-    │   └── propagator.jl         # multiplication_convolution, buffer allocation
-    └── blockdense/           # Block-sparse operations
-        ├── BlockDensePropagator.jl  # BlockDensePropagator type
-        ├── dlr.jl                   # Block-aware DLR transformations
-        ├── operator_ops.jl          # Block-aware multiplications
-        ├── hybridization.jl         # Block-aware hybridization
-        └── propagator.jl            # Block-aware convolution, buffer allocation
+└── format/
+    ├── interface.jl          # Abstract interface declarations
+    ├── GreenFunction.jl      # GreenDLR type
+    ├── propagator.jl         # Propagator, DLRPropagator types
+    ├── dlr.jl                # DLR transformations (tau2dlr, dlr2tau, etc.)
+    ├── operator_ops.jl       # Block-aware multiplications
+    ├── hybridization.jl      # Hybridization application
+    └── backbone_buffers.jl   # Buffer allocation for backbone evaluation
 ```
-
-### Representation Formats
-
-Two formats (`src/solver/HilbertSpaceFormat.jl`):
-- **DenseFormat**: Full dense matrices in Fock space (default)
-- **BlockDenseFormat**: Block-sparse exploiting particle number conservation
-
-Set via `Hilbert_space_format = "dense"` or `Hilbert_space_format = "blockdense"` in `[solver]` section.
 
 ### Input File Format
 
@@ -208,7 +210,6 @@ hybridization_weights_file = "hyb_weights.txt"
 
 [solver]
 output_path = "."
-Hilbert_space_format = "dense"            # or "blockdense"
 
 [solver.propagator]
 is_bold = false
@@ -265,8 +266,8 @@ Saved to `<output_path>/sim.h5`:
 ### Current Implementation Status
 
 **Implemented**:
-- Bare expansion for propagator (dense and blockdense)
-- Green's function calculation (bare mode, both formats)
+- Bare expansion for propagator (block-sparse)
+- Green's function calculation (bare mode)
 - DLR-based representation
 - SOE decomposition of hybridization
 - MPI parallelization for diagram evaluation
@@ -279,7 +280,7 @@ Saved to `<output_path>/sim.h5`:
 
 **Internal (QMBToolkit ecosystem)**:
 - `QMBToolkitDLR` - DLR grid and transformations
-- `QMBToolkitED` - Exact diagonalization, BlockDense types
+- `QMBToolkitED` - Exact diagonalization, Operator/Basis types
 
 **External**:
 - `HDF5` - Output format

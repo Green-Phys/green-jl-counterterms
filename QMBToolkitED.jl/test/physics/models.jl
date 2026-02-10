@@ -138,12 +138,12 @@ function anderson_impurity_model()
     5 1 1.0 0.0
     1 5 1.0 0.0
     """
-    # Chemist notation: U[i,j,k,l] c†_i c†_k c_l c_j (no 0.5 prefactor, so each term is U/2)
-    # For U * n_0 * n_1 = U * c†_0 c†_1 c_1 c_0: need U[0,0,1,1] = U/2 and U[1,1,0,0] = U/2
+    # Chemist notation: U[i,j,k,l] -> 0.5 * c†_i c†_k c_l c_j
+    # For U * n_0 * n_1: need U[0,0,1,1] = U and U[1,1,0,0] = U (since 0.5*U + 0.5*U = U)
     coulomb_str = """
     2
-    0 0 0 1 1 0.5 0.0
-    1 1 1 0 0 0.5 0.0
+    0 0 0 1 1 1.0 0.0
+    1 1 1 0 0 1.0 0.0
     """
 
     flavor_qns_n = [QN_N(1) for _ = 1:6]
@@ -183,11 +183,12 @@ function hubbard_atom_model()
     0 0 $(-U/2) 0.0
     1 1 $(-U/2) 0.0
     """
-    # Chemist notation: U[i,j,k,l] c†_i c†_k c_l c_j (no 0.5 prefactor, so each term is U/2)
+    # Chemist notation: U[i,j,k,l] -> 0.5 * c†_i c†_k c_l c_j
+    # For U * n_↑ * n_↓: need U[0,0,1,1] = U and U[1,1,0,0] = U (since 0.5*U + 0.5*U = U)
     coulomb_str = """
     2
-    0 0 0 1 1 $(U/2) 0.0
-    1 1 1 0 0 $(U/2) 0.0
+    0 0 0 1 1 $(U) 0.0
+    1 1 1 0 0 $(U) 0.0
     """
 
     flavor_qns_n = [QN_N(1), QN_N(1)]
@@ -252,15 +253,15 @@ function hubbard_dimer_model()
     1 3 $(-t) 0.0
     3 1 $(-t) 0.0
     """
-    # Chemist notation: U[i,j,k,l] c†_i c†_k c_l c_j (no 0.5 prefactor, so each term is U/2)
+    # Chemist notation: U[i,j,k,l] -> 0.5 * c†_i c†_k c_l c_j
     # Site 1 (flavors 0,1): U[0,0,1,1] and U[1,1,0,0]
     # Site 2 (flavors 2,3): U[2,2,3,3] and U[3,3,2,2]
     coulomb_str = """
     4
-    0 0 0 1 1 $(U/2) 0.0
-    1 1 1 0 0 $(U/2) 0.0
-    2 2 2 3 3 $(U/2) 0.0
-    3 3 3 2 2 $(U/2) 0.0
+    0 0 0 1 1 $(U) 0.0
+    1 1 1 0 0 $(U) 0.0
+    2 2 2 3 3 $(U) 0.0
+    3 3 3 2 2 $(U) 0.0
     """
 
     flavor_qns_n = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]
@@ -350,15 +351,15 @@ function hubbard_dimer_degenerate_model()
     1 3 $(-t) 0.0
     3 1 $(-t) 0.0
     """
-    # Chemist notation: U[i,j,k,l] c†_i c†_k c_l c_j (no 0.5 prefactor, so each term is U/2)
+    # Chemist notation: U[i,j,k,l] -> 0.5 * c†_i c†_k c_l c_j
     # Site 1 (flavors 0,1): U[0,0,1,1] and U[1,1,0,0]
     # Site 2 (flavors 2,3): U[2,2,3,3] and U[3,3,2,2]
     coulomb_str = """
     4
-    0 0 0 1 1 $(U/2) 0.0
-    1 1 1 0 0 $(U/2) 0.0
-    2 2 2 3 3 $(U/2) 0.0
-    3 3 3 2 2 $(U/2) 0.0
+    0 0 0 1 1 $(U) 0.0
+    1 1 1 0 0 $(U) 0.0
+    2 2 2 3 3 $(U) 0.0
+    3 3 3 2 2 $(U) 0.0
     """
 
     flavor_qns_n = [QN_N(1), QN_N(1), QN_N(1), QN_N(1)]

@@ -294,14 +294,12 @@ function _build_basis(hopping_path::String, interaction_path::String)
 end
 
 """
-    _get_system_info(eigenvectors::Operator, ann_opts_raw::Vector{Operator})
+    _get_system_info(eigenvectors::Operator{T}, ann_opts_raw::Vector{Operator{S}})
 
 Extract system information (T, n_flavors, n_fock) from eigenvectors and operators.
-Returns (T, n_flavors, n_fock).
+Returns (T, n_flavors, n_fock) where T is the element type of eigenvectors.
 """
-function _get_system_info(eigenvectors::Operator, ann_opts_raw::Vector{Operator})
-    first_sector_evecs = eigenvectors.blocks[(1, 1)]
-    T = eltype(first_sector_evecs)
+function _get_system_info(eigenvectors::Operator{T}, ann_opts_raw::Vector{<:Operator}) where {T}
     n_flavors = length(ann_opts_raw)
     n_fock = sum(sector.dim for sector in eigenvectors.basis.sectors)
     return T, n_flavors, n_fock
@@ -506,7 +504,7 @@ end
 =============================================================================#
 
 """
-    _gen_opts_bar(opts::Vector{Operator}, coeffs::Array{Float64,3}, opt_type::Symbol)
+    _gen_opts_bar(opts::Vector{<:Operator}, coeffs::Array{Float64,3}, opt_type::Symbol)
 
 Generate barred operators.
 
@@ -521,7 +519,7 @@ coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihi
   - `coeffs`: SOE coefficients array
   - `opt_type`: Either `:creation` or `:annihilation`
 """
-function _gen_opts_bar(opts::Vector{Operator}, coeffs::Array{Float64, 3}, opt_type::Symbol)
+function _gen_opts_bar(opts::Vector{<:Operator}, coeffs::Array{Float64, 3}, opt_type::Symbol)
     opt_type in (:creation, :annihilation) ||
         error("opt_type must be :creation or :annihilation, got $opt_type")
     n_flavors = length(opts)
@@ -590,7 +588,7 @@ end
 =============================================================================#
 
 """
-    _transform_to_eigenbasis(ops::Vector{Operator}, evecs::Operator)
+    _transform_to_eigenbasis(ops::Vector{<:Operator}, evecs::Operator{T})
 
 Transform a vector of operators to the eigenbasis.
 
@@ -599,19 +597,18 @@ This is analogous to the dense transformation: evecs' * op * evecs.
 
 # Arguments
 
-  - `ops::Vector{Operator}`: Operators in the original basis
-  - `evecs::Operator`: Eigenvector operator (block-diagonal, each block is unitary)
+  - `ops::Vector{<:Operator}`: Operators in the original basis
+  - `evecs::Operator{T}`: Eigenvector operator (block-diagonal, each block is unitary)
 
 # Returns
 
-  - `Vector{Operator}`: Operators transformed to eigenbasis
+  - `Vector{Operator{T}}`: Operators transformed to eigenbasis
 """
-function _transform_to_eigenbasis(ops::Vector{Operator}, evecs::Operator)
-    transformed_ops = Vector{Operator}(undef, length(ops))
+function _transform_to_eigenbasis(ops::Vector{<:Operator}, evecs::Operator{T}) where {T}
+    transformed_ops = Vector{Operator{T}}(undef, length(ops))
 
     for (i, op) in enumerate(ops)
         # Transform each block: for block (tgt, src), we need U_tgt' * block * U_src
-        T = eltype(first(values(op.blocks)))
         new_blocks = Dict{Tuple{Int, Int}, Matrix{T}}()
 
         for ((tgt, src), block) in op.blocks
@@ -623,7 +620,7 @@ function _transform_to_eigenbasis(ops::Vector{Operator}, evecs::Operator)
             new_blocks[(tgt, src)] = adjoint(U_tgt) * block * U_src
         end
 
-        transformed_ops[i] = Operator(op.basis, op.flux, new_blocks)
+        transformed_ops[i] = Operator{T}(op.basis, op.flux, new_blocks)
     end
 
     return transformed_ops

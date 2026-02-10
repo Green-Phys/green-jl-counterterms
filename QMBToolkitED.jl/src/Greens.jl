@@ -100,9 +100,9 @@ function _green_contributions(basis, sector_diags, evec_blocks, min_E, c_i, c_j)
 end
 
 """
-    calculate_green_tau(result, c_i, c_j, beta, n_tau)
+    calculate_green_tau(result, c_i, c_j, beta, tau_grid)
 
-Calculate imaginary-time Green's function G_ij(τ) using EigenResult.
+Calculate imaginary-time Green's function G_ij(τ) using EigenResult on a custom tau grid.
 G_ij(τ) = -⟨T_τ c_i(τ) c_j^†(0)⟩
 
 Arguments:
@@ -110,22 +110,21 @@ Arguments:
 - `c_i::Operator`: Annihilation operator i
 - `c_j::Operator`: Annihilation operator j (will be conjugated)
 - `beta::Real`: Inverse temperature
-- `n_tau::Int`: Number of time points
+- `tau_grid::AbstractVector{<:Real}`: Custom tau grid points
 
 Returns:
-- `tau_grid`: Vector of time points
-- `gtau`: Vector of G(τ) values
+- `gtau`: Vector of G(τ) values at the specified tau points
 """
 function calculate_green_tau(
     result::EigenResult{T},
     c_i::Operator,
     c_j::Operator,
     beta::Real,
-    n_tau::Int,
+    tau_grid::AbstractVector{<:Real},
 ) where {T}
     basis, sector_diags, evec_blocks, min_E, Z = _green_setup(result, c_i, c_j, beta)
 
-    tau_grid = range(0, beta, length = n_tau)
+    n_tau = length(tau_grid)
     gtau = zeros(ComplexF64, n_tau)
 
     for (evals_m, evals_n, M) in
@@ -142,6 +141,35 @@ function calculate_green_tau(
     end
 
     gtau ./= -Z
+    return gtau
+end
+
+"""
+    calculate_green_tau(result, c_i, c_j, beta, n_tau::Int)
+
+Calculate imaginary-time Green's function G_ij(τ) using EigenResult on a uniform tau grid.
+G_ij(τ) = -⟨T_τ c_i(τ) c_j^†(0)⟩
+
+Arguments:
+- `result::EigenResult`: Diagonalization result from `solve_hamiltonian`
+- `c_i::Operator`: Annihilation operator i
+- `c_j::Operator`: Annihilation operator j (will be conjugated)
+- `beta::Real`: Inverse temperature
+- `n_tau::Int`: Number of time points (uniform grid from 0 to beta)
+
+Returns:
+- `tau_grid`: Vector of time points
+- `gtau`: Vector of G(τ) values
+"""
+function calculate_green_tau(
+    result::EigenResult{T},
+    c_i::Operator,
+    c_j::Operator,
+    beta::Real,
+    n_tau::Int,
+) where {T}
+    tau_grid = range(0, beta, length = n_tau)
+    gtau = calculate_green_tau(result, c_i, c_j, beta, tau_grid)
     return tau_grid, gtau
 end
 

@@ -27,6 +27,8 @@ n_tau_linear = 1001
 =============================================================================#
 
 function main()
+    t_start = time()
+
     println("=== ED Green's Function Calculation ===")
     println("beta = $beta")
     println("hopping_file = $hopping_file")
@@ -69,6 +71,9 @@ function main()
     Z = _compute_partition_function(result, beta)
     println("Partition function Z = $Z")
 
+    # Calculate total time
+    total_time = time() - t_start
+
     # Save results
     println("Saving to $output_file...")
     h5open(output_file, "w") do file
@@ -90,6 +95,11 @@ function main()
         # Partition function
         pf = create_group(file, "partition_function")
         pf["partition_function"] = Z
+
+        # Timing (single process: wall_time == cpu_time)
+        timing = create_group(file, "timing")
+        timing["total_wall_time"] = total_time
+        timing["total_cpu_time"] = total_time
     end
 
     # Print summary
@@ -97,6 +107,7 @@ function main()
     println("G[1,1](τ=0) = $(green_linear[1,1,1])")
     println("G[1,1](τ=β) = $(green_linear[1,1,end])")
     println("G[1,1](0) + G[1,1](β) = $(green_linear[1,1,1] + green_linear[1,1,end])")
+    println("Total time: $(round(total_time, digits=3)) s")
     println("Done!")
 end
 

@@ -144,6 +144,7 @@ function init_model_data(model_params::ModelParams, dlr_params::DLRParams)
     # Build and solve Hamiltonian
     H, ann_opts_raw = build_hamiltonian(basis, hopping_path, interaction_path)
     result = solve_hamiltonian(H)
+    println("Exact diagonalization complete")
 
     eigenvalues = result.eigenvalues
     eigenvectors = result.eigenvectors

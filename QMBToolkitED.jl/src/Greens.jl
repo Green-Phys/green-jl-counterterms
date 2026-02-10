@@ -135,12 +135,8 @@ function calculate_green_tau(
             factor_beta = exp(-beta * E_b)
 
             for a = 1:length(evals_n)
-                val = M[b, a]
-
-                if abs(val) > 1e-12
-                    diff_E = E_b - evals_n[a]
-                    gtau .+= (factor_beta * val) .* exp.(diff_E .* tau_grid)
-                end
+                diff_E = E_b - evals_n[a]
+                gtau .+= (factor_beta * M[b, a]) .* exp.(diff_E .* tau_grid)
             end
         end
     end
@@ -183,13 +179,9 @@ function calculate_green_matsubara(
         for b = 1:length(evals_m)
             E_m = evals_m[b]
             for a = 1:length(evals_n)
-                matrix_element = M[b, a]
-
-                if abs(matrix_element) > 1e-12
-                    energy_diff = E_m - evals_n[a]
-                    boltzmann_factor = exp(-beta * E_m) + exp(-beta * evals_n[a])
-                    g_iwn .+= boltzmann_factor * matrix_element ./ (iomega_n .+ energy_diff)
-                end
+                energy_diff = E_m - evals_n[a]
+                boltzmann_factor = exp(-beta * E_m) + exp(-beta * evals_n[a])
+                g_iwn .+= boltzmann_factor * M[b, a] ./ (iomega_n .+ energy_diff)
             end
         end
     end

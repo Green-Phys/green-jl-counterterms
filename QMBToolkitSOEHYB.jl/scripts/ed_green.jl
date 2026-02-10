@@ -1,6 +1,6 @@
 #!/usr/bin/env julia
 # Direct ED Green's function calculation (atomic limit, no hybridization)
-# Usage: julia --project=. scripts/ed_green.jl
+# Usage: julia --project=/path/to/QMBToolkitSOEHYB.jl scripts/ed_green.jl
 
 using QMBToolkitED
 using QMBToolkitDLR
@@ -13,7 +13,7 @@ using DelimitedFiles
 beta = 10.0                    # Inverse temperature
 hopping_file = "test/data/hopping.txt"
 interaction_file = "test/data/Uijkl.txt"
-output_file = "sim.h5"
+output_file = "ed_green.h5"
 
 # DLR parameters
 dlr_rtol = 1e-14
@@ -46,28 +46,24 @@ function main()
     result = solve_hamiltonian(H)
     println("Exact diagonalization complete")
 
-    # Create DLR grid
+    # Create grids
     dlr_grid = DLRGrid(dlr_Euv, beta, dlr_rtol, true)
-    n_dlr = dlr_grid.size
     tau_dlr = dlr_grid.τ
-    println("DLR grid size = $n_dlr")
+    tau_linear = collect(LinRange(0.0, beta, n_tau_linear))
+    println("DLR grid size = $(length(tau_dlr))")
+    println("Linear grid size = $n_tau_linear")
 
-    # Calculate Green's function directly on DLR tau grid
-    green_dlr_tau = zeros(ComplexF64, n_flavors, n_flavors, length(tau_dlr))
+    # Calculate Green's function directly on both grids
+    green_dlr = zeros(ComplexF64, n_flavors, n_flavors, length(tau_dlr))
+    green_linear = zeros(ComplexF64, n_flavors, n_flavors, n_tau_linear)
 
     println("Computing Green's function...")
     for i in 1:n_flavors
         for j in 1:n_flavors
-            # Use the new QMBToolkitED API that accepts custom tau grid
-            green_dlr_tau[i, j, :] = calculate_green_tau(
-                result, ann_ops[i], ann_ops[j], beta, tau_dlr)
+            green_dlr[i, j, :] = calculate_green_tau(result, ann_ops[i], ann_ops[j], beta, tau_dlr)
+            green_linear[i, j, :] = calculate_green_tau(result, ann_ops[i], ann_ops[j], beta, tau_linear)
         end
     end
-
-    # Convert to DLR coefficients and interpolate to linear grid
-    green_dlr_coeffs = collect(tau2dlr(dlr_grid, green_dlr_tau, tau_dlr; axis = 3))
-    tau_linear = collect(LinRange(0.0, beta, n_tau_linear))
-    green_linear = collect(dlr2tau(dlr_grid, green_dlr_coeffs, tau_linear; axis = 3))
 
     # Compute partition function
     Z = _compute_partition_function(result, beta)
@@ -83,9 +79,8 @@ function main()
 
         # Green's function on DLR grid
         g_dlr = create_group(file, "green/dlr_grid")
-        g_dlr["green_tau"] = green_dlr_tau
+        g_dlr["green_tau"] = green_dlr
         g_dlr["tau"] = tau_dlr
-        g_dlr["coeffs"] = green_dlr_coeffs
 
         # Model info
         model = create_group(file, "model")
@@ -114,8 +109,6 @@ Build basis, using QN_NSz if spin is conserved, otherwise QN_N.
 """
 function _build_basis(hopping_file, interaction_file, n_flavors)
     if n_flavors % 2 == 0 && _check_spin_conservation(hopping_file, interaction_file)
-        # Spin conserved: use QN_NSz
-        # Convention: flavor f = 2*orbital + spin, spin=0->sz=+1, spin=1->sz=-1
         qns = [QN_NSz(1, f % 2 == 0 ? 1 : -1) for f in 0:(n_flavors - 1)]
         println("Using QN_NSz (spin conservation detected)")
     else
@@ -131,7 +124,6 @@ Check if the Hamiltonian conserves spin.
 function _check_spin_conservation(hopping_file, interaction_file)
     hopping_data = readdlm(hopping_file)
 
-    # Check hopping terms
     for row_idx in 1:size(hopping_data, 1)
         i, j = Int(hopping_data[row_idx, 1]), Int(hopping_data[row_idx, 2])
         re, im = hopping_data[row_idx, 3], hopping_data[row_idx, 4]
@@ -140,7 +132,6 @@ function _check_spin_conservation(hopping_file, interaction_file)
         end
     end
 
-    # Check interaction terms
     interaction_lines = readlines(interaction_file)
     isempty(interaction_lines) && return true
     n_terms = parse(Int, strip(interaction_lines[1]))
@@ -172,5 +163,4 @@ function _compute_partition_function(result, beta)
     return Z_shifted * exp(-beta * min_E)
 end
 
-# Run
 main()

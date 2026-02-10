@@ -11,14 +11,17 @@ which sector pairs are connected.
 # ============================================================================
 
 """
-    Operator
+    Operator{T}
 
 A block-dense matrix operator exploiting quantum number conservation.
+
+Type Parameters:
+- `T<:Number`: Element type (Float64 for real operators, ComplexF64 for complex)
 
 Fields:
 - `basis::Basis`: The basis this operator acts on
 - `flux::QuantumNumber`: Quantum number change carried by this operator
-- `blocks::Dict{Tuple{Int,Int}, Matrix{ComplexF64}}`: Non-zero blocks
+- `blocks::Dict{Tuple{Int,Int}, Matrix{T}}`: Non-zero blocks
 
 The blocks are indexed as `(target_sector, source_sector) → Matrix`.
 Matrix element `block[i,j]` maps state j in source sector to state i in target sector.
@@ -41,16 +44,16 @@ for ((target, source), block) in c1.blocks
 end
 ```
 """
-struct Operator
+struct Operator{T<:Number}
     basis::Basis
     flux::QuantumNumber
-    blocks::Dict{Tuple{Int,Int}, Matrix{ComplexF64}}
+    blocks::Dict{Tuple{Int,Int},Matrix{T}}
 end
 
 # Display
-function Base.show(io::IO, op::Operator)
+function Base.show(io::IO, op::Operator{T}) where {T}
     QN_type = eltype(op.basis.flavor_qns)
-    println(io, "Operator{$QN_type}")
+    println(io, "Operator{$T, $QN_type}")
     println(io, "  flux: ", op.flux)
     println(io, "  num_blocks: ", length(op.blocks))
 
@@ -89,12 +92,12 @@ evals_sector2 = result.eigenvalues.sector_diags[2]
 struct DiagonalOperator
     basis::Basis
     flux::QuantumNumber
-    sector_diags::Dict{Int, Vector{Float64}}
+    sector_diags::Dict{Int,Vector{Float64}}
 
     function DiagonalOperator(
         basis::Basis,
         flux::QuantumNumber,
-        sector_diags::Dict{Int, Vector{Float64}}
+        sector_diags::Dict{Int,Vector{Float64}},
     )
         # Validate flux is zero
         QN_type = typeof(basis.flavor_qns[1])
@@ -181,8 +184,8 @@ function annihilator(basis::Basis, flavor::Int)
     # Bit mask for this flavor
     bitmask = 1 << (flavor - 1)
 
-    # Storage for blocks
-    blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
+    # Storage for blocks - use Float64 since annihilator values are ±1
+    blocks = Dict{Tuple{Int,Int},Matrix{Float64}}()
 
     # Iterate over source sectors
     for (src_idx, src_sector) in enumerate(basis.sectors)
@@ -198,7 +201,8 @@ function annihilator(basis::Basis, flavor::Int)
         tgt_sector = basis.sectors[tgt_idx]
 
         # Allocate block: rows = target states, cols = source states
-        block = zeros(ComplexF64, tgt_sector.dim, src_sector.dim)
+        # Use Float64 since fermion_sign returns ±1
+        block = zeros(Float64, tgt_sector.dim, src_sector.dim)
 
         # Fill block by iterating over source states
         for (src_local_idx, src_state) in enumerate(src_sector.states)
@@ -252,5 +256,5 @@ c = annihilators(basis)
 ```
 """
 function annihilators(basis::Basis)
-    return [annihilator(basis, i) for i in 1:basis.nflavors]
+    return [annihilator(basis, i) for i = 1:basis.nflavors]
 end

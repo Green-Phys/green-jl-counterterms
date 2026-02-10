@@ -6,13 +6,16 @@ independently, providing massive speedup over full diagonalization.
 """
 
 """
-    EigenResult
+    EigenResult{T}
 
 Result of block-diagonal eigenvalue decomposition.
 
+Type Parameters:
+- `T<:Number`: Element type of eigenvectors (Float64 for real, ComplexF64 for complex)
+
 Fields:
-- `eigenvalues::DiagonalOperator`: Eigenvalues as a diagonal operator
-- `eigenvectors::Operator`: Eigenvectors as a block-diagonal unitary operator
+- `eigenvalues::DiagonalOperator`: Eigenvalues as a diagonal operator (always Float64)
+- `eigenvectors::Operator{T}`: Eigenvectors as a block-diagonal unitary operator
 
 The eigenvectors operator has flux=0 and stores the unitary transformation matrix
 for each sector. Each block (sector_idx, sector_idx) contains the eigenvectors
@@ -33,9 +36,9 @@ E_sector2 = result.eigenvalues.sector_diags[2]
 U_sector2 = result.eigenvectors.blocks[(2, 2)]
 ```
 """
-struct EigenResult
+struct EigenResult{T<:Number}
     eigenvalues::DiagonalOperator
-    eigenvectors::Operator
+    eigenvectors::Operator{T}
 end
 
 """
@@ -75,7 +78,7 @@ Performance:
 For a system with n sectors of dimension d each, this is O(n * d^3) instead
 of O((n*d)^3), a speedup of ~n^2 for equal-sized sectors.
 """
-function solve_hamiltonian(H::Operator)
+function solve_hamiltonian(H::Operator{T}) where {T}
     basis = H.basis
 
     # Get concrete quantum number type from first element
@@ -83,13 +86,15 @@ function solve_hamiltonian(H::Operator)
 
     # Verify flux is zero (Hamiltonian is block-diagonal)
     if H.flux != zero(QN_type)
-        error("Hamiltonian must have zero flux for efficient block diagonalization. " *
-              "Got flux = $(H.flux)")
+        error(
+            "Hamiltonian must have zero flux for efficient block diagonalization. " *
+            "Got flux = $(H.flux)",
+        )
     end
 
-    # Storage for eigenvalues and eigenvectors
-    sector_diags = Dict{Int, Vector{Float64}}()
-    evec_blocks = Dict{Tuple{Int,Int}, Matrix{ComplexF64}}()
+    # Storage for eigenvalues and eigenvectors (initially complex)
+    sector_diags = Dict{Int,Vector{Float64}}()
+    evec_blocks = Dict{Tuple{Int,Int},Matrix{ComplexF64}}()
 
     # Diagonalize each sector independently
     for (sector_idx, sector) in enumerate(basis.sectors)
@@ -113,10 +118,21 @@ function solve_hamiltonian(H::Operator)
         end
     end
 
-    # Create operator types
+    # Create eigenvalues operator
     zf = zero(QN_type)
     eigenvalues = DiagonalOperator(basis, zf, sector_diags)
-    eigenvectors = Operator(basis, zf, evec_blocks)
 
-    return EigenResult(eigenvalues, eigenvectors)
+    # Check if all eigenvectors are real (imaginary parts are zero)
+    all_real = all(all(imag.(block) .== 0) for block in values(evec_blocks))
+
+    if all_real
+        # Convert to Float64 eigenvectors
+        real_evec_blocks =
+            Dict{Tuple{Int,Int},Matrix{Float64}}(k => real.(v) for (k, v) in evec_blocks)
+        eigenvectors = Operator{Float64}(basis, zf, real_evec_blocks)
+        return EigenResult{Float64}(eigenvalues, eigenvectors)
+    else
+        eigenvectors = Operator{ComplexF64}(basis, zf, evec_blocks)
+        return EigenResult{ComplexF64}(eigenvalues, eigenvectors)
+    end
 end

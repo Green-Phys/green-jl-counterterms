@@ -2,7 +2,7 @@
 Conversion between block-dense operators and dense matrices.
 
 Functions:
-- to_matrix: Convert Operator/DiagonalOperator → Matrix{ComplexF64}
+- to_matrix: Convert Operator{T}/DiagonalOperator → Matrix{T}/Matrix{Float64}
 - to_vector: Extract eigenvalues as a concatenated vector
 """
 
@@ -22,7 +22,7 @@ function sector_offsets(basis::Basis)
 end
 
 """
-    to_matrix(op::Operator) -> Matrix{ComplexF64}
+    to_matrix(op::Operator{T}) -> Matrix{T}
 
 Convert an Operator to a dense matrix.
 
@@ -31,10 +31,10 @@ Each block (target_sector, source_sector) is mapped to the corresponding submatr
 in the global dense matrix.
 
 Arguments:
-- `op::Operator`: Block-dense operator
+- `op::Operator{T}`: Block-dense operator
 
 Returns:
-- `Matrix{ComplexF64}`: Dense matrix representation
+- `Matrix{T}`: Dense matrix representation (Float64 for real operators, ComplexF64 for complex)
 
 Example:
 ```julia
@@ -46,10 +46,10 @@ c1_mat = to_matrix(c1)
 @assert size(c1_mat) == (4, 4)  # 2^2 = 4
 ```
 """
-function to_matrix(op::Operator)::Matrix{ComplexF64}
+function to_matrix(op::Operator{T})::Matrix{T} where {T}
     basis = op.basis
     n = basis.total_dim
-    result = zeros(ComplexF64, n, n)
+    result = zeros(T, n, n)
     offsets = sector_offsets(basis)
 
     # Place each block at the correct position
@@ -61,14 +61,14 @@ function to_matrix(op::Operator)::Matrix{ComplexF64}
         src_dim = basis.sectors[src_idx].dim
 
         # Copy block to the appropriate submatrix
-        result[tgt_start+1:tgt_start+tgt_dim, src_start+1:src_start+src_dim] = block
+        result[(tgt_start+1):(tgt_start+tgt_dim), (src_start+1):(src_start+src_dim)] = block
     end
 
     return result
 end
 
 """
-    to_matrix(D::DiagonalOperator) -> Matrix{ComplexF64}
+    to_matrix(D::DiagonalOperator) -> Matrix{Float64}
 
 Convert a diagonal operator to a full matrix.
 
@@ -76,7 +76,7 @@ Arguments:
 - `D::DiagonalOperator`: Diagonal operator
 
 Returns:
-- `Matrix{ComplexF64}`: Full diagonal matrix
+- `Matrix{Float64}`: Full diagonal matrix (eigenvalues are always real)
 
 Example:
 ```julia
@@ -86,17 +86,17 @@ D = DiagonalOperator(basis, QN_N(0), sector_diags)
 mat = to_matrix(D)
 ```
 """
-function to_matrix(D::DiagonalOperator)::Matrix{ComplexF64}
+function to_matrix(D::DiagonalOperator)::Matrix{Float64}
     basis = D.basis
     n = basis.total_dim
-    result = zeros(ComplexF64, n, n)
+    result = zeros(Float64, n, n)
     offsets = sector_offsets(basis)
 
     # Place diagonal elements at correct positions
     for (sector_idx, diag) in D.sector_diags
         sector_start = offsets[sector_idx]
         for (i, val) in enumerate(diag)
-            result[sector_start + i, sector_start + i] = val
+            result[sector_start+i, sector_start+i] = val
         end
     end
 
@@ -127,11 +127,11 @@ function to_vector(D::DiagonalOperator)
     result = zeros(Float64, basis.total_dim)
     offsets = sector_offsets(basis)
 
-    for sector_idx in 1:length(basis.sectors)
+    for sector_idx = 1:length(basis.sectors)
         if haskey(D.sector_diags, sector_idx)
             offset = offsets[sector_idx]
             diag = D.sector_diags[sector_idx]
-            result[offset+1:offset+length(diag)] = diag
+            result[(offset+1):(offset+length(diag))] = diag
         end
     end
 

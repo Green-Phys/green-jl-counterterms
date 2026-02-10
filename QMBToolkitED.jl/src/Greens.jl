@@ -12,7 +12,12 @@ Shared setup for Green's function calculations.
 Verifies operator compatibility, extracts eigensystem data,
 finds the ground state energy, and computes the partition function.
 """
-function _green_setup(result::EigenResult, c_i::Operator, c_j::Operator, beta::Real)
+function _green_setup(
+    result::EigenResult{T},
+    c_i::Operator,
+    c_j::Operator,
+    beta::Real,
+) where {T}
     basis = result.eigenvalues.basis
 
     # Verify operators are compatible with basis
@@ -53,7 +58,7 @@ to the eigenbasis, and return a vector of (evals_m, evals_n, M) tuples where
 M_ba = C̃_i(b,a) * conj(C̃_j(b,a)) is the matrix element product.
 """
 function _green_contributions(basis, sector_diags, evec_blocks, min_E, c_i, c_j)
-    contributions = Tuple{Vector{Float64}, Vector{Float64}, Matrix{ComplexF64}}[]
+    contributions = Tuple{Vector{Float64},Vector{Float64},Matrix{ComplexF64}}[]
 
     for (idx_n, sector_n) in enumerate(basis.sectors)
         if !haskey(sector_diags, idx_n)
@@ -112,23 +117,24 @@ Returns:
 - `gtau`: Vector of G(τ) values
 """
 function calculate_green_tau(
-    result::EigenResult,
+    result::EigenResult{T},
     c_i::Operator,
     c_j::Operator,
     beta::Real,
-    n_tau::Int
-)
+    n_tau::Int,
+) where {T}
     basis, sector_diags, evec_blocks, min_E, Z = _green_setup(result, c_i, c_j, beta)
 
-    tau_grid = range(0, beta, length=n_tau)
+    tau_grid = range(0, beta, length = n_tau)
     gtau = zeros(ComplexF64, n_tau)
 
-    for (evals_m, evals_n, M) in _green_contributions(basis, sector_diags, evec_blocks, min_E, c_i, c_j)
-        for b in 1:length(evals_m)
+    for (evals_m, evals_n, M) in
+        _green_contributions(basis, sector_diags, evec_blocks, min_E, c_i, c_j)
+        for b = 1:length(evals_m)
             E_b = evals_m[b]
             factor_beta = exp(-beta * E_b)
 
-            for a in 1:length(evals_n)
+            for a = 1:length(evals_n)
                 val = M[b, a]
 
                 if abs(val) > 1e-12
@@ -160,22 +166,23 @@ Returns:
 - `g_iwn`: Vector of G(iω_n) values
 """
 function calculate_green_matsubara(
-    result::EigenResult,
+    result::EigenResult{T},
     c_i::Operator,
     c_j::Operator,
     beta::Real,
-    n_matsubara::Int
-)
+    n_matsubara::Int,
+) where {T}
     basis, sector_diags, evec_blocks, min_E, Z = _green_setup(result, c_i, c_j, beta)
 
     omega_n = (2 .* (0:(n_matsubara-1)) .+ 1) .* π ./ beta
     iomega_n = 1im .* omega_n
     g_iwn = zeros(ComplexF64, n_matsubara)
 
-    for (evals_m, evals_n, M) in _green_contributions(basis, sector_diags, evec_blocks, min_E, c_i, c_j)
-        for b in 1:length(evals_m)
+    for (evals_m, evals_n, M) in
+        _green_contributions(basis, sector_diags, evec_blocks, min_E, c_i, c_j)
+        for b = 1:length(evals_m)
             E_m = evals_m[b]
-            for a in 1:length(evals_n)
+            for a = 1:length(evals_n)
                 matrix_element = M[b, a]
 
                 if abs(matrix_element) > 1e-12

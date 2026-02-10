@@ -154,16 +154,16 @@ using LinearAlgebra
         zero_mat = zeros(ComplexF64, dim, dim)
 
         # {c_i, c_j} = 0 for all i < j
-        for i in 1:nflavors
-            for j in (i+1):nflavors
+        for i = 1:nflavors
+            for j = (i+1):nflavors
                 anticomm = to_matrix(c[i] * c[j] + c[j] * c[i])
                 @test anticomm ≈ zero_mat atol=1e-14
             end
         end
 
         # {c_i, c_j†} = δ_ij I for all i, j
-        for i in 1:nflavors
-            for j in 1:nflavors
+        for i = 1:nflavors
+            for j = 1:nflavors
                 anticomm = to_matrix(c[i] * c_dag[j] + c_dag[j] * c[i])
                 if i == j
                     @test anticomm ≈ I_mat atol=1e-14
@@ -183,7 +183,8 @@ using LinearAlgebra
 
         @test size(c1_mat) == (basis.total_dim, basis.total_dim)
         @test size(c1_mat) == (4, 4)
-        @test c1_mat isa Matrix{ComplexF64}
+        # Annihilators now return Float64 since their values are ±1
+        @test c1_mat isa Matrix{Float64}
     end
 
     @testset "Matrix conversion consistency" begin
@@ -247,7 +248,7 @@ using LinearAlgebra
         flavor_qns = [QN_N(1), QN_N(1), QN_N(1)]
         basis = Basis(flavor_qns)
 
-        N = sum([annihilator(basis, i)' * annihilator(basis, i) for i in 1:3])
+        N = sum([annihilator(basis, i)' * annihilator(basis, i) for i = 1:3])
         @test N.flux == QN_N(0)
 
         N_mat = to_matrix(N)

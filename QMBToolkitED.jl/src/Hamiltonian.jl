@@ -94,13 +94,20 @@ function build_hamiltonian(
     QN_type = typeof(basis.flavor_qns[1])
 
     # Parse hopping terms: (i, j, t_ij) with 1-indexed flavors
+    # Track if all terms are real
+    all_real = true
     hopping_terms = Tuple{Int,Int,ComplexF64}[]
     if !isempty(hopping_lines)
         for line in hopping_lines
             parts = split(line)
             i = parse(Int, parts[1]) + 1  # Convert to 1-indexed
             j = parse(Int, parts[2]) + 1
-            val = parse(Float64, parts[3]) + im * parse(Float64, parts[4])
+            re_val = parse(Float64, parts[3])
+            im_val = parse(Float64, parts[4])
+            if im_val != 0.0
+                all_real = false
+            end
+            val = re_val + im * im_val
             if !iszero(val)
                 push!(hopping_terms, (i, j, val))
             end
@@ -117,7 +124,12 @@ function build_hamiltonian(
             fl_j = parse(Int, parts[3]) + 1
             fl_k = parse(Int, parts[4]) + 1
             fl_l = parse(Int, parts[5]) + 1
-            val = parse(Float64, parts[6]) + im * parse(Float64, parts[7])
+            re_val = parse(Float64, parts[6])
+            im_val = parse(Float64, parts[7])
+            if im_val != 0.0
+                all_real = false
+            end
+            val = re_val + im * im_val
             if !iszero(val)
                 push!(interaction_terms, (fl_i, fl_j, fl_k, fl_l, val))
             end
@@ -126,11 +138,13 @@ function build_hamiltonian(
 
     # Build Hamiltonian blocks directly by iterating over Fock states
     # The Hamiltonian has flux = 0 (number conserving), so only diagonal blocks
-    blocks = Dict{Tuple{Int,Int},Matrix{ComplexF64}}()
+    # Use Float64 if all terms are real, ComplexF64 otherwise
+    T = all_real ? Float64 : ComplexF64
+    blocks = Dict{Tuple{Int,Int},Matrix{T}}()
 
     for (sector_idx, sector) in enumerate(basis.sectors)
         dim = sector.dim
-        block = zeros(ComplexF64, dim, dim)
+        block = zeros(T, dim, dim)
 
         # Iterate over all source states in this sector
         for (src_local_idx, src_state) in enumerate(sector.states)
@@ -156,8 +170,9 @@ function build_hamiltonian(
                 # Look up target state index (must be in same sector since H is number-conserving)
                 tgt_local_idx = sector.state_to_index[tgt_state]
 
-                # Accumulate matrix element
-                block[tgt_local_idx, src_local_idx] += t_ij * sign1 * sign2
+                # Accumulate matrix element (use real part when T is Float64)
+                coeff = T == Float64 ? real(t_ij) : t_ij
+                block[tgt_local_idx, src_local_idx] += coeff * sign1 * sign2
             end
 
             # Apply interaction terms: 0.5 * U_ijkl c†_i c†_k c_l c_j |src_state⟩
@@ -201,8 +216,9 @@ function build_hamiltonian(
                 # Look up target state index
                 tgt_local_idx = sector.state_to_index[tgt_state]
 
-                # Accumulate matrix element (with 0.5 prefactor)
-                block[tgt_local_idx, src_local_idx] += 0.5 * U_ijkl * total_sign
+                # Accumulate matrix element (with 0.5 prefactor, use real part when T is Float64)
+                coeff = T == Float64 ? real(U_ijkl) : U_ijkl
+                block[tgt_local_idx, src_local_idx] += 0.5 * coeff * total_sign
             end
         end
 
@@ -212,7 +228,7 @@ function build_hamiltonian(
         end
     end
 
-    H = Operator(basis, zero(QN_type), blocks)
+    H = Operator{T}(basis, zero(QN_type), blocks)
 
     return H, c
 end

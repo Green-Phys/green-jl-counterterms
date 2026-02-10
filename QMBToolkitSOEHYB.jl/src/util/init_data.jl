@@ -156,11 +156,6 @@ function init_model_data(model_params::ModelParams, solver_params::SolverParams,
     # Extract system information
     T, n_flavors, n_fock = _get_system_info(eigenvectors, ann_opts_raw)
 
-    # Transform operators to eigenbasis
-    ann_opts = _transform_to_eigenbasis(ann_opts_raw, eigenvectors)
-    cre_opts = [adjoint(c) for c in ann_opts]
-    is_root && println("Eigenbasis transformation complete")
-
     # Initialize DLR grid
     dlr_grid = DLRGrid(dlr_params.Euv, model_params.beta, dlr_params.rtol, true)
 
@@ -168,6 +163,11 @@ function init_model_data(model_params::ModelParams, solver_params::SolverParams,
     E_shift = _get_E_shift(eigenvalues)
     bare_propagator_tau = _build_bare_propagator(T, eigenvalues, dlr_grid.τ, E_shift,
         model_params.beta, solver_params.prune_threshold, is_root)
+
+    # Transform operators to eigenbasis
+    ann_opts = _transform_to_eigenbasis(ann_opts_raw, eigenvectors)
+    cre_opts = [adjoint(c) for c in ann_opts]
+    is_root && println("Eigenbasis transformation complete")
 
     # Load hybridization data
     hyb_soe, n_flavors_physical = _load_hybridization_data(model_params, n_flavors, dlr_grid)

@@ -159,9 +159,8 @@ function calculate_green_tau(
         c_idx, b, a = work_items[idx]
         evals_m, evals_n, M = contributions[c_idx]
         E_b = evals_m[b]
-        factor_beta = exp(-beta * E_b)
-        diff_E = E_b - evals_n[a]
-        gtau_local .+= (factor_beta * M[b, a]) .* exp.(diff_E .* tau_grid)
+        E_a = evals_n[a]
+        gtau_local .+= M[b, a] .* exp.(.-E_b .* (beta .- tau_grid) .- E_a .* tau_grid)
     end
 
     # Reduce across processes if parallel

@@ -100,7 +100,7 @@ function _green_contributions(basis, sector_diags, evec_blocks, min_E, c_i, c_j)
 end
 
 """
-    calculate_green_tau(result, c_i, c_j, beta, tau_grid)
+    calculate_green_tau(result, c_i, c_j, beta, tau_grid; parallel_info=nothing)
 
 Calculate imaginary-time Green's function G_ij(τ) using EigenResult on a custom tau grid.
 G_ij(τ) = -⟨T_τ c_i(τ) c_j^†(0)⟩
@@ -112,6 +112,11 @@ Arguments:
 - `beta::Real`: Inverse temperature
 - `tau_grid::AbstractVector{<:Real}`: Custom tau grid points
 
+Keyword Arguments:
+- `parallel_info`: If provided as `(rank, nprocs, reduce_func)`, work is distributed
+  across processes. `reduce_func(array)` should perform an allreduce sum operation.
+  If `nothing` (default), runs serially.
+
 Returns:
 - `gtau`: Vector of G(τ) values at the specified tau points
 """
@@ -120,24 +125,51 @@ function calculate_green_tau(
     c_i::Operator,
     c_j::Operator,
     beta::Real,
-    tau_grid::AbstractVector{<:Real},
+    tau_grid::AbstractVector{<:Real};
+    parallel_info = nothing,
 ) where {T}
     basis, sector_diags, evec_blocks, min_E, Z = _green_setup(result, c_i, c_j, beta)
+    contributions = _green_contributions(basis, sector_diags, evec_blocks, min_E, c_i, c_j)
 
     n_tau = length(tau_grid)
-    gtau = zeros(ComplexF64, n_tau)
 
-    for (evals_m, evals_n, M) in
-        _green_contributions(basis, sector_diags, evec_blocks, min_E, c_i, c_j)
+    # Build flat list of work items: (contrib_idx, b, a)
+    work_items = Tuple{Int,Int,Int}[]
+    for (c_idx, (evals_m, evals_n, _)) in enumerate(contributions)
         for b = 1:length(evals_m)
-            E_b = evals_m[b]
-            factor_beta = exp(-beta * E_b)
-
             for a = 1:length(evals_n)
-                diff_E = E_b - evals_n[a]
-                gtau .+= (factor_beta * M[b, a]) .* exp.(diff_E .* tau_grid)
+                push!(work_items, (c_idx, b, a))
             end
         end
+    end
+
+    # Determine which items this rank handles
+    if parallel_info === nothing
+        my_start, my_step = 1, 1
+        do_reduce = false
+    else
+        rank, nprocs, _ = parallel_info
+        my_start, my_step = rank + 1, nprocs
+        do_reduce = true
+    end
+
+    # Compute local contribution
+    gtau_local = zeros(ComplexF64, n_tau)
+    for idx = my_start:my_step:length(work_items)
+        c_idx, b, a = work_items[idx]
+        evals_m, evals_n, M = contributions[c_idx]
+        E_b = evals_m[b]
+        factor_beta = exp(-beta * E_b)
+        diff_E = E_b - evals_n[a]
+        gtau_local .+= (factor_beta * M[b, a]) .* exp.(diff_E .* tau_grid)
+    end
+
+    # Reduce across processes if parallel
+    if do_reduce
+        _, _, reduce_func = parallel_info
+        gtau = reduce_func(gtau_local)
+    else
+        gtau = gtau_local
     end
 
     gtau ./= -Z
@@ -174,7 +206,7 @@ function calculate_green_tau(
 end
 
 """
-    calculate_green_matsubara(result, c_i, c_j, beta, n_matsubara)
+    calculate_green_matsubara(result, c_i, c_j, beta, n_matsubara; parallel_info=nothing)
 
 Calculate Matsubara Green's function G_ij(iω_n) using EigenResult.
 
@@ -185,6 +217,11 @@ Arguments:
 - `beta::Real`: Inverse temperature
 - `n_matsubara::Int`: Number of frequencies
 
+Keyword Arguments:
+- `parallel_info`: If provided as `(rank, nprocs, reduce_func)`, work is distributed
+  across processes. `reduce_func(array)` should perform an allreduce sum operation.
+  If `nothing` (default), runs serially.
+
 Returns:
 - `iomega_n`: Vector of Matsubara frequencies
 - `g_iwn`: Vector of G(iω_n) values
@@ -194,24 +231,52 @@ function calculate_green_matsubara(
     c_i::Operator,
     c_j::Operator,
     beta::Real,
-    n_matsubara::Int,
+    n_matsubara::Int;
+    parallel_info = nothing,
 ) where {T}
     basis, sector_diags, evec_blocks, min_E, Z = _green_setup(result, c_i, c_j, beta)
+    contributions = _green_contributions(basis, sector_diags, evec_blocks, min_E, c_i, c_j)
 
     omega_n = (2 .* (0:(n_matsubara-1)) .+ 1) .* π ./ beta
     iomega_n = 1im .* omega_n
-    g_iwn = zeros(ComplexF64, n_matsubara)
 
-    for (evals_m, evals_n, M) in
-        _green_contributions(basis, sector_diags, evec_blocks, min_E, c_i, c_j)
+    # Build flat list of work items: (contrib_idx, b, a)
+    work_items = Tuple{Int,Int,Int}[]
+    for (c_idx, (evals_m, evals_n, _)) in enumerate(contributions)
         for b = 1:length(evals_m)
-            E_m = evals_m[b]
             for a = 1:length(evals_n)
-                energy_diff = E_m - evals_n[a]
-                boltzmann_factor = exp(-beta * E_m) + exp(-beta * evals_n[a])
-                g_iwn .+= boltzmann_factor * M[b, a] ./ (iomega_n .+ energy_diff)
+                push!(work_items, (c_idx, b, a))
             end
         end
+    end
+
+    # Determine which items this rank handles
+    if parallel_info === nothing
+        my_start, my_step = 1, 1
+        do_reduce = false
+    else
+        rank, nprocs, _ = parallel_info
+        my_start, my_step = rank + 1, nprocs
+        do_reduce = true
+    end
+
+    # Compute local contribution
+    g_iwn_local = zeros(ComplexF64, n_matsubara)
+    for idx = my_start:my_step:length(work_items)
+        c_idx, b, a = work_items[idx]
+        evals_m, evals_n, M = contributions[c_idx]
+        E_m = evals_m[b]
+        energy_diff = E_m - evals_n[a]
+        boltzmann_factor = exp(-beta * E_m) + exp(-beta * evals_n[a])
+        g_iwn_local .+= boltzmann_factor * M[b, a] ./ (iomega_n .+ energy_diff)
+    end
+
+    # Reduce across processes if parallel
+    if do_reduce
+        _, _, reduce_func = parallel_info
+        g_iwn = reduce_func(g_iwn_local)
+    else
+        g_iwn = g_iwn_local
     end
 
     g_iwn ./= Z

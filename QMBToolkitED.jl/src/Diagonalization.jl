@@ -42,7 +42,7 @@ struct EigenResult{T<:Number}
 end
 
 """
-    solve_hamiltonian(H::Operator) -> EigenResult
+    solve_hamiltonian(H::Operator; parallel_info=nothing) -> EigenResult
 
 Diagonalize a Hamiltonian efficiently by processing each sector independently.
 
@@ -51,6 +51,12 @@ to massively reduce computational cost compared to full diagonalization.
 
 Arguments:
 - `H::Operator`: Hamiltonian (must have flux=0)
+
+Keyword Arguments:
+- `parallel_info`: If provided as `(rank, nprocs, gather_func)`, sectors are distributed
+  across processes. `gather_func(local_sector_diags, local_evec_blocks)` should gather
+  and merge results from all processes, returning `(merged_sector_diags, merged_evec_blocks)`.
+  If `nothing` (default), runs serially.
 
 Returns:
 - `EigenResult`: Structure containing eigenvalues and eigenvectors as operator types.
@@ -78,7 +84,7 @@ Performance:
 For a system with n sectors of dimension d each, this is O(n * d^3) instead
 of O((n*d)^3), a speedup of ~n^2 for equal-sized sectors.
 """
-function solve_hamiltonian(H::Operator{T}) where {T}
+function solve_hamiltonian(H::Operator{T}; parallel_info = nothing) where {T}
     basis = H.basis
 
     # Get concrete quantum number type from first element
@@ -92,12 +98,24 @@ function solve_hamiltonian(H::Operator{T}) where {T}
         )
     end
 
-    # Storage for eigenvalues and eigenvectors (initially complex)
-    sector_diags = Dict{Int,Vector{Float64}}()
-    evec_blocks = Dict{Tuple{Int,Int},Matrix{ComplexF64}}()
+    # Determine which sectors this rank handles
+    n_sectors = length(basis.sectors)
+    if parallel_info === nothing
+        my_start, my_step = 1, 1
+        do_gather = false
+    else
+        rank, nprocs, _ = parallel_info
+        my_start, my_step = rank + 1, nprocs
+        do_gather = true
+    end
 
-    # Diagonalize each sector independently
-    for (sector_idx, sector) in enumerate(basis.sectors)
+    # Storage for eigenvalues and eigenvectors (initially complex)
+    local_sector_diags = Dict{Int,Vector{Float64}}()
+    local_evec_blocks = Dict{Tuple{Int,Int},Matrix{ComplexF64}}()
+
+    # Diagonalize sectors assigned to this rank
+    for sector_idx = my_start:my_step:n_sectors
+        sector = basis.sectors[sector_idx]
         dim = sector.dim
 
         # Extract block for this sector (diagonal block)
@@ -108,14 +126,23 @@ function solve_hamiltonian(H::Operator{T}) where {T}
             # Make sure it's Hermitian
             sol = eigen(Hermitian(block))
 
-            sector_diags[sector_idx] = sol.values
-            evec_blocks[(sector_idx, sector_idx)] = sol.vectors
+            local_sector_diags[sector_idx] = sol.values
+            local_evec_blocks[(sector_idx, sector_idx)] = sol.vectors
         else
             # No block means this sector has zero energy
             # (e.g., vacuum sector for interaction-only Hamiltonian)
-            sector_diags[sector_idx] = zeros(Float64, dim)
-            evec_blocks[(sector_idx, sector_idx)] = Matrix{ComplexF64}(I, dim, dim)
+            local_sector_diags[sector_idx] = zeros(Float64, dim)
+            local_evec_blocks[(sector_idx, sector_idx)] = Matrix{ComplexF64}(I, dim, dim)
         end
+    end
+
+    # Gather results from all processes if parallel
+    if do_gather
+        _, _, gather_func = parallel_info
+        sector_diags, evec_blocks = gather_func(local_sector_diags, local_evec_blocks)
+    else
+        sector_diags = local_sector_diags
+        evec_blocks = local_evec_blocks
     end
 
     # Create eigenvalues operator

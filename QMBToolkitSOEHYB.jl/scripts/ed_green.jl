@@ -1,7 +1,26 @@
 #!/usr/bin/env julia
 # Direct ED Green's function calculation (atomic limit, no hybridization)
-# Usage: julia --project=/path/to/QMBToolkitSOEHYB.jl scripts/ed_green.jl
-# MPI Usage: mpiexecjl -n <nprocs> julia --project=/path/to/QMBToolkitSOEHYB.jl scripts/ed_green.jl
+#
+# Usage:
+#   julia --project=/path/to/QMBToolkitSOEHYB.jl scripts/ed_green.jl [options]
+#
+# MPI Usage:
+#   srun julia --project=/path/to/QMBToolkitSOEHYB.jl scripts/ed_green.jl [options]
+#   mpiexecjl -n <nprocs> julia --project=/path/to/QMBToolkitSOEHYB.jl scripts/ed_green.jl [options]
+#
+# Options:
+#   --hopping=<path>        Path to hopping file (default: test/data_2spin/hopping.txt)
+#   --interaction=<path>    Path to interaction file (default: test/data_2spin/Uijkl.txt)
+#   --output=<path>         Path to output HDF5 file (default: ed_green.h5)
+#   --beta=<value>          Inverse temperature (default: 10.0)
+#   --dlr_rtol=<value>      DLR relative tolerance (default: 1e-14)
+#   --dlr_Euv=<value>       DLR energy cutoff (default: 500.0)
+#   --n_tau=<value>         Number of tau points for linear grid (default: 1001)
+#   --n_flavor=<value>      Number of physical flavors to compute (default: all)
+#   --no_spin_filter        Disable spin conservation filter (default: enabled)
+#
+# Example:
+#   julia --project=. scripts/ed_green.jl --hopping=hopping.txt --interaction=Uijkl.txt --output=results/green.h5 --beta=20.0
 
 using MPI
 using QMBToolkitED
@@ -10,30 +29,79 @@ using HDF5
 using DelimitedFiles
 
 #=============================================================================
-# Parameters - modify these as needed
+# Parse command line arguments
 =============================================================================#
-beta = 10.0                    # Inverse temperature
-hopping_file = "test/data_2spin/hopping.txt"
-interaction_file = "test/data_2spin/Uijkl.txt"
-output_file = "ed_green.h5"
+function parse_args(args)
+    # Default values
+    params = Dict{String, Any}(
+        "hopping_file" => "test/data_2spin/hopping.txt",
+        "interaction_file" => "test/data_2spin/Uijkl.txt",
+        "output_file" => "ed_green.h5",
+        "beta" => 10.0,
+        "dlr_rtol" => 1e-14,
+        "dlr_Euv" => 500.0,
+        "n_tau_linear" => 1001,
+        "n_flavor_physical" => nothing,
+        "is_spin_conserved" => true
+    )
 
-# DLR parameters
-dlr_rtol = 1e-14
-dlr_Euv = 500.0
+    for arg in args
+        if startswith(arg, "--hopping=")
+            params["hopping_file"] = arg[11:end]
+        elseif startswith(arg, "--interaction=")
+            params["interaction_file"] = arg[15:end]
+        elseif startswith(arg, "--output=")
+            params["output_file"] = arg[10:end]
+        elseif startswith(arg, "--beta=")
+            params["beta"] = parse(Float64, arg[8:end])
+        elseif startswith(arg, "--dlr_rtol=")
+            params["dlr_rtol"] = parse(Float64, arg[12:end])
+        elseif startswith(arg, "--dlr_Euv=")
+            params["dlr_Euv"] = parse(Float64, arg[11:end])
+        elseif startswith(arg, "--n_tau=")
+            params["n_tau_linear"] = parse(Int, arg[9:end])
+        elseif startswith(arg, "--n_flavor=")
+            params["n_flavor_physical"] = parse(Int, arg[12:end])
+        elseif arg == "--no_spin_filter"
+            params["is_spin_conserved"] = false
+        elseif arg == "--help" || arg == "-h"
+            println("""
+ED Green's Function Calculator
 
-# Linear grid size for output
-n_tau_linear = 1001
+Options:
+  --hopping=<path>        Path to hopping file (default: test/data_2spin/hopping.txt)
+  --interaction=<path>    Path to interaction file (default: test/data_2spin/Uijkl.txt)
+  --output=<path>         Path to output HDF5 file (default: ed_green.h5)
+  --beta=<value>          Inverse temperature (default: 10.0)
+  --dlr_rtol=<value>      DLR relative tolerance (default: 1e-14)
+  --dlr_Euv=<value>       DLR energy cutoff (default: 500.0)
+  --n_tau=<value>         Number of tau points for linear grid (default: 1001)
+  --n_flavor=<value>      Number of physical flavors to compute (default: all)
+  --no_spin_filter        Disable spin conservation filter (default: enabled)
+  --help, -h              Show this help message
+            """)
+            exit(0)
+        else
+            @warn "Unknown argument: $arg"
+        end
+    end
 
-# Flavor selection parameters
-# n_flavor_physical: Only calculate Green's function for flavors 1:n_flavor_physical
-#                    Set to nothing to calculate all flavors
-n_flavor_physical = nothing
+    return params
+end
 
-# is_spin_conserved: If true and spin conservation is detected, skip Green's function
-#                    entries that mix spin up and spin down.
-#                    Assumes spin runs faster than orbital: flavor 1 = orb1 up,
-#                    flavor 2 = orb1 down, flavor 3 = orb2 up, etc.
-is_spin_conserved = true
+# Parse arguments
+params = parse_args(ARGS)
+
+# Extract parameters
+beta = params["beta"]
+hopping_file = params["hopping_file"]
+interaction_file = params["interaction_file"]
+output_file = params["output_file"]
+dlr_rtol = params["dlr_rtol"]
+dlr_Euv = params["dlr_Euv"]
+n_tau_linear = params["n_tau_linear"]
+n_flavor_physical = params["n_flavor_physical"]
+is_spin_conserved = params["is_spin_conserved"]
 
 #=============================================================================
 # MPI Setup

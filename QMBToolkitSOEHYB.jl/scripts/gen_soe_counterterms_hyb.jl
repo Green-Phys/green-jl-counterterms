@@ -550,7 +550,7 @@ function gen_soe(beta::Float64, G_data::GData, soe_subroutine::String, n_soe::In
             solution = solve(G_data.G_tau, G_data.tau_grid, ESPRIT(M = n_soe), LeastSquaresEquilibration(), is_Euclidian_Fermi = true)
             poles = -1.0*solution.s
             weights = solution.R
-            error = _inf_error(G_data.G_tau, _reconstruct_green(poles, weights, G_data.tau_grid, beta))
+            fit_error = _inf_error(G_data.G_tau, _reconstruct_green(poles, weights, G_data.tau_grid, beta))
         else
             n_flavors = size(G_data.G_tau, 2)
             poles_list = []
@@ -584,7 +584,7 @@ function gen_soe(beta::Float64, G_data::GData, soe_subroutine::String, n_soe::In
                 poles[2*i] = poles_list[2][i]
                 weights[2*i, flavor_indices_dn, flavor_indices_dn] = weights_list[2][i, :, :]
             end
-            error = max_error
+            fit_error = max_error
         end
     elseif soe_subroutine == "ADAPOL"
         if separate_spins
@@ -592,7 +592,7 @@ function gen_soe(beta::Float64, G_data::GData, soe_subroutine::String, n_soe::In
         end
         poles, weights, _ = apapol_fitting(G_data.G_iwn, G_data.wn_grid, Ns = n_soe)
         weights = real.(-1.0 * weights)
-        error = _inf_error(G_data.G_tau, _reconstruct_green(poles, weights, G_data.tau_grid, beta))
+        fit_error = _inf_error(G_data.G_tau, _reconstruct_green(poles, weights, G_data.tau_grid, beta))
     elseif soe_subroutine == "DLR"
         if separate_spins
             error("separate_spins is not yet implemented for DLR")
@@ -601,13 +601,13 @@ function gen_soe(beta::Float64, G_data::GData, soe_subroutine::String, n_soe::In
         G_dlr = tau2dlr(dlr, G_data.G_tau, G_data.tau_grid)
         poles = dlr.ω
         weights = G_dlr
-        error = _inf_error(G_data.G_tau, _reconstruct_green(poles, weights, G_data.tau_grid, beta))
+        fit_error = _inf_error(G_data.G_tau, _reconstruct_green(poles, weights, G_data.tau_grid, beta))
     else
         error("Unsupported SOE subroutine: $soe_subroutine")
     end
     # Clean up very small numerical noise (abs < 1e-15) to exactly zero
     _clean_small_values!(weights)
-    return poles, weights, error
+    return poles, weights, fit_error
 end
 
 function gen_remaining_hyb(tau_grid::Vector{Float64}, G_tau::Array{Float64, 3}, counterterms_contribution::Array{Float64, 3}, n_matsubara::Int, beta::Float64)
@@ -650,11 +650,11 @@ function main()
     args = parse_commandline()
     print_input(args)
     G_data = gen_hyb(args["n_tau"], args["n_matsubara"], args["beta"], args["n_spin_impurity"], args["n_orbital_impurity"], args["hyb_type"], off_diagonal_prefactor = args["off_diagonal_prefactor"], file_name = args["hyb_file"], init_dlr_euv = args["init_dlr_euv"])
-    poles, weights, error = gen_soe(args["beta"], G_data, args["soe_subroutine_counterterms"], args["n_soe_counterterms"], args["dlr_eps_counterterms"], separate_spins = args["separate_spins"])
+    poles, weights, fit_error = gen_soe(args["beta"], G_data, args["soe_subroutine_counterterms"], args["n_soe_counterterms"], args["dlr_eps_counterterms"], separate_spins = args["separate_spins"])
     println("--- Counterterms SOE ---")
     println("Max hybridization: ", maximum(abs.(G_data.G_tau)))
     println("# of SOE terms: ", length(poles))
-    println("SOE inf-norm error: ", @sprintf("%.6e", error))
+    println("SOE inf-norm error: ", @sprintf("%.6e", fit_error))
     println("--- Obtaining counterterms ---")
     counterterms_energy, counterterms_hyb = _obtain_hyb_general(poles, weights, separate_spins = args["separate_spins"])
     # Clean up very small numerical noise in counterterms_hyb
@@ -664,7 +664,7 @@ function main()
     counterterms_contribution = _reconstruct_green_hyb(counterterms_energy, counterterms_hyb, G_data.tau_grid, args["beta"])
     counterterms_error = _inf_error(G_data.G_tau, counterterms_contribution)
     println("Fitting inf-norm error: ", @sprintf("%.6e", counterterms_error))
-    if (counterterms_error - error) > 1e-12
+    if (counterterms_error - fit_error) > 1e-12
         error("Reconstructed counterterms error does not match fitting error!")
     end
     println("--- Remaining hybridziation SOE ---")

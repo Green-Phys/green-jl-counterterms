@@ -541,7 +541,7 @@ function _clean_small_values!(arr::AbstractArray{<:Complex}, tol::Float64 = 1e-1
     return arr
 end
 
-function gen_soe(beta::Float64, G_data::GData, soe_subroutine::String, n_soe::Int, dlr_eps::Float64; separate_spins::Bool = false)
+function gen_soe(beta::Float64, G_data::GData, soe_subroutine::String, n_soe::Int, dlr_eps::Float64; dlr_euv::Float64 = 2.0, separate_spins::Bool = false)
     if n_soe == 0
         return Float64[], Array{Float64, 3}(undef, 0, size(G_data.G_tau, 2), size(G_data.G_tau, 3)), maximum(abs.(G_data.G_tau))
     end
@@ -597,7 +597,7 @@ function gen_soe(beta::Float64, G_data::GData, soe_subroutine::String, n_soe::In
         if separate_spins
             error("separate_spins is not yet implemented for DLR")
         end
-        dlr = DLRGrid(2.0, beta, dlr_eps, true)
+        dlr = DLRGrid(dlr_euv, beta, dlr_eps, true)
         G_dlr = tau2dlr(dlr, G_data.G_tau, G_data.tau_grid)
         poles = dlr.ω
         weights = G_dlr
@@ -610,11 +610,11 @@ function gen_soe(beta::Float64, G_data::GData, soe_subroutine::String, n_soe::In
     return poles, weights, fit_error
 end
 
-function gen_remaining_hyb(tau_grid::Vector{Float64}, G_tau::Array{Float64, 3}, counterterms_contribution::Array{Float64, 3}, n_matsubara::Int, beta::Float64)
+function gen_remaining_hyb(tau_grid::Vector{Float64}, G_tau::Array{Float64, 3}, counterterms_contribution::Array{Float64, 3}, n_matsubara::Int, beta::Float64, dlr_euv::Float64 = 2.0)
     G_remain = G_tau .- counterterms_contribution
     n_grid = collect(0:n_matsubara)
     wn_grid = pi / beta * (2.0 .* n_grid .+ 1.0)
-    dlr = DLRGrid(2, beta, 1e-14, true)
+    dlr = DLRGrid(dlr_euv, beta, 1e-14, true)
     G_remain_dlr = tau2dlr(dlr, G_remain, tau_grid)
     G_remain_iwn = dlr2matfreq(dlr, G_remain_dlr, n_grid)
     return GData(G_remain, tau_grid, G_remain_iwn, wn_grid)
@@ -650,7 +650,7 @@ function main()
     args = parse_commandline()
     print_input(args)
     G_data = gen_hyb(args["n_tau"], args["n_matsubara"], args["beta"], args["n_spin_impurity"], args["n_orbital_impurity"], args["hyb_type"], off_diagonal_prefactor = args["off_diagonal_prefactor"], file_name = args["hyb_file"], init_dlr_euv = args["init_dlr_euv"])
-    poles, weights, fit_error = gen_soe(args["beta"], G_data, args["soe_subroutine_counterterms"], args["n_soe_counterterms"], args["dlr_eps_counterterms"], separate_spins = args["separate_spins"])
+    poles, weights, fit_error = gen_soe(args["beta"], G_data, args["soe_subroutine_counterterms"], args["n_soe_counterterms"], args["dlr_eps_counterterms"], dlr_euv = args["init_dlr_euv"], separate_spins = args["separate_spins"])
     println("--- Counterterms SOE ---")
     println("Max hybridization: ", maximum(abs.(G_data.G_tau)))
     println("# of SOE terms: ", length(poles))
@@ -668,16 +668,15 @@ function main()
         error("Reconstructed counterterms error does not match fitting error!")
     end
     println("--- Remaining hybridziation SOE ---")
-    remaining_G_data = gen_remaining_hyb(G_data.tau_grid, G_data.G_tau, counterterms_contribution, args["n_matsubara"], args["beta"])
+    remaining_G_data = gen_remaining_hyb(G_data.tau_grid, G_data.G_tau, counterterms_contribution, args["n_matsubara"], args["beta"], dlr_euv = args["init_dlr_euv"])
     if !args["do_subtraction_trick"]
-        poles_remain, weights_remain, error_remain = gen_soe(args["beta"], remaining_G_data, args["soe_subroutine_hyb"], args["n_soe_hybridization"], args["dlr_eps_hybridization"], separate_spins = false)
+        poles_remain, weights_remain, error_remain = gen_soe(args["beta"], remaining_G_data, args["soe_subroutine_hyb"], args["n_soe_hybridization"], args["dlr_eps_hybridization"], dlr_euv = args["init_dlr_euv"], separate_spins = false)
     else
         if args["dlr_eps_hybridization"]>=args["dlr_eps_counterterms"] || args["n_soe_hybridization"]<=args["n_soe_counterterms"]
             error("For subtraction trick, dlr_eps_hybridization must be smaller than dlr_eps_counterterms and n_soe_hybridization must be larger than n_soe_counterterms")
         end
         println("Using subtraction trick for remaining hybridization SOE fitting...")
-        poles_precise, weights_precise, error_precise = gen_soe(args["beta"], G_data, args["soe_subroutine_hyb"], args["n_soe_hybridization"], args["dlr_eps_hybridization"], separate_spins = false)
-        # Now the remaining hybridization is the difference between the two SOE fits
+        poles_precise, weights_precise, error_precise = gen_soe(args["beta"], G_data, args["soe_subroutine_hyb"], args["n_soe_hybridization"], args["dlr_eps_hybridization"], dlr_euv = args["init_dlr_euv"], separate_spins = false)
         println("The number of precise SOE terms: ", length(poles_precise))
         poles_remain = vcat(poles_precise, poles)
         weights_remain = vcat(weights_precise, -1.0*weights)

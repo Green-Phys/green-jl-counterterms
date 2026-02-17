@@ -610,7 +610,7 @@ function gen_soe(beta::Float64, G_data::GData, soe_subroutine::String, n_soe::In
     return poles, weights, fit_error
 end
 
-function gen_remaining_hyb(tau_grid::Vector{Float64}, G_tau::Array{Float64, 3}, counterterms_contribution::Array{Float64, 3}, n_matsubara::Int, beta::Float64, dlr_euv::Float64 = 2.0)
+function gen_remaining_hyb(tau_grid::Vector{Float64}, G_tau::Array{Float64, 3}, counterterms_contribution::Array{Float64, 3}, n_matsubara::Int, beta::Float64; dlr_euv::Float64 = 2.0)
     G_remain = G_tau .- counterterms_contribution
     n_grid = collect(0:n_matsubara)
     wn_grid = pi / beta * (2.0 .* n_grid .+ 1.0)

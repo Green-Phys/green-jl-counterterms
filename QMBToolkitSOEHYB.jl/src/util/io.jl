@@ -14,6 +14,21 @@ function resolve_path(path::String, input_file_dir::String)
 end
 
 """
+    get_output_file(output_path::String)
+
+Get the output HDF5 file path.
+If output_path ends with ".h5", use it directly.
+Otherwise, treat it as a directory and append "sim.h5".
+"""
+function get_output_file(output_path::String)
+    if endswith(output_path, ".h5")
+        return output_path
+    else
+        return joinpath(output_path, "sim.h5")
+    end
+end
+
+"""
     read_input(file_path::String)
 
 Read input parameters from a TOML file.
@@ -237,7 +252,7 @@ function save_results(solver_data::SolverData, solver_params::SolverParams)
             solver_data.calc.green_linear_grid[1, 1, end])
 
     # Save all data (without timing)
-    output_file = joinpath(solver_params.output_path, "sim.h5")
+    output_file = get_output_file(solver_params.output_path)
     save_data(solver_data.model, solver_data.calc, output_file)
     println("Saved results to: ", output_file)
 end
@@ -263,7 +278,7 @@ function save_timing_data(
         total_wall_time::Float64,
         total_cpu_time::Float64
 )
-    output_file = joinpath(solver_params.output_path, "sim.h5")
+    output_file = get_output_file(solver_params.output_path)
     h5open(output_file, "r+") do file
         timing_group = create_group(file, "timing")
         timing_group["propagator_wall_time"] = t_prop_wall

@@ -98,7 +98,7 @@ save_linear_size = {n_tau}
 
 [solver.dlr]
 rtol = 1e-12
-Euv = 10.0
+Euv = 20.0
 
 [solver]
 output_path = "./imp_{imp}_sim.h5"
@@ -399,7 +399,7 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
     tau_grid_ir = ir.tau_mesh
 
     with h5py.File(args.transform_file, 'r') as ftransform:
-        X_k_full = ftransform['X_k'][()]
+        X_inv_k_full = ftransform['X_inv_k'][()]
         uu_trans = []
         for i in range(args.n_impurity):
             uu_i = ftransform[f"{i}/UU"][()] + 0j
@@ -407,7 +407,7 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
 
     with h5py.File(args.input_file, 'r') as finput:
         ir_list = finput['grid/ir_list'][()]
-    X_k = X_k_full[ir_list]
+    X_inv_k = X_inv_k_full[ir_list]
 
     with h5py.File(args.results_file, 'r') as fsimseet:
         group = fsimseet[f'iter{iteration}/Selfenergy']
@@ -460,12 +460,12 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
         sigma_tau_local_orth += np.einsum('pi, tspq, qj -> tsij', uu_trans[i].conj(), sigma_tau_impurity[i], uu_trans[i])
         sigma_inf_local_orth += np.einsum('pi, spq, qj -> sij', uu_trans[i].conj(), sigma_inf_impurity[i], uu_trans[i])
 
-    # Orthogonal to AO basis for each k-point: X_k @ sigma_local @ X_k†
-    # Use batched matmul (BLAS) instead of einsum, accumulate directly into sigma_in
-    X_k_H = X_k.conj().transpose(0, 2, 1)  # (nk, norb, norb)
-    sigma_inf_in += (X_k[None] @ sigma_inf_local_orth[:, None] @ X_k_H[None]) * args.mixing
+    # Orthogonal to AO basis for each k-point: X_inv_k @ sigma_local @ X_inv_k†
+    # X_inv_k transforms from orthogonal to AO basis (X_k is AO→orth, its inverse is orth→AO)
+    X_inv_k_H = X_inv_k.conj().transpose(0, 2, 1)  # (nk, norb, norb)
+    sigma_inf_in += (X_inv_k[None] @ sigma_inf_local_orth[:, None] @ X_inv_k_H[None]) * args.mixing
     for t in range(ntau_ir):
-        sigma_in[t] += (X_k[None] @ sigma_tau_local_orth[t][:, None] @ X_k_H[None]) * args.mixing
+        sigma_in[t] += (X_inv_k[None] @ sigma_tau_local_orth[t][:, None] @ X_inv_k_H[None]) * args.mixing
 
     # Save the data back to results file
     with h5py.File(args.results_file, 'r+') as fsimseet:

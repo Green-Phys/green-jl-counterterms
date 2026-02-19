@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 SEET_SCRIPT_TEMPLATE = """#!/bin/bash
-#SBATCH -J seet_it{iter}
+#SBATCH -J seet_it_{iteration}
 #SBATCH -p ludicrous,super,batch
-#SBATCH -o seet_it{iter}.o%j
-#SBATCH -e seet_it{iter}.e%j
+#SBATCH -o seet_it_{iteration}.o%j
+#SBATCH -e seet_it_{iteration}.e%j
 #SBATCH --exclusive
 #SBATCH -N 1
 #SBATCH -n 1
@@ -22,26 +22,26 @@ date
 echo $SLURM_NODELIST
 
 # Run SEET with external solver
-srun -u ${{SEETexe}} \
+srun -u $SEETexe \
   --scf_type=GW \
-  --BETA {beta}  \
+  --BETA {beta} \
   --itermax 1 \
   --restart {restart} \
   --results_file {results_filename} \
-  --weak_results ${{WeakCouplingDir}}/scgw/NiO_GW.h5 \
-  --embedding_type SEET  \
+  --weak_results $WeakCouplingDir/scgw/NiO_GW.h5 \
+  --embedding_type SEET \
   --grid_file {ir_file} \
-  --input_file ${{WeakCouplingDir}}/dft/input.h5 \
-  --dfintegral_hf_file ${{WeakCouplingDir}}/dft/df_hf_int \
-  --dfintegral_file ${{WeakCouplingDir}}/dft/df_int \
+  --input_file $WeakCouplingDir/dft/input.h5 \
+  --dfintegral_hf_file $WeakCouplingDir/dft/df_hf_int \
+  --dfintegral_file $WeakCouplingDir/dft/df_int \
   --mixing_type SIGMA_MIXING \
-  --mixing_weight {mixing}  \
+  --mixing_weight {mixing} \
   --seet_input {transform_filename} \
-  --impurity_solver "INCHWORM"  \
-  --impurity_solver_exec ${{Solver}}  \
-  --impurity_solver_params " "  \
+  --impurity_solver "INCHWORM" \
+  --impurity_solver_exec $Solver \
+  --impurity_solver_params " " \
   --dc_data_prefix "dc_int" \
-  --seet_root_dir "./"  \
+  --seet_root_dir "./" \
   --spin_symm false \
   --verbose 4
 
@@ -50,10 +50,10 @@ date
 
 
 IMPURITY_SCRIPT_TEMPLATE = """#!/bin/bash
-#SBATCH -J imp_it{iter}             # Job name
+#SBATCH -J imp_{imp}_it_{iteration}             # Job name
 #SBATCH -p ludicrous,super,batch
-#SBATCH -o imp_it{iter}.o%j         # Name of stdout output file
-#SBATCH -e imp_it{iter}.e%j         # Name of stderr error file
+#SBATCH -o imp_{imp}_it_{iteration}.o%j         # Name of stdout output file
+#SBATCH -e imp_{imp}_it_{iteration}.e%j         # Name of stderr error file
 #SBATCH --exclusive
 #SBATCH -N 1
 #SBATCH -n 64
@@ -65,17 +65,16 @@ date
 echo $SLURM_NODELIST
 
 export OPENBLAS_NUM_THREADS=1
-INPUT_FILE={input_file}
 PROJECT_DIR=~/src/QMBToolkit/QMBToolkitSOEHYB.jl
 
 # Precompile the package once before launching MPI tasks
 # This prevents all MPI ranks from trying to compile simultaneously
-julia --check-bounds=no --project="${{PROJECT_DIR}}" -e 'using Pkg; Pkg.instantiate(); using QMBToolkitSOEHYB'
+julia --check-bounds=no --project="$PROJECT_DIR" -e 'using Pkg; Pkg.instantiate(); using QMBToolkitSOEHYB'
 
-srun julia --check-bounds=no --project=${{PROJECT_DIR}} -e "
+srun julia --check-bounds=no --project=$PROJECT_DIR -e '
 using QMBToolkitSOEHYB
-QMBToolkitSOEHYB.run(\"${{INPUT_FILE}}\")
-"
+QMBToolkitSOEHYB.run("{input_file}")
+'
 
 date
 """
@@ -95,14 +94,48 @@ expansion_order = {expansion_order_propagator}
 [solver.green]
 is_bold = false
 expansion_order = {expansion_order_green}
-save_linear_size = 1001
+save_linear_size = {n_tau}
 
 [solver.dlr]
 rtol = 1e-12
 Euv = 10.0
 
 [solver]
-output_path = "./"
+output_path = "./imp_{imp}_sim.h5"
+"""
+
+IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE = """#!/bin/bash
+hyb_type="from_seet"
+hyb_file="./imp_{imp}_delta.txt"
+init_dlr_euv=10.0
+n_soe_counterterms=1
+n_soe_hybridization=14
+do_subtraction_trick=true
+separate_spins=true
+output_dir="./"
+hopping_file="$output_dir/imp_{imp}_hopping.txt"
+counterterm_exe="$HOME/src/QMBToolkit/QMBToolkitSOEHYB.jl/scripts/gen_soe_counterterms_hyb_light.jl"
+
+mkdir -p $output_dir
+
+julia $counterterm_exe \
+    --beta {beta} \
+    --n_spin_impurity {n_spin_impurity} \
+    --n_orbital_impurity {n_orbital_impurity} \
+    --n_tau {n_tau} \
+    --hyb_type $hyb_type \
+    --hyb_file $hyb_file \
+    --init_dlr_euv $init_dlr_euv \
+    --hopping_file $hopping_file \
+    --n_soe_counterterms $n_soe_counterterms \
+    --n_soe_hybridization $n_soe_hybridization \
+    --output_dir $output_dir \
+    --do_subtraction_trick $do_subtraction_trick \
+    --separate_spins $separate_spins
+
+mv hyb_poles.txt imp_{imp}_hyb_poles.txt
+mv hyb_weights.txt imp_{imp}_hyb_weights.txt
+mv soe_error.txt imp_{imp}_soe_error.txt
 """
 
 import argparse
@@ -111,6 +144,14 @@ import shutil
 import subprocess
 import time
 import h5py
+from green_mbtools.pesto.ir import IR_factory
+import numpy as np
+import scipy.linalg as LA
+from scipy import interpolate
+
+def write_script(path: Path, content: str):
+    path.write_text(content)
+    path.chmod(0o755)
 
 def submit_slurm_job(script_path: Path) -> str:
     """
@@ -149,44 +190,50 @@ def check_job_status(job_id: str) -> str:
     else:
         return "UNKNOWN"
 
-def wait_for_job(job_id: str, check_interval: int = 30, max_wait: int = 86400) -> bool:
+def wait_for_jobs(job_ids: list, check_interval: int = 30, max_wait: int = 86400) -> bool:
     """
-    Wait for a job to complete.
-    Returns True if job completed successfully, False otherwise.
+    Wait for all jobs to complete.
+    Returns True if all jobs completed successfully, False otherwise.
     """
+    remaining = set(job_ids)
+    prev_statuses = {}
     elapsed = 0
-    while elapsed < max_wait:
-        status = check_job_status(job_id)
-        print(f"Job {job_id} status: {status}")
-        
-        if status == "COMPLETED":
-            print(f"Job {job_id} completed successfully")
+    while remaining and elapsed < max_wait:
+        for job_id in list(remaining):
+            status = check_job_status(job_id)
+            if status != prev_statuses.get(job_id):
+                print(f"  Job {job_id}: {status}")
+                prev_statuses[job_id] = status
+            if status == "COMPLETED":
+                remaining.discard(job_id)
+            elif status in ("FAILED", "UNKNOWN"):
+                return False
+        if not remaining:
             return True
-        elif status == "FAILED":
-            print(f"Job {job_id} failed")
-            return False
-        elif status == "UNKNOWN":
-            print(f"Job {job_id} not found (may have been purged)")
-            return False
-        
         time.sleep(check_interval)
         elapsed += check_interval
-    
-    print(f"Job {job_id} did not complete within {max_wait} seconds")
-    return False
+    if remaining:
+        print(f"  Jobs {remaining} timed out after {max_wait}s")
+        return False
+    return True
+
+def wait_for_job(job_id: str, check_interval: int = 30, max_wait: int = 86400) -> bool:
+    """
+    Wait for a single job to complete.
+    """
+    return wait_for_jobs([job_id], check_interval=check_interval, max_wait=max_wait)
 
 def collect_iteration_files(iteration: int, workdir: Path):
     """
     Create a folder named itXXX and move all files matching *itXXX* into it.
     """
-    iter_dir = workdir / f"it{iteration}"
+    iter_dir = workdir / f"it_{iteration}"
     iter_dir.mkdir(exist_ok=True)
-    pattern = f"*it{iteration}*"
+    pattern = f"*it_{iteration}*"
     for f in workdir.glob(pattern):
         if f.is_file():
             shutil.move(str(f), str(iter_dir / f.name))
-    # move imp_*.txt to the folder
-    for f in workdir.glob(f"imp_*.txt"):
+    for f in workdir.glob(f"imp*.*"):
         if f.is_file():
             shutil.move(str(f), str(iter_dir / f.name))
     for f in workdir.glob("dc.*result.h5"):
@@ -198,91 +245,294 @@ def create_impurity_input(iteration: int, imp: int, workdir: Path, args: argpars
     """
     Create input file for impurity solver based on template.
     """
-    input_file = workdir / f"imp_{imp}_it{iteration}.toml"
-    # 
+    input_file = workdir / f"imp_{imp}_it_{iteration}.toml"
+    input_content = IMPURITY_INPUT_TEMPLATE.format(
+        beta=args.beta,
+        imp=imp,
+        expansion_order_propagator=args.expansion_order,
+        expansion_order_green=args.expansion_order+1,
+        n_tau=args.n_tau
+    )
+    input_file.write_text(input_content)
 
 def process_impurity_input(iteration: int, workdir: Path, args: argparse.Namespace) -> bool:
+    """
+    Process impurity input files for a given iteration.
+    """
+    for imp in range(args.n_impurity):
+        preprocess_script = IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE.format(imp=imp, beta=args.beta, n_tau=args.n_tau)
+        preprocess_script_path = workdir / f"preprocess_imp_{imp}_it_{iteration}.sh"
+        write_script(preprocess_script_path, preprocess_script)
+        result = subprocess.run([str(preprocess_script_path)], capture_output=True, text=True, cwd=workdir)
+        if result.returncode != 0:
+            print(f"Preprocessing failed for impurity {imp} at iteration {iteration}: {result.stderr}")
+            return False
+        else:
+            print(f"Preprocessing completed for impurity {imp} at iteration {iteration}")
     return True
 
+def _read_delta_tau_from_txt(filename, beta):
+    data = np.loadtxt(filename)
+
+    # All indices in file are 0-based
+    tau_indices = data[:, 0].astype(int)
+    i_indices = data[:, 1].astype(int)
+    j_indices = data[:, 2].astype(int)
+    real_parts = data[:, 3]
+
+    n_tau = np.max(tau_indices) + 1
+    n_flav = max(np.max(i_indices), np.max(j_indices)) + 1
+
+    # Convert tau indices to actual tau values: [0, beta]
+    tau_grid = np.linspace(0, beta, n_tau)
+
+    delta_tau = np.zeros((n_tau, n_flav, n_flav), dtype=np.float64)
+
+    delta_tau[tau_indices, i_indices, j_indices] = real_parts
+
+    return delta_tau, tau_grid
+
+def _from_flavor_to_spin_orbital(f, n_spin=2):
+    n, n_flavor, _ = f.shape
+    n_orb = n_flavor // n_spin
+
+    f_so = np.zeros((n, n_spin, n_orb, n_orb), dtype=np.complex128)
+
+    for spin in range(n_spin):
+        for orb1 in range(n_orb):
+            for orb2 in range(n_orb):
+                # Converted to 0-based indexing
+                flavor1 = n_spin * orb1 + spin
+                flavor2 = n_spin * orb2 + spin
+                f_so[:, spin, orb1, orb2] = f[:, flavor1, flavor2]
+
+    return f_so
+
+def read_delta_tau_from_txt(delta_file: str, n_orbital: int, beta: float):
+    delta_tau, tau_grid = _read_delta_tau_from_txt(delta_file, beta)
+    delta_tau_so = _from_flavor_to_spin_orbital(delta_tau)
+    return delta_tau_so, tau_grid
+
+def read_hopping_from_txt(hopping_file: str, n_orbital: int, n_spin=2):
+    number_of_orbitals = n_spin * n_orbital
+    hopping_raw = np.zeros((number_of_orbitals, number_of_orbitals), dtype=complex)
+    with open(hopping_file) as k:
+        for raw_line in k:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            i_str, m_str, ij_str_re, ij_str_im = line.split()
+            i = int(i_str)
+            m = int(m_str)
+            hopping_raw[i, m] = complex(float(ij_str_re) + 1j * float(ij_str_im))
+    hopping = _from_flavor_to_spin_orbital(hopping_raw[np.newaxis, :, :], n_spin=n_spin)[0]
+    return hopping
+
+def interpolation(tau_grid_in, X_tau, tau_grid_new, kind="cubic"):
+    tau_grid_in = np.asarray(tau_grid_in, dtype=float)
+    ntau_in = len(tau_grid_in)
+    tau_grid_new = np.asarray(tau_grid_new, dtype=float)
+    ntau_out = len(tau_grid_new)
+    X_tau = np.asarray(X_tau)
+
+    # merge indices except tau and interpolate
+    orig_shape = X_tau.shape
+    X_tau = X_tau.reshape((ntau_in, -1))
+
+    # initialize output array
+    new_delta_tau = np.zeros((ntau_out, X_tau.shape[-1]), dtype=complex)
+
+    for m in range(X_tau.shape[1]):
+        real_interp = interpolate.interp1d(
+            tau_grid_in, X_tau[:, m].real,
+            kind=kind, fill_value="extrapolate", assume_sorted=True
+        )
+        imag_interp = interpolate.interp1d(
+            tau_grid_in, X_tau[:, m].imag,
+            kind=kind, fill_value="extrapolate", assume_sorted=True
+        )
+        new_delta_tau[:, m] = real_interp(tau_grid_new) + 1j * imag_interp(tau_grid_new)
+    
+    # reshape to original shape with new tau dimension
+    new_delta_tau = new_delta_tau.reshape((ntau_out,) + orig_shape[1:])
+
+    return new_delta_tau
+
 def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namespace) -> bool:
-    return True
+    """
+    Process impurity output files for a given iteration.
+    """
+
+    sigma_tau_impurity = []
+    sigma_inf_impurity = []
+    ir=IR_factory(args.beta, args.ir_file)
+    tau_grid_ir = ir.tau_mesh
+
+    for imp, n_orbital_impurity in enumerate(args.n_orbitals_impurity):
+        h5py_file = workdir / f"imp_{imp}_sim.h5"
+        with h5py.File(h5py_file, 'r') as fimp:
+            tau_grid_green = fimp['green/linear_grid/tau'][()]
+            green_tau_f = fimp['green/linear_grid/green_tau'][()]
+        green_tau = _from_flavor_to_spin_orbital(green_tau_f, n_spin=args.n_spin_impurity)
+        delta_tau, tau_grid_delta = read_delta_tau_from_txt(f"imp_{imp}_delta.txt", n_orbital_impurity, args.beta)
+        hopping = read_hopping_from_txt(f"imp_{imp}_hopping.txt", n_orbital_impurity)
+
+        delta_tau_IR = interpolation(tau_grid_delta, delta_tau, tau_grid_ir, kind="cubic")
+        green_tau_IR = interpolation(tau_grid_green, green_tau, tau_grid_ir, kind="cubic")
+
+        # Fourier transform to Matsubara frequency
+        delta_omega_IR = ir.tau_to_w(delta_tau_IR)
+        green_omega_IR = ir.tau_to_w(green_tau_IR)
+
+        # Compute self-energy in Matsubara frequency
+        sigma_omega_IR = np.zeros_like(green_omega_IR, dtype=complex)
+        for s in range(args.n_spin_impurity):
+            for iw, w_val in enumerate(ir.wsample):
+                g0_inv = (1j * w_val + mu) * np.eye(n_orbital_impurity, dtype=complex) - hopping[s] - delta_omega_IR[iw, s]
+                g_inv = LA.inv(green_omega_IR[iw, s])
+                sigma_omega_IR[iw, s] = g0_inv - g_inv
+
+        # Extract Sigma_inf = sigma (iw_max)
+        sigma_inf = sigma_omega_IR[-1]
+        for iw, w_val in enumerate(ir.wsample):
+            sigma_omega_IR[iw] -= sigma_inf
+
+        # Fourier transform
+        sigma_tau_IR = ir.w_to_tau(sigma_omega_IR)
+        
+        sigma_tau_impurity.append(sigma_tau_IR)
+        sigma_inf_impurity.append(sigma_inf)
+    
+    ftransform = h5py.File(args.transform_file, 'r')
+    X_k = ftransform['X_k'][()]
+    uu_trans = []
+    for i in range(args.n_impurity):
+        uu_i = ftransform[f"{i}/UU"][()] + 0j
+        uu_trans.append(uu_i)
+    ftransform.close()
+
+    fsimseet = h5py.File(args.results_file, 'r+')
+    group = fsimseet['iter{}/Selfenergy'.format(iteration)]
+    mu = group['mu'][()]
+    sigma_in = group['data'][()]
+    sigma_inf_in = fsimseet['iter{}/Sigma1'.format(iteration)][()]
+    ntau_ir, ns, nk, n_orbital_full, _ = sigma_in.shape
+
+    # Active space to full orthogonal basis and combine SIGMA from all impurity blocks
+    sigma_tau_local_orth = np.zeros((ntau_ir, ns, n_orbital_full, n_orbital_full), dtype=np.complex128)
+    sigma_inf_local_orth = np.zeros((ns, n_orbital_full, n_orbital_full), dtype=np.complex128)
+    for i in range(args.n_impurity):
+        sigma_tau_local_orth += np.einsum('pi, tspq, qj -> tsij', uu_trans[i].conj(), sigma_tau_impurity[i], uu_trans[i])
+        sigma_inf_local_orth += np.einsum('pi, spq, qj -> sij', uu_trans[i].conj(), sigma_inf_impurity[i], uu_trans[i])
+
+    # Orthogonal to AO basis for each k-point
+    sigma_loc_ao_ts_ibz = np.zeros((ntau_ir, ns, nk, n_orbital_full, n_orbital_full), dtype=np.complex128)
+    sigma_loc_ao_inf_ibz = np.zeros((ns, nk, n_orbital_full, n_orbital_full), dtype=np.complex128)
+    for t in range(ntau_ir):
+        for s in range(ns):
+            sigma_loc_ao_ts_ibz[t, s] = np.einsum('kab, bc, sdc -> kad', X_k, sigma_tau_local_orth[t, s], X_k.conj())
+            sigma_loc_ao_inf_ibz[s] = np.einsum('kab, bc, sdc -> kad', X_k, sigma_inf_local_orth[s], X_k.conj())
+    
+    # Update SIGMA from results file
+    for t in range(ntau_ir):
+        for s in range(ns):
+            sigma_in[t, s] += sigma_loc_ao_ts_ibz[t, s] * args.mixing
+            sigma_inf_in[s] += sigma_loc_ao_inf_ibz[s] * args.mixing
+    
+    # Save the data back to results file
+    group['data'][...] = sigma_in
+    fsimseet['iter{}/Sigma1'.format(iteration)][...] = sigma_inf_in
+    fsimseet.close()
+    
+    return True  # Return True to continue workflow in placeholder mode
+
+def sanity_check(args: argparse.Namespace):
+    n_orbitals_impurity_file = []
+    with h5py.File(args.transform_file, 'r') as ftransform:
+        nimp_file = ftransform['nimp'][()]
+        uu_i = ftransform[f"{i}/UU"][()] + 0j
+        n_orbitals_impurity_file.append(uu_i.shape[0])
+        
+    if nimp_file != args.n_impurity:
+        raise ValueError(f"Number of impurities in transform file ({nimp_file}) does not match --n_impurity ({args.n_impurity})")
+    
+    if n_orbitals_impurity_file != args.n_orbitals_impurity:
+        raise ValueError(f"Number of orbitals in transform file ({n_orbitals_impurity_file}) does not match --n_orbitals_impurity ({args.n_orbitals_impurity})")
 
 def main():
     parser = argparse.ArgumentParser(description="Submit SEET + SOEHYB solver jobs in sequence")
     parser.add_argument("--niters", type=int, default=1, help="Number of SEET iterations to run")
     parser.add_argument("--workdir", type=Path, default=Path.cwd(), help="Working directory for job scripts")
-    parser.add_argument("--check-interval", type=int, default=5, help="Interval (seconds) to check job status")
+    parser.add_argument("--seet-check-interval", type=int, default=30, help="Interval (seconds) to check SEET job status")
+    parser.add_argument("--imp-check-interval", type=int, default=5, help="Interval (seconds) to check impurity job status")
     parser.add_argument("--transform_file", type=Path, default="transform.h5", help="Path to transformation file")
     parser.add_argument("--results_file", type=Path, default="seet_results.h5", help="Path to SEET results file")
     parser.add_argument("--mixing", type=float, default=0.4, help="Mixing parameter for self-energy update")
     parser.add_argument("--ir_file", type=Path, default="ir/1e4.h5", help="Path to IR grid file")
     parser.add_argument("--beta", type=float, default=100.0, help="Inverse temperature for IR grid")
-    parser.add_argument("--impurity_solver_input_template", type=Path, default="impurity_input_template.toml", help="Template for impurity solver input")
+    parser.add_argument("--expansion_order", type=int, default=0, help="Expansion order for impurity solver")
+    parser.add_argument("--n_tau", type=int, default=1001, help="Number of tau points for impurity solver")
+    parser.add_argument("--n_spin_impurity", type=int, default=2, help="Number of spins in a single impurity model")
+    parser.add_argument("--n_orbitals_impurity", type=list, default=[2,2], help="Number of orbitals in each impurity model (list of length n_impurity)")
     
+    args.n_impurity = len(args.n_orbitals_impurity)
     args = parser.parse_args()
     workdir = args.workdir
     workdir.mkdir(parents=True, exist_ok=True)
-    ftransform = h5py.File(args.transform_file, 'r')
-    nimp = ftransform['nimp'][()]
+    sanity_check(args)
     job_ids = []
     
-    for iteration in range(1, args.niters + 1):
-        # ===== SEET job =====
-        if iteration == 1:
-            restart = "false"
-        else:
-            restart = "true"
-        seet_script_path = workdir / f"seet_it{iteration}.sh"
-        seet_script = SEET_SCRIPT_TEMPLATE.format(
-            iter=iteration, beta=args.beta, transform_filename=args.transform_file, 
-            results_filename=args.results_file, mixing=args.mixing, ir_file=args.ir_file, restart=restart
-        )
-        seet_script_path.write_text(seet_script)
-        seet_script_path.chmod(0o755)
-        
-        print(f"\n{'='*60}")
-        print(f"Iteration {iteration}: Submitting SEET job")
-        print(f"{'='*60}")
-        seet_job_id = submit_slurm_job(seet_script_path)
-        job_ids.append(("SEET", iteration, seet_job_id))
+    for iteration in range(1, args.niters+1):
+        try:
+            # ---- SEET ----
+            restart = "false" if iteration == 1 else "true"
+            seet_script_path = workdir / f"seet_it_{iteration}.sh"
+            seet_script = SEET_SCRIPT_TEMPLATE.format(
+                iteration=iteration, beta=args.beta, transform_filename=args.transform_file,
+                results_filename=args.results_file, mixing=args.mixing, ir_file=args.ir_file, restart=restart
+            )
+            write_script(seet_script_path, seet_script)
 
-        if not wait_for_job(seet_job_id, check_interval=args.check_interval):
-            print(f"SEET job failed at iteration {iteration}. Stopping.")
-            break
+            print(f"\n--- Iteration {iteration}/{args.niters}: SEET ---")
+            seet_job_id = submit_slurm_job(seet_script_path)
+            job_ids.append(("SEET", iteration, seet_job_id))
+            if not wait_for_job(seet_job_id, check_interval=args.seet_check_interval):
+                print(f"SEET job failed at iteration {iteration}. Stopping.")
+                break
 
-        # ===== Impurity job =====
-        for imp in range(nimp):
-            create_impurity_input(imp, workdir, args)
-            impurity_script_path = workdir / f"imp_{imp}_it{iteration}.sh"
-            impurity_script = IMPURITY_SCRIPT_TEMPLATE.format(iter=iteration)
-            impurity_script_path.write_text(impurity_script)
-            impurity_script_path.chmod(0o755)
+            # ---- Preprocessing ----
+            print(f"\n--- Iteration {iteration}/{args.niters}: Preprocessing ---")
+            if not process_impurity_input(iteration, workdir, args):
+                print(f"Preprocessing failed at iteration {iteration}. Stopping.")
+                break
 
-        process_impurity_input(iteration, workdir, args)
+            # ---- Impurity solvers ----
+            print(f"\n--- Iteration {iteration}/{args.niters}: Impurity solvers ---")
+            impurity_job_ids = []
+            for imp in range(args.n_impurity):
+                create_impurity_input(iteration, imp, workdir, args)
+                imp_script_path = workdir / f"imp_{imp}_it_{iteration}.sh"
+                imp_script = IMPURITY_SCRIPT_TEMPLATE.format(
+                    iteration=iteration, imp=imp, input_file=f"imp_{imp}_it_{iteration}.toml"
+                )
+                write_script(imp_script_path, imp_script)
+                impurity_job_id = submit_slurm_job(imp_script_path)
+                impurity_job_ids.append(impurity_job_id)
+                job_ids.append(("Impurity", iteration, impurity_job_id))
 
-        print(f"\n{'='*60}")
-        print(f"Iteration {iteration}: Submitting impurity solver job")
-        print(f"{'='*60}")
-        impurity_job_id = submit_slurm_job(impurity_script_path)
-        job_ids.append(("Impurity solver", iteration, impurity_job_id))
+            if not wait_for_jobs(impurity_job_ids, check_interval=args.imp_check_interval):
+                print(f"Impurity solver failed at iteration {iteration}. Stopping.")
+                break
 
-        if not wait_for_job(impurity_job_id, check_interval=args.check_interval):
-            print(f"Impurity solver job failed at iteration {iteration}. Stopping.")
+            if not process_impurity_output(iteration, workdir, args):
+                print(f"Failed to process impurity output at iteration {iteration}. Stopping.")
+                break
+        finally:
             collect_iteration_files(iteration, workdir)
-            break
-
-        if not process_impurity_output(iteration, workdir, args):
-            print(f"Failed to process impurity output at iteration {iteration}. Stopping.")
-            collect_iteration_files(iteration, workdir)
-            break
-
-        collect_iteration_files(iteration, workdir)
     
-    print(f"\n{'='*60}")
-    print("Job submission summary:")
-    print(f"{'='*60}")
-    for job_type, iteration, job_id in job_ids:
-        print(f"{job_type:12} Iteration {iteration}: Job ID {job_id}")
+    print(f"\n--- Summary ---")
+    for job_type, it, job_id in job_ids:
+        print(f"  {job_type:10} it_{it}: {job_id}")
 
 
 if __name__ == "__main__":

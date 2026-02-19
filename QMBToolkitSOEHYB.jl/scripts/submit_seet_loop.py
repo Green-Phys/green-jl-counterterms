@@ -146,7 +146,6 @@ import time
 import h5py
 from green_mbtools.pesto.ir import IR_factory
 import numpy as np
-import scipy.linalg as LA
 from scipy import interpolate
 
 def write_script(path: Path, content: str):
@@ -313,7 +312,7 @@ def _read_delta_tau_from_txt(filename, beta):
     # Convert tau indices to actual tau values: [0, beta]
     tau_grid = np.linspace(0, beta, n_tau)
 
-    delta_tau = np.zeros((n_tau, n_flav, n_flav), dtype=np.float64)
+    delta_tau = np.zeros((n_tau, n_flav, n_flav), dtype=np.complex128)
 
     delta_tau[tau_indices, i_indices, j_indices] = real_parts
 
@@ -341,17 +340,21 @@ def read_delta_tau_from_txt(delta_file: str, n_orbital: int, beta: float):
     return delta_tau_so, tau_grid
 
 def read_hopping_from_txt(hopping_file: str, n_orbital: int, n_spin=2):
-    number_of_orbitals = n_spin * n_orbital
-    hopping_raw = np.zeros((number_of_orbitals, number_of_orbitals), dtype=complex)
+    n_flav = n_spin * n_orbital
+    entries = []
     with open(hopping_file) as k:
         for raw_line in k:
             line = raw_line.strip()
             if not line or line.startswith("#"):
                 continue
             i_str, m_str, ij_str_re, ij_str_im = line.split()
-            i = int(i_str)
-            m = int(m_str)
-            hopping_raw[i, m] = complex(float(ij_str_re) + 1j * float(ij_str_im))
+            entries.append((int(i_str), int(m_str), float(ij_str_re), float(ij_str_im)))
+    max_idx = max(max(i, m) for i, m, _, _ in entries) + 1
+    hopping_raw_full = np.zeros((max_idx, max_idx), dtype=complex)
+    for i, m, re, im in entries:
+        hopping_raw_full[i, m] = complex(re + 1j * im)
+    # Extract impurity block only (first n_flav rows/cols), discard bath orbitals
+    hopping_raw = hopping_raw_full[:n_flav, :n_flav]
     hopping = _from_flavor_to_spin_orbital(hopping_raw[np.newaxis, :, :], n_spin=n_spin)[0]
     return hopping
 
@@ -396,16 +399,20 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
     tau_grid_ir = ir.tau_mesh
 
     with h5py.File(args.transform_file, 'r') as ftransform:
-        X_k = ftransform['X_k'][()]
+        X_k_full = ftransform['X_k'][()]
         uu_trans = []
         for i in range(args.n_impurity):
             uu_i = ftransform[f"{i}/UU"][()] + 0j
             uu_trans.append(uu_i)
 
+    with h5py.File(args.input_file, 'r') as finput:
+        ir_list = finput['grid/ir_list'][()]
+    X_k = X_k_full[ir_list]
+
     with h5py.File(args.results_file, 'r') as fsimseet:
         group = fsimseet[f'iter{iteration}/Selfenergy']
-        mu = group['mu'][()]
-        sigma_in = group['data'][()]
+        mu = fsimseet[f'iter{iteration}/mu'][()]
+        sigma_in = fsimseet[f'iter{iteration}/Selfenergy/data'][()]
         sigma_inf_in = fsimseet[f'iter{iteration}/Sigma1'][()]
     ntau_ir, ns, nk, n_orbital_full, _ = sigma_in.shape
 
@@ -426,20 +433,18 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
         green_omega_IR = ir.tau_to_w(green_tau_IR)
 
         # Compute self-energy in Matsubara frequency
-        sigma_omega_IR = np.zeros_like(green_omega_IR, dtype=complex)
-        for s in range(args.n_spin_impurity):
-            for iw, w_val in enumerate(ir.wsample):
-                g0_inv = (1j * w_val + mu) * np.eye(n_orbital_impurity, dtype=complex) - hopping[s] - delta_omega_IR[iw, s]
-                g_inv = LA.inv(green_omega_IR[iw, s])
-                sigma_omega_IR[iw, s] = g0_inv - g_inv
+        # G0_inv(iw, s) = (iw + mu) * I - hopping[s] - delta(iw, s)
+        I = np.eye(n_orbital_impurity, dtype=complex)
+        g0_inv = (1j * ir.wsample[:, None, None, None] + mu) * I - hopping[None] - delta_omega_IR
+        g_inv = np.linalg.inv(green_omega_IR)
+        sigma_omega_IR = g0_inv - g_inv
 
         # Approximate Sigma_inf as sigma(iw_max) — the value at the highest
         # Matsubara frequency on the IR grid. This is subtracted per spin and
         # orbital channel so that sigma_omega_IR decays to zero at high
         # frequency, enabling a clean Fourier transform back to tau.
         sigma_inf = sigma_omega_IR[-1].copy()
-        for iw, w_val in enumerate(ir.wsample):
-            sigma_omega_IR[iw] -= sigma_inf
+        sigma_omega_IR -= sigma_inf[None]
 
         # Fourier transform
         sigma_tau_IR = ir.w_to_tau(sigma_omega_IR)
@@ -455,20 +460,12 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
         sigma_tau_local_orth += np.einsum('pi, tspq, qj -> tsij', uu_trans[i].conj(), sigma_tau_impurity[i], uu_trans[i])
         sigma_inf_local_orth += np.einsum('pi, spq, qj -> sij', uu_trans[i].conj(), sigma_inf_impurity[i], uu_trans[i])
 
-    # Orthogonal to AO basis for each k-point
-    sigma_loc_ao_ts_ibz = np.zeros((ntau_ir, ns, nk, n_orbital_full, n_orbital_full), dtype=np.complex128)
-    sigma_loc_ao_inf_ibz = np.zeros((ns, nk, n_orbital_full, n_orbital_full), dtype=np.complex128)
-    for s in range(ns):
-        sigma_loc_ao_inf_ibz[s] = np.einsum('kab, bc, kdc -> kad', X_k, sigma_inf_local_orth[s], X_k.conj())
+    # Orthogonal to AO basis for each k-point: X_k @ sigma_local @ X_k†
+    # Use batched matmul (BLAS) instead of einsum, accumulate directly into sigma_in
+    X_k_H = X_k.conj().transpose(0, 2, 1)  # (nk, norb, norb)
+    sigma_inf_in += (X_k[None] @ sigma_inf_local_orth[:, None] @ X_k_H[None]) * args.mixing
     for t in range(ntau_ir):
-        for s in range(ns):
-            sigma_loc_ao_ts_ibz[t, s] = np.einsum('kab, bc, kdc -> kad', X_k, sigma_tau_local_orth[t, s], X_k.conj())
-
-    # Update SIGMA from results file
-    for s in range(ns):
-        sigma_inf_in[s] += sigma_loc_ao_inf_ibz[s] * args.mixing
-        for t in range(ntau_ir):
-            sigma_in[t, s] += sigma_loc_ao_ts_ibz[t, s] * args.mixing
+        sigma_in[t] += (X_k[None] @ sigma_tau_local_orth[t][:, None] @ X_k_H[None]) * args.mixing
 
     # Save the data back to results file
     with h5py.File(args.results_file, 'r+') as fsimseet:
@@ -493,16 +490,17 @@ def sanity_check(args: argparse.Namespace):
 
 def main():
     parser = argparse.ArgumentParser(description="Submit SEET + SOEHYB solver jobs in sequence")
-    parser.add_argument("--niters", type=int, default=1, help="Number of SEET iterations to run")
+    parser.add_argument("--niters", type=int, default=10, help="Number of SEET iterations to run")
     parser.add_argument("--workdir", type=Path, default=Path.cwd(), help="Working directory for job scripts")
     parser.add_argument("--seet-check-interval", type=int, default=30, help="Initial polling interval (seconds) for SEET job status, doubles each round")
-    parser.add_argument("--imp-check-interval", type=int, default=5, help="Initial polling interval (seconds) for impurity job status, doubles each round")
+    parser.add_argument("--imp-check-interval", type=int, default=30, help="Initial polling interval (seconds) for impurity job status, doubles each round")
     parser.add_argument("--transform_file", type=Path, default="transform.h5", help="Path to transformation file")
     parser.add_argument("--results_file", type=Path, default="seet_results.h5", help="Path to SEET results file")
+    parser.add_argument("--input_file", type=Path, default="/pauli-storage/gharsha/NiO/dft/input.h5", help="Path to DFT input file (for IBZ k-point mapping)")
     parser.add_argument("--mixing", type=float, default=0.4, help="Mixing parameter for self-energy update")
-    parser.add_argument("--ir_file", type=Path, default="$HOME/umyangyu/install/green-seet/share/ir/1e4.h5", help="Path to IR grid file")
+    parser.add_argument("--ir_file", type=Path, default="/home/umyangyu/install/green-seet/share/ir/1e4.h5", help="Path to IR grid file")
     parser.add_argument("--beta", type=float, default=100.0, help="Inverse temperature for IR grid")
-    parser.add_argument("--expansion_order", type=int, default=0, help="Expansion order for impurity solver")
+    parser.add_argument("--expansion_order", type=int, default=1, help="Expansion order for impurity solver")
     parser.add_argument("--n_tau", type=int, default=1001, help="Number of tau points for impurity solver")
     parser.add_argument("--n_spin_impurity", type=int, default=2, help="Number of spins in a single impurity model")
     parser.add_argument("--n_orbitals_impurity", type=int, nargs='+', default=[2,2], help="Number of orbitals in each impurity model (list of length n_impurity)")

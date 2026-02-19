@@ -177,8 +177,9 @@ def check_job_status(job_id: str) -> str:
     """
     result = subprocess.run(["scontrol", "show", "job", job_id], capture_output=True, text=True)
     if result.returncode != 0:
-        return "UNKNOWN"
-    
+        # Job may have been purged from scontrol; fall back to sacct
+        return _check_job_status_sacct(job_id)
+
     if "JobState=COMPLETED" in result.stdout:
         return "COMPLETED"
     elif "JobState=RUNNING" in result.stdout:
@@ -190,14 +191,39 @@ def check_job_status(job_id: str) -> str:
     else:
         return "UNKNOWN"
 
+def _check_job_status_sacct(job_id: str) -> str:
+    """
+    Fallback status check via sacct for jobs no longer tracked by scontrol.
+    """
+    result = subprocess.run(
+        ["sacct", "-j", job_id, "--format=State", "--noheader", "--parsable2"],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return "UNKNOWN"
+    # sacct may return multiple lines (job + job steps); use the first line
+    state = result.stdout.strip().splitlines()[0].strip()
+    if state == "COMPLETED":
+        return "COMPLETED"
+    elif state in ("FAILED", "TIMEOUT", "CANCELLED", "NODE_FAIL", "OUT_OF_MEMORY"):
+        return "FAILED"
+    elif state in ("RUNNING", "PENDING"):
+        return state
+    else:
+        return "UNKNOWN"
+
 def wait_for_jobs(job_ids: list, check_interval: int = 30, max_wait: int = 86400) -> bool:
     """
     Wait for all jobs to complete.
+    Uses exponential backoff: starts polling at check_interval seconds,
+    doubling each round up to a maximum of 64 * check_interval.
     Returns True if all jobs completed successfully, False otherwise.
     """
     remaining = set(job_ids)
     prev_statuses = {}
     elapsed = 0
+    current_interval = check_interval
+    max_interval = check_interval * 64
     while remaining and elapsed < max_wait:
         for job_id in list(remaining):
             status = check_job_status(job_id)
@@ -210,8 +236,9 @@ def wait_for_jobs(job_ids: list, check_interval: int = 30, max_wait: int = 86400
                 return False
         if not remaining:
             return True
-        time.sleep(check_interval)
-        elapsed += check_interval
+        time.sleep(current_interval)
+        elapsed += current_interval
+        current_interval = min(current_interval * 2, max_interval)
     if remaining:
         print(f"  Jobs {remaining} timed out after {max_wait}s")
         return False
@@ -260,7 +287,7 @@ def process_impurity_input(iteration: int, workdir: Path, args: argparse.Namespa
     Process impurity input files for a given iteration.
     """
     for imp in range(args.n_impurity):
-        preprocess_script = IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE.format(imp=imp, beta=args.beta, n_tau=args.n_tau)
+        preprocess_script = IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE.format(imp=imp, beta=args.beta, n_tau=args.n_tau, n_spin_impurity=args.n_spin_impurity, n_orbital_impurity=args.n_orbitals_impurity[imp])
         preprocess_script_path = workdir / f"preprocess_imp_{imp}_it_{iteration}.sh"
         write_script(preprocess_script_path, preprocess_script)
         result = subprocess.run([str(preprocess_script_path)], capture_output=True, text=True, cwd=workdir)
@@ -365,8 +392,22 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
 
     sigma_tau_impurity = []
     sigma_inf_impurity = []
-    ir=IR_factory(args.beta, args.ir_file)
+    ir = IR_factory(args.beta, args.ir_file)
     tau_grid_ir = ir.tau_mesh
+
+    with h5py.File(args.transform_file, 'r') as ftransform:
+        X_k = ftransform['X_k'][()]
+        uu_trans = []
+        for i in range(args.n_impurity):
+            uu_i = ftransform[f"{i}/UU"][()] + 0j
+            uu_trans.append(uu_i)
+
+    with h5py.File(args.results_file, 'r') as fsimseet:
+        group = fsimseet[f'iter{iteration}/Selfenergy']
+        mu = group['mu'][()]
+        sigma_in = group['data'][()]
+        sigma_inf_in = fsimseet[f'iter{iteration}/Sigma1'][()]
+    ntau_ir, ns, nk, n_orbital_full, _ = sigma_in.shape
 
     for imp, n_orbital_impurity in enumerate(args.n_orbitals_impurity):
         h5py_file = workdir / f"imp_{imp}_sim.h5"
@@ -374,8 +415,8 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
             tau_grid_green = fimp['green/linear_grid/tau'][()]
             green_tau_f = fimp['green/linear_grid/green_tau'][()]
         green_tau = _from_flavor_to_spin_orbital(green_tau_f, n_spin=args.n_spin_impurity)
-        delta_tau, tau_grid_delta = read_delta_tau_from_txt(f"imp_{imp}_delta.txt", n_orbital_impurity, args.beta)
-        hopping = read_hopping_from_txt(f"imp_{imp}_hopping.txt", n_orbital_impurity)
+        delta_tau, tau_grid_delta = read_delta_tau_from_txt(str(workdir / f"imp_{imp}_delta.txt"), n_orbital_impurity, args.beta)
+        hopping = read_hopping_from_txt(str(workdir / f"imp_{imp}_hopping.txt"), n_orbital_impurity)
 
         delta_tau_IR = interpolation(tau_grid_delta, delta_tau, tau_grid_ir, kind="cubic")
         green_tau_IR = interpolation(tau_grid_green, green_tau, tau_grid_ir, kind="cubic")
@@ -392,8 +433,11 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
                 g_inv = LA.inv(green_omega_IR[iw, s])
                 sigma_omega_IR[iw, s] = g0_inv - g_inv
 
-        # Extract Sigma_inf = sigma (iw_max)
-        sigma_inf = sigma_omega_IR[-1]
+        # Approximate Sigma_inf as sigma(iw_max) — the value at the highest
+        # Matsubara frequency on the IR grid. This is subtracted per spin and
+        # orbital channel so that sigma_omega_IR decays to zero at high
+        # frequency, enabling a clean Fourier transform back to tau.
+        sigma_inf = sigma_omega_IR[-1].copy()
         for iw, w_val in enumerate(ir.wsample):
             sigma_omega_IR[iw] -= sigma_inf
 
@@ -403,20 +447,6 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
         sigma_tau_impurity.append(sigma_tau_IR)
         sigma_inf_impurity.append(sigma_inf)
     
-    ftransform = h5py.File(args.transform_file, 'r')
-    X_k = ftransform['X_k'][()]
-    uu_trans = []
-    for i in range(args.n_impurity):
-        uu_i = ftransform[f"{i}/UU"][()] + 0j
-        uu_trans.append(uu_i)
-    ftransform.close()
-
-    fsimseet = h5py.File(args.results_file, 'r+')
-    group = fsimseet['iter{}/Selfenergy'.format(iteration)]
-    mu = group['mu'][()]
-    sigma_in = group['data'][()]
-    sigma_inf_in = fsimseet['iter{}/Sigma1'.format(iteration)][()]
-    ntau_ir, ns, nk, n_orbital_full, _ = sigma_in.shape
 
     # Active space to full orthogonal basis and combine SIGMA from all impurity blocks
     sigma_tau_local_orth = np.zeros((ntau_ir, ns, n_orbital_full, n_orbital_full), dtype=np.complex128)
@@ -428,21 +458,22 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
     # Orthogonal to AO basis for each k-point
     sigma_loc_ao_ts_ibz = np.zeros((ntau_ir, ns, nk, n_orbital_full, n_orbital_full), dtype=np.complex128)
     sigma_loc_ao_inf_ibz = np.zeros((ns, nk, n_orbital_full, n_orbital_full), dtype=np.complex128)
+    for s in range(ns):
+        sigma_loc_ao_inf_ibz[s] = np.einsum('kab, bc, kdc -> kad', X_k, sigma_inf_local_orth[s], X_k.conj())
     for t in range(ntau_ir):
         for s in range(ns):
-            sigma_loc_ao_ts_ibz[t, s] = np.einsum('kab, bc, sdc -> kad', X_k, sigma_tau_local_orth[t, s], X_k.conj())
-            sigma_loc_ao_inf_ibz[s] = np.einsum('kab, bc, sdc -> kad', X_k, sigma_inf_local_orth[s], X_k.conj())
-    
+            sigma_loc_ao_ts_ibz[t, s] = np.einsum('kab, bc, kdc -> kad', X_k, sigma_tau_local_orth[t, s], X_k.conj())
+
     # Update SIGMA from results file
-    for t in range(ntau_ir):
-        for s in range(ns):
+    for s in range(ns):
+        sigma_inf_in[s] += sigma_loc_ao_inf_ibz[s] * args.mixing
+        for t in range(ntau_ir):
             sigma_in[t, s] += sigma_loc_ao_ts_ibz[t, s] * args.mixing
-            sigma_inf_in[s] += sigma_loc_ao_inf_ibz[s] * args.mixing
-    
+
     # Save the data back to results file
-    group['data'][...] = sigma_in
-    fsimseet['iter{}/Sigma1'.format(iteration)][...] = sigma_inf_in
-    fsimseet.close()
+    with h5py.File(args.results_file, 'r+') as fsimseet:
+        fsimseet[f'iter{iteration}/Selfenergy/data'][...] = sigma_in
+        fsimseet[f'iter{iteration}/Sigma1'][...] = sigma_inf_in
     
     return True  # Return True to continue workflow in placeholder mode
 
@@ -450,8 +481,9 @@ def sanity_check(args: argparse.Namespace):
     n_orbitals_impurity_file = []
     with h5py.File(args.transform_file, 'r') as ftransform:
         nimp_file = ftransform['nimp'][()]
-        uu_i = ftransform[f"{i}/UU"][()] + 0j
-        n_orbitals_impurity_file.append(uu_i.shape[0])
+        for i in range(nimp_file):
+            uu_i = ftransform[f"{i}/UU"][()] + 0j
+            n_orbitals_impurity_file.append(uu_i.shape[0])
         
     if nimp_file != args.n_impurity:
         raise ValueError(f"Number of impurities in transform file ({nimp_file}) does not match --n_impurity ({args.n_impurity})")
@@ -463,20 +495,20 @@ def main():
     parser = argparse.ArgumentParser(description="Submit SEET + SOEHYB solver jobs in sequence")
     parser.add_argument("--niters", type=int, default=1, help="Number of SEET iterations to run")
     parser.add_argument("--workdir", type=Path, default=Path.cwd(), help="Working directory for job scripts")
-    parser.add_argument("--seet-check-interval", type=int, default=30, help="Interval (seconds) to check SEET job status")
-    parser.add_argument("--imp-check-interval", type=int, default=5, help="Interval (seconds) to check impurity job status")
+    parser.add_argument("--seet-check-interval", type=int, default=30, help="Initial polling interval (seconds) for SEET job status, doubles each round")
+    parser.add_argument("--imp-check-interval", type=int, default=5, help="Initial polling interval (seconds) for impurity job status, doubles each round")
     parser.add_argument("--transform_file", type=Path, default="transform.h5", help="Path to transformation file")
     parser.add_argument("--results_file", type=Path, default="seet_results.h5", help="Path to SEET results file")
     parser.add_argument("--mixing", type=float, default=0.4, help="Mixing parameter for self-energy update")
-    parser.add_argument("--ir_file", type=Path, default="ir/1e4.h5", help="Path to IR grid file")
+    parser.add_argument("--ir_file", type=Path, default="$HOME/umyangyu/install/green-seet/share/ir/1e4.h5", help="Path to IR grid file")
     parser.add_argument("--beta", type=float, default=100.0, help="Inverse temperature for IR grid")
     parser.add_argument("--expansion_order", type=int, default=0, help="Expansion order for impurity solver")
     parser.add_argument("--n_tau", type=int, default=1001, help="Number of tau points for impurity solver")
     parser.add_argument("--n_spin_impurity", type=int, default=2, help="Number of spins in a single impurity model")
-    parser.add_argument("--n_orbitals_impurity", type=list, default=[2,2], help="Number of orbitals in each impurity model (list of length n_impurity)")
-    
-    args.n_impurity = len(args.n_orbitals_impurity)
+    parser.add_argument("--n_orbitals_impurity", type=int, nargs='+', default=[2,2], help="Number of orbitals in each impurity model (list of length n_impurity)")
+
     args = parser.parse_args()
+    args.n_impurity = len(args.n_orbitals_impurity)
     workdir = args.workdir
     workdir.mkdir(parents=True, exist_ok=True)
     sanity_check(args)

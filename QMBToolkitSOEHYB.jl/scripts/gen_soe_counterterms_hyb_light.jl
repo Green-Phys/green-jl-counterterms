@@ -119,7 +119,7 @@ function write_hopping(Hopping::Matrix{ComplexF64}, file_out::String)
     end
 end
 
-function _obtain_hyb(poles, weights; svdtol = 1e-7)
+function _obtain_hyb(poles, weights; svdtol = 1e-12)
     # From the output (poles, weights) to (counterterms_energy, counterterms_hyb)
     # poles shape: (p)
     # weights shape: (p, o1, o2)
@@ -155,7 +155,7 @@ function _obtain_hyb(poles, weights; svdtol = 1e-7)
     return real.(counterterms_energy), real.(counterterms_hyb)
 end
 
-function _obtain_hyb_general(poles, weights; svdtol = 1e-7, separate_spins = false)
+function _obtain_hyb_general(poles, weights; svdtol = 1e-12, separate_spins = false)
     # Wrapper for _obtain_hyb that handles separate_spins option
     # When separate_spins=true, process spin-up and spin-down separately and interleave results
     # Input format when separate_spins=true:

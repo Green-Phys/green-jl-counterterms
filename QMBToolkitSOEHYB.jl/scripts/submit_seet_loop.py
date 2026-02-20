@@ -6,15 +6,14 @@ SEET_SCRIPT_TEMPLATE = """#!/bin/bash
 #SBATCH -e seet_it_{iteration}.e%j
 #SBATCH --exclusive
 #SBATCH -N 1
-#SBATCH -n 1
-#SBATCH -c 16
+#SBATCH -n 64
+#SBATCH -c 1
 #SBATCH -t 48:00:00
 
-export OMP_NUM_THREADS=1
 export ScriptDir="/home/umyangyu/install/green-seet/python"
 export HDF5_USE_FILE_LOCKING=FALSE
 SEETexe="/home/umyangyu/install/green-seet/bin/embedding.exe"
-WeakCouplingDir="/pauli-storage/gharsha/NiO"
+WeakCouplingDir="{weak_coupling_dir}"
 Solver="/bin/true"
 
 
@@ -255,8 +254,12 @@ def collect_iteration_files(iteration: int, workdir: Path):
     """
     iter_dir = workdir / f"it_{iteration}"
     iter_dir.mkdir(exist_ok=True)
-    pattern = f"*it_{iteration}*"
-    for f in workdir.glob(pattern):
+    pattern1 = f"*it_{iteration}.*" 
+    pattern2 = f"*it_{iteration}_*" 
+    for f in workdir.glob(pattern1):
+        if f.is_file():
+            shutil.move(str(f), str(iter_dir / f.name))
+    for f in workdir.glob(pattern2):
         if f.is_file():
             shutil.move(str(f), str(iter_dir / f.name))
     for f in workdir.glob(f"imp*.*"):
@@ -463,9 +466,10 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
     # Orthogonal to AO basis for each k-point: X_inv_k @ sigma_local @ X_inv_k†
     # X_inv_k transforms from orthogonal to AO basis (X_k is AO→orth, its inverse is orth→AO)
     X_inv_k_H = X_inv_k.conj().transpose(0, 2, 1)  # (nk, norb, norb)
-    sigma_inf_in += (X_inv_k[None] @ sigma_inf_local_orth[:, None] @ X_inv_k_H[None]) * args.mixing
+    weight = 1.0 if iteration == 1 else args.mixing
+    sigma_inf_in += (X_inv_k[None] @ sigma_inf_local_orth[:, None] @ X_inv_k_H[None]) * weight
     for t in range(ntau_ir):
-        sigma_in[t] += (X_inv_k[None] @ sigma_tau_local_orth[t][:, None] @ X_inv_k_H[None]) * args.mixing
+        sigma_in[t] += (X_inv_k[None] @ sigma_tau_local_orth[t][:, None] @ X_inv_k_H[None]) * weight
 
     # Save the data back to results file
     with h5py.File(args.results_file, 'r+') as fsimseet:
@@ -498,12 +502,13 @@ def main():
     parser.add_argument("--results_file", type=Path, default="seet_results.h5", help="Path to SEET results file")
     parser.add_argument("--input_file", type=Path, default="/pauli-storage/gharsha/NiO/dft/input.h5", help="Path to DFT input file (for IBZ k-point mapping)")
     parser.add_argument("--mixing", type=float, default=0.4, help="Mixing parameter for self-energy update")
-    parser.add_argument("--ir_file", type=Path, default="/home/umyangyu/install/green-seet/share/ir/1e4.h5", help="Path to IR grid file")
+    parser.add_argument("--ir_file", type=Path, default="/home/umyangyu/src/green-grids/data/ir/1e4.h5", help="Path to IR grid file")
     parser.add_argument("--beta", type=float, default=100.0, help="Inverse temperature for IR grid")
     parser.add_argument("--expansion_order", type=int, default=1, help="Expansion order for impurity solver")
     parser.add_argument("--n_tau", type=int, default=1001, help="Number of tau points for impurity solver")
     parser.add_argument("--n_spin_impurity", type=int, default=2, help="Number of spins in a single impurity model")
     parser.add_argument("--n_orbitals_impurity", type=int, nargs='+', default=[2,2], help="Number of orbitals in each impurity model (list of length n_impurity)")
+    parser.add_argument("--weak_coupling_dir", type=Path, default="/pauli-storage/gharsha/NiO", help="Directory containing weak coupling results (GW)")
 
     args = parser.parse_args()
     args.n_impurity = len(args.n_orbitals_impurity)
@@ -519,7 +524,7 @@ def main():
             seet_script_path = workdir / f"seet_it_{iteration}.sh"
             seet_script = SEET_SCRIPT_TEMPLATE.format(
                 iteration=iteration, beta=args.beta, transform_filename=args.transform_file,
-                results_filename=args.results_file, mixing=args.mixing, ir_file=args.ir_file, restart=restart
+                results_filename=args.results_file, mixing=args.mixing, ir_file=args.ir_file, restart=restart, weak_coupling_dir=args.weak_coupling_dir
             )
             write_script(seet_script_path, seet_script)
 

@@ -99,7 +99,7 @@ date
 IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE = """#!/bin/bash
 #SBATCH -p super,batch
 #SBATCH -N 1
-#SBATCH -n 1
+#SBATCH -n 64
 #SBATCH -c 1
 #SBATCH -J ed_gen_it_{iteration}
 #SBATCH -t 1:00:00
@@ -123,6 +123,33 @@ srun -u /home/umyangyu/install/ed_input_generator/bin/ed_input_generator \
   --results_file {results_file} \
   --tolerance 1e-9 \
   --iter_offset {iter_offset}
+
+echo "Finished at $(date)"
+"""
+
+
+RECOMPUTE_GTAU_SCRIPT_TEMPLATE = """#!/bin/bash
+#SBATCH -p super,batch
+#SBATCH -N 1
+#SBATCH -n 64
+#SBATCH -c 1
+#SBATCH -J recompute_gtau_it_{iteration}
+#SBATCH -t 1:00:00
+#SBATCH -o recompute_gtau_it_{iteration}.o%j
+#SBATCH -e recompute_gtau_it_{iteration}.e%j
+
+export HDF5_USE_FILE_LOCKING=FALSE
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+
+echo "Running on $(hostname) at $(date)"
+
+srun -u /home/umyangyu/install/recompute_gtau/bin/recompute_gtau \
+  --BETA {beta} \
+  --grid_file {ir_file} \
+  --input_file {input_file} \
+  --results_file {results_file} \
+  --iter_offset 0
 
 echo "Finished at $(date)"
 """
@@ -202,15 +229,12 @@ def _check_job_status_sacct(job_id: str) -> str:
 def wait_for_jobs(job_ids: list, check_interval: int = 30, max_wait: int = 86400) -> bool:
     """
     Wait for all jobs to complete.
-    Uses exponential backoff: starts polling at check_interval seconds,
-    doubling each round up to a maximum of 64 * check_interval.
+    Polls at a fixed interval of check_interval seconds.
     Returns True if all jobs completed successfully, False otherwise.
     """
     remaining = set(job_ids)
     prev_statuses = {}
     elapsed = 0
-    current_interval = check_interval
-    max_interval = check_interval * 64
     while remaining and elapsed < max_wait:
         for job_id in list(remaining):
             status = check_job_status(job_id)
@@ -223,9 +247,8 @@ def wait_for_jobs(job_ids: list, check_interval: int = 30, max_wait: int = 86400
                 return False
         if not remaining:
             return True
-        time.sleep(current_interval)
-        elapsed += current_interval
-        current_interval = min(current_interval * 2, max_interval)
+        time.sleep(check_interval)
+        elapsed += check_interval
     if remaining:
         print(f"  Jobs {remaining} timed out after {max_wait}s")
         return False
@@ -341,6 +364,10 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
     for t in range(ntau_ir):
         sigma_in[t] += (X_inv_k[None] @ sigma_tau_local_orth[t][:, None] @ X_inv_k_H[None]) * weight
 
+    # Enforce Hermitian symmetry: S -> (S + S†) / 2, matching the C++ make_hermitian() call
+    sigma_inf_in = 0.5 * (sigma_inf_in + sigma_inf_in.conj().transpose(0, 1, 3, 2))
+    sigma_in = 0.5 * (sigma_in + sigma_in.conj().transpose(0, 1, 2, 4, 3))
+
     # Save the data back to results file
     with h5py.File(args.results_file, 'r+') as fsimseet:
         fsimseet[f'iter{iteration}/Selfenergy/data'][...] = sigma_in
@@ -364,10 +391,10 @@ def sanity_check(args: argparse.Namespace):
 
 def main():
     parser = argparse.ArgumentParser(description="Submit SEET + SOEHYB solver jobs in sequence")
-    parser.add_argument("--niters", type=int, default=2, help="Number of SEET iterations to run")
+    parser.add_argument("--niters", type=int, default=3, help="Number of SEET iterations to run")
     parser.add_argument("--workdir", type=Path, default=Path.cwd(), help="Working directory for job scripts")
-    parser.add_argument("--seet-check-interval", type=int, default=30, help="Initial polling interval (seconds) for SEET job status, doubles each round")
-    parser.add_argument("--imp-check-interval", type=int, default=30, help="Initial polling interval (seconds) for impurity job status, doubles each round")
+    parser.add_argument("--seet-check-interval", type=int, default=10, help="Initial polling interval (seconds) for SEET job status, doubles each round")
+    parser.add_argument("--imp-check-interval", type=int, default=10, help="Initial polling interval (seconds) for impurity job status, doubles each round")
     parser.add_argument("--transform_file", type=Path, default="transform.h5", help="Path to transformation file")
     parser.add_argument("--results_file", type=Path, default="seet_results.h5", help="Path to SEET results file")
     parser.add_argument("--input_file", type=Path, default="/pauli-storage/gharsha/NiO/dft/input.h5", help="Path to DFT input file (for IBZ k-point mapping)")
@@ -377,8 +404,8 @@ def main():
     parser.add_argument("--n_spin_impurity", type=int, default=2, help="Number of spins in a single impurity model")
     parser.add_argument("--n_orbitals_impurity", type=int, nargs='+', default=[2,2], help="Number of orbitals in each impurity model (list of length n_impurity)")
     parser.add_argument("--weak_coupling_dir", type=Path, default="/pauli-storage/gharsha/NiO", help="Directory containing weak coupling results (GW)")
-    parser.add_argument("--bath_file", type=Path, default="bath_1bpo.txt", help="Path to bath file generated by impurity preprocessing step")
-    parser.add_argument("--n_bath_per_orbital", type=int, default=1, help="Number of bath orbitals per impurity orbital")
+    parser.add_argument("--bath_file", type=Path, default="bath_3bpo.txt", help="Path to bath file generated by impurity preprocessing step")
+    parser.add_argument("--n_bath_per_orbital", type=int, default=3, help="Number of bath orbitals per impurity orbital")
 
     args = parser.parse_args()
     args.n_impurity = len(args.n_orbitals_impurity)
@@ -386,8 +413,23 @@ def main():
     workdir.mkdir(parents=True, exist_ok=True)
     sanity_check(args)
     job_ids = []
-    
+
+    ## Temporarily copy reference file for benchmarking: copy sim.seet.h5,
+    ## remove the last iteration, and skip all iterations except the last.
+    if args.niters > 1:
+        ref_file = Path('../sim.seet.h5')
+        print(f"Benchmarking: copying {ref_file} -> {args.results_file} and removing last iteration")
+        shutil.copy(str(ref_file), str(args.results_file))
+        with h5py.File(args.results_file, 'r+') as f:
+            n_iter = int(f['iter'][()])
+            if f'iter{n_iter}' in f:
+                del f[f'iter{n_iter}']
+            f['iter'][...] = n_iter - 1
+
     for iteration in range(1, args.niters+1):
+        if iteration != args.niters:
+            continue
+
         try:
             # ---- SEET ----
             restart = "false" if iteration == 1 else "true"
@@ -427,12 +469,29 @@ def main():
             if not wait_for_jobs(impurity_job_ids, check_interval=args.imp_check_interval):
                 print(f"Impurity solver failed at iteration {iteration}. Stopping.")
                 break
-
+            
+            print(f"\n--- Iteration {iteration}/{args.niters}: Processing impurity output ---")
             if not process_impurity_output(iteration, workdir, args):
                 print(f"Failed to process impurity output at iteration {iteration}. Stopping.")
                 break
+
+            # ---- Recompute G(tau) and energies from corrected sigma ----
+            print(f"\n--- Iteration {iteration}/{args.niters}: Recompute G(tau) and energies ---")
+            recompute_script = RECOMPUTE_GTAU_SCRIPT_TEMPLATE.format(
+                iteration=iteration, beta=args.beta, ir_file=args.ir_file,
+                input_file=args.input_file, results_file=args.results_file
+            )
+            recompute_script_path = workdir / f"recompute_gtau_it_{iteration}.sh"
+            write_script(recompute_script_path, recompute_script)
+            recompute_job_id = submit_slurm_job(recompute_script_path)
+            job_ids.append(("RecomputeG", iteration, recompute_job_id))
+            if not wait_for_job(recompute_job_id, check_interval=args.imp_check_interval):
+                print(f"Recompute G(tau) failed at iteration {iteration}. Stopping.")
+                break
         finally:
             collect_iteration_files(iteration, workdir)
+        
+
     
     print(f"\n--- Summary ---")
     for job_type, it, job_id in job_ids:

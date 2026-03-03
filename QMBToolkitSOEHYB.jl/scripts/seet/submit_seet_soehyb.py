@@ -5,6 +5,7 @@ SEET_SCRIPT_TEMPLATE = """#!/bin/bash
 #SBATCH -o seet_it_{iteration}.o%j
 #SBATCH -e seet_it_{iteration}.e%j
 #SBATCH --exclusive
+#SBATCH --qos special
 #SBATCH -N 1
 #SBATCH -n 64
 #SBATCH -c 1
@@ -40,7 +41,7 @@ srun -u $SEETexe \
   --impurity_solver "INCHWORM" \
   --impurity_solver_exec $Solver \
   --impurity_solver_params " " \
-  --dc_data_prefix "dc_int" \
+  --dc_data_prefix "../dc_int" \
   --seet_root_dir "./" \
   --spin_symm false \
   --verbose 4
@@ -51,12 +52,13 @@ date
 
 IMPURITY_SCRIPT_TEMPLATE = """#!/bin/bash
 #SBATCH -J imp_{imp}_it_{iteration}             # Job name
-#SBATCH -p ludicrous,super,batch
+#SBATCH -p ludicrous
 #SBATCH -o imp_{imp}_it_{iteration}.o%j         # Name of stdout output file
 #SBATCH -e imp_{imp}_it_{iteration}.e%j         # Name of stderr error file
 #SBATCH --exclusive
+#SBATCH --qos special
 #SBATCH -N 1
-#SBATCH -n 64
+#SBATCH -n 3
 #SBATCH -c 1
 #SBATCH --hint nomultithread
 #SBATCH -t 48:00:00
@@ -75,6 +77,15 @@ srun julia --check-bounds=no --project=$PROJECT_DIR -e '
 using QMBToolkitSOEHYB
 QMBToolkitSOEHYB.run("{input_file}")
 '
+
+julia --project=/home/umyangyu/src/QMBToolkit/QMBToolkitSOEHYB.jl \
+    /home/umyangyu/src/QMBToolkit/QMBToolkitSOEHYB.jl/scripts/seet/interpolate_DLRtau_IRomega.jl \
+    --sim_h5_file ./imp_{imp}_sim.h5 \
+    --ed_h5_file ./ed.{imp}.input.h5 \
+    --Euv 20.0 \
+    --dlr_tol 1e-12 \
+    --beta {beta}
+
 
 date
 """
@@ -108,8 +119,8 @@ IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE = """#!/bin/bash
 hyb_type="from_seet"
 hyb_file="./imp_{imp}_delta.txt"
 init_dlr_euv=10.0
-n_soe_counterterms=1
-n_soe_hybridization=14
+n_soe_counterterms={n_soe_counterterms}
+n_soe_hybridization={n_soe_hybridization}
 do_subtraction_trick=true
 separate_spins=true
 output_dir="./"
@@ -136,6 +147,65 @@ julia $counterterm_exe \
 mv hyb_poles.txt imp_{imp}_hyb_poles.txt
 mv hyb_weights.txt imp_{imp}_hyb_weights.txt
 mv soe_error.txt imp_{imp}_soe_error.txt
+"""
+
+RECOMPUTE_GTAU_SCRIPT_TEMPLATE = """#!/bin/bash
+#SBATCH -p super,batch
+#SBATCH -N 1
+#SBATCH -n 64
+#SBATCH -c 1
+#SBATCH -J recompute_gtau_it_{iteration}
+#SBATCH -t 1:00:00
+#SBATCH -o recompute_gtau_it_{iteration}.o%j
+#SBATCH -e recompute_gtau_it_{iteration}.e%j
+#SBATCH --qos special
+
+export HDF5_USE_FILE_LOCKING=FALSE
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+
+echo "Running on $(hostname) at $(date)"
+
+srun -u /home/umyangyu/install/recompute_gtau/bin/recompute_gtau \
+  --BETA {beta} \
+  --grid_file {ir_file} \
+  --input_file {input_file} \
+  --results_file {results_file} \
+  --iter_offset 0
+
+echo "Finished at $(date)"
+"""
+
+IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE_ED = """#!/bin/bash
+#SBATCH -p super,batch
+#SBATCH -N 1
+#SBATCH -n 64
+#SBATCH -c 1
+#SBATCH -J ed_gen_it_{iteration}
+#SBATCH -t 1:00:00
+#SBATCH -o ed_gen_it_{iteration}.o%j
+#SBATCH -e ed_gen_it_{iteration}.e%j
+#SBATCH --qos special
+
+export HDF5_USE_FILE_LOCKING=FALSE
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+
+echo "Running on $(hostname) at $(date)"
+
+srun -u /home/umyangyu/install/ed_input_generator/bin/ed_input_generator \
+  --BETA {beta} \
+  --grid_file {ir_file} \
+  --input_file {input_file} \
+  --seet_input {transform_file} \
+  --bath_file {bath_file} \
+  --seet_root_dir ./ \
+  --spin_symm false \
+  --results_file {results_file} \
+  --tolerance 1e-9 \
+  --iter_offset {iter_offset}
+
+echo "Finished at $(date)"
 """
 
 import argparse
@@ -211,7 +281,7 @@ def _check_job_status_sacct(job_id: str) -> str:
     else:
         return "UNKNOWN"
 
-def wait_for_jobs(job_ids: list, check_interval: int = 30, max_wait: int = 86400) -> bool:
+def wait_for_jobs(job_ids: list, check_interval: int = 30, max_wait: int = 186400) -> bool:
     """
     Wait for all jobs to complete.
     Polls at a fixed interval of check_interval seconds.
@@ -239,7 +309,7 @@ def wait_for_jobs(job_ids: list, check_interval: int = 30, max_wait: int = 86400
         return False
     return True
 
-def wait_for_job(job_id: str, check_interval: int = 30, max_wait: int = 86400) -> bool:
+def wait_for_job(job_id: str, check_interval: int = 30, max_wait: int = 186400) -> bool:
     """
     Wait for a single job to complete.
     """
@@ -265,6 +335,9 @@ def collect_iteration_files(iteration: int, workdir: Path):
     for f in workdir.glob("dc.*result.h5"):
         if f.is_file():
             shutil.move(str(f), str(iter_dir / f.name))
+    for f in workdir.glob("ed.*.h5"):
+        if f.is_file():
+            shutil.move(str(f), str(iter_dir / f.name))
 
 
 def create_impurity_input(iteration: int, imp: int, workdir: Path, args: argparse.Namespace):
@@ -285,8 +358,24 @@ def process_impurity_input(iteration: int, workdir: Path, args: argparse.Namespa
     """
     Process impurity input files for a given iteration.
     """
+    if iteration == 1:
+        results_file = args.weak_coupling_dir / "scgw/NiO_GW.h5"
+    else:
+        results_file = args.results_file
+    preprocess_script = IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE_ED.format(
+        iteration=iteration, beta=args.beta, ir_file=args.ir_file,
+        transform_file=args.transform_file, results_file=results_file,
+        bath_file=workdir / args.bath_file, input_file=args.input_file,
+        iter_offset=1 if iteration > 1 else 0
+    )
+    preprocess_script_path = workdir / f"preprocess_it_{iteration}.sh"
+    write_script(preprocess_script_path, preprocess_script)
+    preprocess_job_id = submit_slurm_job(preprocess_script_path)
+    if not wait_for_job(preprocess_job_id, check_interval=args.imp_check_interval):
+        print(f"Preprocessing job failed for iteration {iteration}.")
+        return False
     for imp in range(args.n_impurity):
-        preprocess_script = IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE.format(imp=imp, beta=args.beta, n_tau=args.n_tau, n_spin_impurity=args.n_spin_impurity, n_orbital_impurity=args.n_orbitals_impurity[imp])
+        preprocess_script = IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE.format(imp=imp, beta=args.beta, n_tau=args.n_tau, n_spin_impurity=args.n_spin_impurity, n_orbital_impurity=args.n_orbitals_impurity[imp], n_soe_counterterms=args.n_soe_counterterms, n_soe_hybridization=args.n_soe_hybridization)
         preprocess_script_path = workdir / f"preprocess_imp_{imp}_it_{iteration}.sh"
         write_script(preprocess_script_path, preprocess_script)
         result = subprocess.run([str(preprocess_script_path)], capture_output=True, text=True, cwd=workdir)
@@ -353,7 +442,7 @@ def read_hopping_from_txt(hopping_file: str, n_orbital: int, n_spin=2):
     hopping_raw_full = np.zeros((max_idx, max_idx), dtype=complex)
     for i, m, re, im in entries:
         hopping_raw_full[i, m] = complex(re + 1j * im)
-    # Extract impurity block only (first n_flav rows/cols), discard bath orbitals
+    # Extract impurity block only (first n_flav rows/cols), discard counterterm orbitals
     hopping_raw = hopping_raw_full[:n_flav, :n_flav]
     hopping = _from_flavor_to_spin_orbital(hopping_raw[np.newaxis, :, :], n_spin=n_spin)[0]
     return hopping
@@ -411,39 +500,50 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
 
     with h5py.File(args.results_file, 'r') as fsimseet:
         group = fsimseet[f'iter{iteration}/Selfenergy']
-        mu = fsimseet[f'iter{iteration}/mu'][()]
+        # mu = fsimseet[f'iter{iteration}/mu'][()]
+        mu = 0.0 #In the impurity solver, we move the mu to the hopping, so we set mu=0 when computing the impurity self-energy to be consistent with the impurity model definition. The chemical potential shift will be taken care of by the transformation to the orthogonal basis and the mixing with the previous self-energy.
         sigma_in = fsimseet[f'iter{iteration}/Selfenergy/data'][()]
         sigma_inf_in = fsimseet[f'iter{iteration}/Sigma1'][()]
     ntau_ir, ns, nk, n_orbital_full, _ = sigma_in.shape
 
     for imp, n_orbital_impurity in enumerate(args.n_orbitals_impurity):
-        h5py_file = workdir / f"imp_{imp}_sim.h5"
-        with h5py.File(h5py_file, 'r') as fimp:
-            tau_grid_green = fimp['green/linear_grid/tau'][()]
-            green_tau_f = fimp['green/linear_grid/green_tau'][()]
-        green_tau = _from_flavor_to_spin_orbital(green_tau_f, n_spin=args.n_spin_impurity)
-        delta_tau, tau_grid_delta = read_delta_tau_from_txt(str(workdir / f"imp_{imp}_delta.txt"), n_orbital_impurity, args.beta)
+        # h5py_file = workdir / f"imp_{imp}_sim.h5"
+        # with h5py.File(h5py_file, 'r') as fimp:
+        #     tau_grid_green = fimp['green/linear_grid/tau'][()]
+        #     green_tau_f = fimp['green/linear_grid/green_tau'][()]
+        # green_tau = _from_flavor_to_spin_orbital(green_tau_f, n_spin=args.n_spin_impurity)
+        # delta_tau, tau_grid_delta = read_delta_tau_from_txt(str(workdir / f"imp_{imp}_delta.txt"), n_orbital_impurity, args.beta)
         hopping = read_hopping_from_txt(str(workdir / f"imp_{imp}_hopping.txt"), n_orbital_impurity)
 
-        delta_tau_IR = interpolation(tau_grid_delta, delta_tau, tau_grid_ir, kind="cubic")
-        green_tau_IR = interpolation(tau_grid_green, green_tau, tau_grid_ir, kind="cubic")
+        # delta_tau_IR = interpolation(tau_grid_delta, delta_tau, tau_grid_ir, kind="cubic") # TODO: use ed_gen version
+        # green_tau_IR = interpolation(tau_grid_green, green_tau, tau_grid_ir, kind="cubic") # TODO: use DLR to IR
 
-        # Fourier transform to Matsubara frequency
-        delta_omega_IR = ir.tau_to_w(delta_tau_IR)
-        green_omega_IR = ir.tau_to_w(green_tau_IR)
+        # # Fourier transform to Matsubara frequency
+        # delta_omega_IR = ir.tau_to_w(delta_tau_IR)
+        # green_omega_IR = ir.tau_to_w(green_tau_IR)
+
+        with h5py.File(f"{args.workdir}/ed.{imp}.input.h5", 'r') as f:
+            delta_omega_IR = f['Delta/data_in'][()]
+
+        with h5py.File(workdir / f"imp_{imp}_sim.h5", 'r') as fimp:
+             freq = fimp['green/matsubara/freq'][()]
+             green_iw = fimp['green/matsubara/green_iw'][()]
+        green_iw = _from_flavor_to_spin_orbital(green_iw, n_spin=args.n_spin_impurity)
+
+        assert freq.shape == ir.wsample.shape and np.allclose(freq, ir.wsample), f"Matsubara frequency grid mismatch for impurity {imp}: file freq does not match IR grid (check Euv, beta, dlr_tol)"
 
         # Compute self-energy in Matsubara frequency
         # G0_inv(iw, s) = (iw + mu) * I - hopping[s] - delta(iw, s)
         I = np.eye(n_orbital_impurity, dtype=complex)
         g0_inv = (1j * ir.wsample[:, None, None, None] + mu) * I - hopping[None] - delta_omega_IR
-        g_inv = np.linalg.inv(green_omega_IR)
+        g_inv = np.linalg.inv(green_iw)
         sigma_omega_IR = g0_inv - g_inv
 
         # Approximate Sigma_inf as sigma(iw_max) — the value at the highest
         # Matsubara frequency on the IR grid. This is subtracted per spin and
         # orbital channel so that sigma_omega_IR decays to zero at high
         # frequency, enabling a clean Fourier transform back to tau.
-        sigma_inf = sigma_omega_IR[-1].copy()
+        sigma_inf = sigma_omega_IR[-1].real.copy()
         sigma_omega_IR -= sigma_inf[None]
 
         # Fourier transform
@@ -472,6 +572,10 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
     with h5py.File(args.results_file, 'r+') as fsimseet:
         fsimseet[f'iter{iteration}/Selfenergy/data'][...] = sigma_in
         fsimseet[f'iter{iteration}/Sigma1'][...] = sigma_inf_in
+
+    # Enforce Hermitian symmetry: S -> (S + S†) / 2, matching the C++ make_hermitian() call
+    sigma_inf_in = 0.5 * (sigma_inf_in + sigma_inf_in.conj().transpose(0, 1, 3, 2))
+    sigma_in = 0.5 * (sigma_in + sigma_in.conj().transpose(0, 1, 2, 4, 3))
     
     return True  # Return True to continue workflow in placeholder mode
 
@@ -491,21 +595,24 @@ def sanity_check(args: argparse.Namespace):
 
 def main():
     parser = argparse.ArgumentParser(description="Submit SEET + SOEHYB solver jobs in sequence")
-    parser.add_argument("--niters", type=int, default=10, help="Number of SEET iterations to run")
+    parser.add_argument("--niters", type=int, default=2, help="Number of SEET iterations to run")
     parser.add_argument("--workdir", type=Path, default=Path.cwd(), help="Working directory for job scripts")
     parser.add_argument("--seet-check-interval", type=int, default=30, help="Initial polling interval (seconds) for SEET job status, doubles each round")
-    parser.add_argument("--imp-check-interval", type=int, default=30, help="Initial polling interval (seconds) for impurity job status, doubles each round")
-    parser.add_argument("--transform_file", type=Path, default="transform.h5", help="Path to transformation file")
+    parser.add_argument("--imp-check-interval", type=int, default=60, help="Initial polling interval (seconds) for impurity job status, doubles each round")
+    parser.add_argument("--transform_file", type=Path, default="../transform.h5", help="Path to transformation file")
     parser.add_argument("--results_file", type=Path, default="seet_results.h5", help="Path to SEET results file")
     parser.add_argument("--input_file", type=Path, default="/pauli-storage/gharsha/NiO/dft/input.h5", help="Path to DFT input file (for IBZ k-point mapping)")
     parser.add_argument("--mixing", type=float, default=0.4, help="Mixing parameter for self-energy update")
     parser.add_argument("--ir_file", type=Path, default="/home/umyangyu/src/green-grids/data/ir/1e4.h5", help="Path to IR grid file")
     parser.add_argument("--beta", type=float, default=100.0, help="Inverse temperature for IR grid")
-    parser.add_argument("--expansion_order", type=int, default=1, help="Expansion order for impurity solver")
+    parser.add_argument("--expansion_order", type=int, default=0, help="Expansion order for impurity solver")
     parser.add_argument("--n_tau", type=int, default=1001, help="Number of tau points for impurity solver")
     parser.add_argument("--n_spin_impurity", type=int, default=2, help="Number of spins in a single impurity model")
     parser.add_argument("--n_orbitals_impurity", type=int, nargs='+', default=[2,2], help="Number of orbitals in each impurity model (list of length n_impurity)")
     parser.add_argument("--weak_coupling_dir", type=Path, default="/pauli-storage/gharsha/NiO", help="Directory containing weak coupling results (GW)")
+    parser.add_argument("--bath_file", type=Path, default="../bath_1bpo.txt", help="Path to bath file generated by impurity preprocessing step")
+    parser.add_argument("--n_soe_counterterms", type=int, default=1, help="Number of SOE counterterms to generate in preprocessing")
+    parser.add_argument("--n_soe_hybridization", type=int, default=14, help="Number of SOE hybridization terms to generate in preprocessing")
 
     args = parser.parse_args()
     args.n_impurity = len(args.n_orbitals_impurity)
@@ -545,7 +652,7 @@ def main():
                 create_impurity_input(iteration, imp, workdir, args)
                 imp_script_path = workdir / f"imp_{imp}_it_{iteration}.sh"
                 imp_script = IMPURITY_SCRIPT_TEMPLATE.format(
-                    iteration=iteration, imp=imp, input_file=f"imp_{imp}_it_{iteration}.toml"
+                    iteration=iteration, imp=imp, input_file=f"imp_{imp}_it_{iteration}.toml", beta=args.beta
                 )
                 write_script(imp_script_path, imp_script)
                 impurity_job_id = submit_slurm_job(imp_script_path)
@@ -559,6 +666,19 @@ def main():
             print(f"\n--- Iteration {iteration}/{args.niters}: Processing impurity output ---")
             if not process_impurity_output(iteration, workdir, args):
                 print(f"Failed to process impurity output at iteration {iteration}. Stopping.")
+                break
+
+            print(f"\n--- Iteration {iteration}/{args.niters}: Recompute G(tau) and energies ---")
+            recompute_script = RECOMPUTE_GTAU_SCRIPT_TEMPLATE.format(
+                iteration=iteration, beta=args.beta, ir_file=args.ir_file,
+                input_file=args.input_file, results_file=args.results_file
+            )
+            recompute_script_path = workdir / f"recompute_gtau_it_{iteration}.sh"
+            write_script(recompute_script_path, recompute_script)
+            recompute_job_id = submit_slurm_job(recompute_script_path)
+            job_ids.append(("RecomputeG", iteration, recompute_job_id))
+            if not wait_for_job(recompute_job_id, check_interval=args.imp_check_interval):
+                print(f"Recompute G(tau) failed at iteration {iteration}. Stopping.")
                 break
         finally:
             collect_iteration_files(iteration, workdir)

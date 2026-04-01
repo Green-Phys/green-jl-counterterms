@@ -88,9 +88,8 @@ function generate_impurity_interaction_tensor(U::Float64, J::Float64, Uprime::Fl
     end
     ### We assume the order of the flavor is (orbital1_up, orbital1_down, orbital2_up, orbital2_down, ...)
     ### Chemist (Mulliken) notation:
-    # H = \sum_{ijkl} U_{ijkl} c^\dagger_i c^\dagger_k c_l c_j
+    # H = 1/2 \sum_{ijkl} U_{ijkl} c^\dagger_i c^\dagger_k c_l c_j
     # Index order: [cre1, ann2, cre2, ann1]
-    # No 0.5 prefactor - values are halved to account for antisymmetric pairs
 
     # Intra-orbital interaction U: U * n_up * n_down
     # Physical term: U * c†_up c†_down c_down c_up

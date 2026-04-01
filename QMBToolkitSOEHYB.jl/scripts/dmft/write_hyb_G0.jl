@@ -68,13 +68,16 @@ function parse_commandline()
     return parse_args(s)
 end
 
+# All arrays use solver convention: (n_flav, n_flav, n_points)
+# where n_points is n_tau or n_freq, i.e. grid axis is last (axis=3).
+
 function gen_semicircular_delta(n_tau::Int, beta::Float64, n_spin::Int, n_orbital::Int, t::Float64; off_diagonal_prefactor::Float64=0.0)
     tau_grid = collect(LinRange(0.0, beta, n_tau))
     dlrGrid = DLRGrid(2.0, beta, 1e-14, true)
     G_tau = -1 * 2 / pi * Sample.SemiCircle(dlrGrid, :τ, tau_grid)
 
     n_flavors = n_spin * n_orbital
-    delta_tau = zeros(Float64, n_tau, n_flavors, n_flavors)
+    delta_tau = zeros(Float64, n_flavors, n_flavors, n_tau)
 
     tsq = t^2
     for o1 in 1:n_orbital
@@ -84,9 +87,9 @@ function gen_semicircular_delta(n_tau::Int, beta::Float64, n_spin::Int, n_orbita
                 for s2 in 1:n_spin
                     j = (o2 - 1) * n_spin + s2
                     if i == j
-                        delta_tau[:, i, j] = tsq .* G_tau
+                        delta_tau[i, j, :] = tsq .* G_tau
                     elseif s1 == s2
-                        delta_tau[:, i, j] = tsq * off_diagonal_prefactor .* G_tau
+                        delta_tau[i, j, :] = tsq * off_diagonal_prefactor .* G_tau
                     end
                 end
             end
@@ -121,11 +124,14 @@ function read_green_from_sim_h5(sim_h5_path::String, n_tau::Int, beta::Float64, 
             error("Tau grid values from sim.h5 do not match expected LinRange(0, $(beta), $(n_tau))")
         end
 
-        # Check flavor dimension consistency
-        n_tau_g, nf1, nf2 = size(green_tau)
+        # Solver stores (n_flav, n_flav, n_tau) — check dimensions
+        nf1, nf2, n_tau_g = size(green_tau)
         if nf1 != n_flavors || nf2 != n_flavors
-            error("Flavor dimension mismatch: sim.h5 Green's function has shape ($n_tau_g, $nf1, $nf2) " *
-                  "but expected ($n_tau, $n_flavors, $n_flavors) from n_spin=$n_spin * n_orbital=$n_orbital = $n_flavors")
+            error("Flavor dimension mismatch: sim.h5 Green's function has shape ($nf1, $nf2, $n_tau_g) " *
+                  "but expected ($n_flavors, $n_flavors, $n_tau) from n_spin=$n_spin * n_orbital=$n_orbital = $n_flavors")
+        end
+        if n_tau_g != n_tau
+            error("Tau dimension mismatch: sim.h5 has $n_tau_g but --n_tau=$n_tau")
         end
 
         return tau, green_tau
@@ -133,12 +139,12 @@ function read_green_from_sim_h5(sim_h5_path::String, n_tau::Int, beta::Float64, 
 end
 
 function write_delta_txt(output_file::String, tau_grid::Vector{Float64}, delta_tau::Array{<:Number, 3})
-    n_tau, n_flav1, n_flav2 = size(delta_tau)
+    nf1, nf2, n_tau = size(delta_tau)
     open(output_file, "w") do io
         for t in 1:n_tau
-            for i in 1:n_flav1
-                for j in 1:n_flav2
-                    val = delta_tau[t, i, j]
+            for i in 1:nf1
+                for j in 1:nf2
+                    val = delta_tau[i, j, t]
                     @printf(io, "%d %d %d %.18e %.18e\n",
                         t - 1, i - 1, j - 1, real(val), imag(val))
                 end
@@ -147,13 +153,13 @@ function write_delta_txt(output_file::String, tau_grid::Vector{Float64}, delta_t
     end
 end
 
-function zero_off_diagonal!(delta_tau::Array{<:Number, 3})
-    n_tau, nf1, nf2 = size(delta_tau)
-    for t in 1:n_tau
+function zero_off_diagonal!(arr::Array{<:Number, 3})
+    nf1, nf2, np = size(arr)
+    for k in 1:np
         for i in 1:nf1
             for j in 1:nf2
                 if i != j
-                    delta_tau[t, i, j] = zero(eltype(delta_tau))
+                    arr[i, j, k] = zero(eltype(arr))
                 end
             end
         end
@@ -189,32 +195,23 @@ end
 
 function compute_G0_iw(delta_tau::Array{<:Number, 3}, tau_grid::Vector{Float64}, H::Matrix{ComplexF64}, dlrGrid::DLRGrid; zero_off_diagonal::Bool=false)
     n_flavors = size(H, 1)
-    beta = dlrGrid.β
 
-    # delta(tau) -> DLR coefficients -> delta(iw) on DLR Matsubara grid
-    dlr_coeffs = tau2dlr(dlrGrid, delta_tau, tau_grid; axis=1, verbose=false)
-    delta_iw = dlr2matfreq(dlrGrid, dlr_coeffs; axis=1, verbose=false)
+    # delta(tau) -> DLR coefficients -> delta(iw), axis=3 for (n_flav, n_flav, n_tau)
+    dlr_coeffs = tau2dlr(dlrGrid, delta_tau, tau_grid; axis=3, verbose=false)
+    delta_iw = dlr2matfreq(dlrGrid, dlr_coeffs; axis=3, verbose=false)
 
     if zero_off_diagonal
-        for k in axes(delta_iw, 1)
-            for i in 1:n_flavors
-                for j in 1:n_flavors
-                    if i != j
-                        delta_iw[k, i, j] = zero(eltype(delta_iw))
-                    end
-                end
-            end
-        end
+        zero_off_diagonal!(delta_iw)
     end
 
     freq = dlrGrid.ωn
     n_freq = length(freq)
-    G0_iw = zeros(ComplexF64, n_freq, n_flavors, n_flavors)
+    G0_iw = zeros(ComplexF64, n_flavors, n_flavors, n_freq)
     I_mat = Matrix{ComplexF64}(I, n_flavors, n_flavors)
 
     for k in 1:n_freq
-        G0_inv = 1im * freq[k] * I_mat - H - delta_iw[k, :, :]
-        G0_iw[k, :, :] = inv(G0_inv)
+        G0_inv = 1im * freq[k] * I_mat - H - delta_iw[:, :, k]
+        G0_iw[:, :, k] = inv(G0_inv)
     end
 
     return G0_iw, freq
@@ -226,9 +223,10 @@ function write_G0_to_h5(dmft_h5::String, iteration::Int, G0_iw::Array{ComplexF64
         if haskey(f, group_name)
             delete_object(f, group_name)
         end
-        g = create_group(f, group_name)
-        g["G0_iw"] = G0_iw
-        g["freq"] = freq
+        iter_grp = create_group(f, group_name)
+        dlr_grp = create_group(iter_grp, "dlr_grid")
+        dlr_grp["G0_iw"] = G0_iw
+        dlr_grp["freq"] = freq
     end
 end
 
@@ -278,7 +276,7 @@ function main()
         println("DLR consistency check passed.")
     end
 
-    # Generate delta(tau)
+    # Generate delta(tau) — shape (n_flav, n_flav, n_tau)
     if iteration == 1
         println("Using semicircular DOS for initial hybridization")
         @printf("Off-diagonal prefactor: %.6f\n", off_diagonal_prefactor)
@@ -304,7 +302,7 @@ function main()
     write_delta_txt(output_file, tau_grid, delta_tau)
     println("Delta written to $(output_file)")
 
-    # Compute G0(iw) and write to DMFT H5
+    # Compute G0(iw) and write to DMFT H5 — shape (n_flav, n_flav, n_freq)
     println("Computing G0(iw) on DLR Matsubara grid...")
     G0_iw, freq = compute_G0_iw(delta_tau, tau_grid, H, dlrGrid; zero_off_diagonal=do_zero_off_diag)
     @printf("G0 Matsubara grid: %d frequencies\n", length(freq))

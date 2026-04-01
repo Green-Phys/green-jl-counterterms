@@ -25,7 +25,7 @@ date
 echo $SLURM_NODELIST
 
 export OPENBLAS_NUM_THREADS=1
-PROJECT_DIR=~/src/QMBToolkit/QMBToolkitSOEHYB.jl
+PROJECT_DIR={project_dir}
 
 # Precompile once before launching MPI tasks
 julia --check-bounds=no --project="$PROJECT_DIR" -e 'using Pkg; Pkg.instantiate(); using QMBToolkitSOEHYB'
@@ -62,10 +62,6 @@ Euv = {dlr_euv}
 [solver]
 output_path = "./sim.h5"
 """
-
-# === Script paths ===
-SCRIPTS_DIR = Path.home() / "src/QMBToolkit/QMBToolkitSOEHYB.jl/scripts"
-DMFT_SCRIPTS_DIR = SCRIPTS_DIR / "dmft"
 
 
 # === SLURM utilities ===
@@ -161,13 +157,78 @@ def run_julia_script(script_path, args_list, description=""):
         print(result.stdout)
 
 
+# === Restart utilities ===
+
+def get_completed_iter(dmft_h5: Path) -> int:
+    """Read completed_iter from dmft.h5. Returns 0 if file doesn't exist or key missing."""
+    if not dmft_h5.exists():
+        return 0
+    import h5py
+    with h5py.File(str(dmft_h5), "r") as f:
+        if "completed_iter" in f:
+            return int(f["completed_iter"][()])
+    return 0
+
+
+def clean_dmft_h5_from(dmft_h5: Path, from_iter: int, up_to_iter: int):
+    """Delete iter{from_iter} through iter{up_to_iter} groups from dmft.h5 if they exist."""
+    if not dmft_h5.exists():
+        return
+    import h5py
+    with h5py.File(str(dmft_h5), "r+") as f:
+        for i in range(from_iter, up_to_iter + 1):
+            key = f"iter{i}"
+            if key in f:
+                del f[key]
+                print(f"  Deleted {key} from dmft.h5")
+        # Reset completed_iter to from_iter - 1
+        if "completed_iter" in f:
+            del f["completed_iter"]
+        if from_iter > 1:
+            f["completed_iter"] = from_iter - 1
+
+
+def determine_start_iteration(args, dmft_h5: Path) -> int:
+    """Determine which iteration to start from based on flags and dmft.h5 state."""
+    if args.start_iteration is not None:
+        start = args.start_iteration
+        if start > 1:
+            completed = get_completed_iter(dmft_h5)
+            if completed < start - 1:
+                raise RuntimeError(
+                    f"--start_iteration {start} requires iteration {start-1} to be completed, "
+                    f"but dmft.h5 shows completed_iter={completed}"
+                )
+        print(f"Explicit start: iteration {start}")
+        clean_dmft_h5_from(dmft_h5, start, args.niters)
+        return start
+    elif args.restart:
+        completed = get_completed_iter(dmft_h5)
+        start = completed + 1
+        if start > args.niters:
+            print(f"All {args.niters} iterations already completed (completed_iter={completed}).")
+            return args.niters + 1  # will skip the loop
+        print(f"Restart: last completed iteration = {completed}, resuming from {start}")
+        clean_dmft_h5_from(dmft_h5, start, args.niters)
+        return start
+    else:
+        return 1
+
+
 # === DMFT workflow steps ===
 
 def generate_initial_inputs(workdir: Path, args):
     """Run gen_interaction_hopping.jl to create hopping.txt and Uijkl.txt in workdir."""
+    hopping_path = workdir / "hopping.txt"
+    uijkl_path = workdir / "Uijkl.txt"
+    if hopping_path.exists() and uijkl_path.exists():
+        print("\n--- hopping.txt and Uijkl.txt already exist, skipping generation ---")
+        return
+
+    scripts_dir = args.project_dir / "scripts"
     print("\n--- Generating hopping and interaction files ---")
     run_julia_script(
-        SCRIPTS_DIR / "gen_interaction_hopping.jl",
+        scripts_dir / "gen_interaction_hopping.jl",
         [
             "--n_spin_impurity", args.n_spin,
             "--n_orbital_impurity", args.n_orbital,
@@ -184,6 +245,7 @@ def generate_initial_inputs(workdir: Path, args):
 
 def run_write_hyb_G0(iteration: int, workdir: Path, iter_dir: Path, args):
     """Run write_hyb_G0.jl to generate delta.txt and G0(iw)."""
+    dmft_scripts_dir = args.project_dir / "scripts" / "dmft"
     print(f"\n--- Iteration {iteration}: write_hyb_G0 ---")
     script_args = [
         "--beta", args.beta,
@@ -197,7 +259,7 @@ def run_write_hyb_G0(iteration: int, workdir: Path, iter_dir: Path, args):
         "--dlr_euv", args.dlr_euv,
         "--dlr_rtol", args.dlr_rtol,
         "--dmft_h5", workdir / "dmft.h5",
-        "--off_diagonal_prefactor", args.off_diagonal_prefactor,
+        "--off_diagonal_prefactor", args.init_off_diagonal_prefactor,
     ]
     if iteration > 1:
         prev_iter_dir = workdir / f"it_{iteration - 1}"
@@ -206,7 +268,7 @@ def run_write_hyb_G0(iteration: int, workdir: Path, iter_dir: Path, args):
         script_args += ["--zero_off_diagonal", "true"]
 
     run_julia_script(
-        DMFT_SCRIPTS_DIR / "write_hyb_G0.jl",
+        dmft_scripts_dir / "write_hyb_G0.jl",
         script_args,
         "write_hyb_G0.jl"
     )
@@ -214,10 +276,28 @@ def run_write_hyb_G0(iteration: int, workdir: Path, iter_dir: Path, args):
 
 def run_preprocessing(iteration: int, iter_dir: Path, args):
     """Run gen_soe_counterterms_hyb_light.jl for SOE fitting and counterterms."""
+    scripts_dir = args.project_dir / "scripts"
     print(f"\n--- Iteration {iteration}: SOE preprocessing ---")
-    run_julia_script(
-        SCRIPTS_DIR / "gen_soe_counterterms_hyb_light.jl",
-        [
+
+    if iteration == 1:
+        # Iteration 1: use SemiCircular mode directly (avoids DLR round-trip via delta.txt)
+        script_args = [
+            "--beta", args.beta,
+            "--n_spin_impurity", args.n_spin,
+            "--n_orbital_impurity", args.n_orbital,
+            "--n_tau", args.n_tau,
+            "--hyb_type", "SemiCircular",
+            "--hopping_file", iter_dir / "hopping.txt",
+            "--n_soe_counterterms", args.n_soe_counterterms,
+            "--n_soe_hybridization", args.n_soe_hybridization,
+            "--output_dir", iter_dir,
+            "--do_subtraction_trick", "true" if args.do_subtraction_trick else "false",
+            "--separate_spins", "false",
+            "--off_diagonal_prefactor", args.init_off_diagonal_prefactor,
+        ]
+    else:
+        # Iteration > 1: read delta.txt from write_hyb_G0.jl
+        script_args = [
             "--beta", args.beta,
             "--n_spin_impurity", args.n_spin,
             "--n_orbital_impurity", args.n_orbital,
@@ -230,8 +310,12 @@ def run_preprocessing(iteration: int, iter_dir: Path, args):
             "--n_soe_hybridization", args.n_soe_hybridization,
             "--output_dir", iter_dir,
             "--do_subtraction_trick", "true" if args.do_subtraction_trick else "false",
-            "--separate_spins", "false",
-        ],
+            "--separate_spins", "true" if args.separate_spins else "false",
+        ]
+
+    run_julia_script(
+        scripts_dir / "gen_soe_counterterms_hyb_light.jl",
+        script_args,
         "gen_soe_counterterms_hyb_light.jl"
     )
 
@@ -251,9 +335,10 @@ def create_solver_input(iteration: int, iter_dir: Path, args):
 
 def run_compute_sigma(iteration: int, iter_dir: Path, workdir: Path, args):
     """Run compute_sigma.jl to compute self-energy from G0 and G."""
+    dmft_scripts_dir = args.project_dir / "scripts" / "dmft"
     print(f"\n--- Iteration {iteration}: compute_sigma ---")
     run_julia_script(
-        DMFT_SCRIPTS_DIR / "compute_sigma.jl",
+        dmft_scripts_dir / "compute_sigma.jl",
         [
             "--iteration", iteration,
             "--sim_h5", iter_dir / "sim.h5",
@@ -294,6 +379,8 @@ def main():
     parser.add_argument("--n_tau", type=int, default=2001, help="Linear tau grid size")
     parser.add_argument("--dlr_euv", type=float, default=20.0, help="DLR energy cutoff Euv")
     parser.add_argument("--dlr_rtol", type=float, default=1e-14, help="DLR relative tolerance")
+    parser.add_argument("--n_matsubara", type=int, default=1000,
+                        help="Number of Matsubara frequencies for linear output grid")
 
     # Solver
     parser.add_argument("--expansion_order", type=int, default=1,
@@ -307,14 +394,26 @@ def main():
     parser.add_argument("--no-subtraction-trick", dest="do_subtraction_trick",
                         action="store_false", help="Disable subtraction trick for SOE")
     parser.set_defaults(do_subtraction_trick=True)
+    parser.add_argument("--separate_spins", action="store_true",
+                        help="Fit spin-up and spin-down separately in SOE (recommended for multi-orbital)")
+    parser.set_defaults(separate_spins=False)
 
     # DMFT
     parser.add_argument("--niters", type=int, default=10, help="Number of DMFT iterations")
+    parser.add_argument("--restart", action="store_true",
+                        help="Auto-restart from last completed iteration in dmft.h5")
+    parser.add_argument("--start_iteration", type=int, default=None,
+                        help="Explicit iteration to start from (validates previous iteration completed)")
     parser.add_argument("--workdir", type=Path, default=Path.cwd(), help="Working directory")
-    parser.add_argument("--off_diagonal_prefactor", type=float, default=0.0,
-                        help="Off-diagonal prefactor for initial semicircular hybridization")
+    parser.add_argument("--init_off_diagonal_prefactor", type=float, default=0.0,
+                        help="Off-diagonal prefactor for initial (iteration 1) semicircular hybridization")
     parser.add_argument("--zero_off_diagonal", action="store_true",
                         help="Zero off-diagonal hybridization and delta(iw) before G0 computation")
+
+    # Project
+    parser.add_argument("--project_dir", type=Path,
+                        default=Path.home() / "src/QMBToolkit/QMBToolkitSOEHYB.jl",
+                        help="Path to QMBToolkitSOEHYB.jl project directory")
 
     # SLURM
     parser.add_argument("--check_interval", type=int, default=60,
@@ -333,6 +432,7 @@ def main():
 
     workdir = args.workdir.resolve()
     workdir.mkdir(parents=True, exist_ok=True)
+    dmft_h5 = workdir / "dmft.h5"
 
     print("=== DMFT Loop: Bethe Lattice + SOE-HYB ===")
     print(f"Beta: {args.beta}, U: {args.U}, J: {args.J}, U': {args.Uprime}, mu: {args.mu}")
@@ -344,15 +444,21 @@ def main():
     print(f"SOE counterterms: {args.n_soe_counterterms}, "
           f"hybridization: {args.n_soe_hybridization}, "
           f"subtraction trick: {args.do_subtraction_trick}")
-    print(f"Iterations: {args.niters}, workdir: {workdir}")
+    print(f"Iterations: 1..{args.niters}, workdir: {workdir}")
+    print(f"Project: {args.project_dir}")
 
-    # Phase 1: Generate hopping.txt and Uijkl.txt (master copies in workdir)
+    # Determine start iteration
+    start_iter = determine_start_iteration(args, dmft_h5)
+    if start_iter > args.niters:
+        return
+
+    # Phase 1: Generate hopping.txt and Uijkl.txt (master copies in workdir, skip if exist)
     generate_initial_inputs(workdir, args)
 
     job_ids = []
 
     # Phase 2: DMFT loop
-    for iteration in range(1, args.niters + 1):
+    for iteration in range(start_iter, args.niters + 1):
         print(f"\n{'=' * 60}")
         print(f"=== DMFT Iteration {iteration}/{args.niters} ===")
         print(f"{'=' * 60}")
@@ -382,6 +488,7 @@ def main():
             ntasks=args.ntasks,
             time=args.time,
             iter_dir=iter_dir,
+            project_dir=args.project_dir,
         )
         solver_script_path = iter_dir / f"soehyb_it_{iteration}.sh"
         write_script(solver_script_path, solver_script)
@@ -390,6 +497,12 @@ def main():
 
         if not wait_for_job(job_id, check_interval=args.check_interval):
             print(f"Solver failed at iteration {iteration}. Stopping.")
+            break
+
+        # Verify sim.h5 was produced
+        sim_h5_path = iter_dir / "sim.h5"
+        if not sim_h5_path.exists():
+            print(f"ERROR: sim.h5 not found in {iter_dir} after solver completed. Stopping.")
             break
 
         # Compute self-energy: Sigma = G0^{-1} - G^{-1}, save G and Sigma to dmft.h5

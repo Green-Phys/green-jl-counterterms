@@ -7,8 +7,11 @@ This file contains:
 - Buffer accessor functions (unified interface)
 - Buffer allocation for propagator and Green's function evaluation
 
-Buffer pools are pre-allocated for all possible flux values based on the maximum
-expansion order. The 5 buffer roles provide scratch space for backbone evaluation.
+Buffer pools are pre-allocated for flux values reachable at the given expansion order.
+At order M (M hybridization lines), intermediate fluxes satisfy:
+- QN_NSz: |ΔN_up| ≤ M and |ΔN_down| ≤ M, giving at most (2M+1)² fluxes
+- QN_N: |ΔN| ≤ M, giving at most (2M+1) fluxes
+This avoids allocating buffers for unreachable fluxes, significantly reducing memory.
 """
 
 using QMBToolkitED: Basis, Operator, QuantumNumber, QN_N, QN_NSz
@@ -94,6 +97,48 @@ function compute_valid_fluxes(basis::Basis)
 end
 
 """
+    is_flux_within_order(flux::QN_NSz, max_order::Int)
+
+Check if a QN_NSz flux is reachable at the given expansion order.
+
+At order M (M hybridization lines), each operator changes (N_up, N_down) by (±1, 0) or (0, ±1).
+With M creation and M annihilation operators, intermediate fluxes satisfy:
+|ΔN_up| ≤ M and |ΔN_down| ≤ M, where ΔN_up = (n + sz) ÷ 2 and ΔN_down = (n - sz) ÷ 2.
+"""
+function is_flux_within_order(flux::QN_NSz, max_order::Int)
+    delta_n_up = (flux.n + flux.sz) ÷ 2
+    delta_n_down = (flux.n - flux.sz) ÷ 2
+    return abs(delta_n_up) <= max_order && abs(delta_n_down) <= max_order
+end
+
+"""
+    is_flux_within_order(flux::QN_N, max_order::Int)
+
+Check if a QN_N flux is reachable at the given expansion order.
+
+At order M, with M creation and M annihilation operators, intermediate |ΔN| ≤ M.
+"""
+function is_flux_within_order(flux::QN_N, max_order::Int)
+    return abs(flux.n) <= max_order
+end
+
+# Fallback for other quantum number types: no filtering
+is_flux_within_order(flux::QuantumNumber, max_order::Int) = true
+
+"""
+    compute_order_bounded_fluxes(basis::Basis, max_order::Int)
+
+Compute fluxes that are both structurally valid (non-empty blocks) and reachable
+at the given expansion order.
+
+Returns the intersection of `compute_valid_fluxes(basis)` and the order-based bound.
+"""
+function compute_order_bounded_fluxes(basis::Basis, max_order::Int)
+    all_valid = compute_valid_fluxes(basis)
+    return filter(flux -> is_flux_within_order(flux, max_order), all_valid)
+end
+
+"""
     compute_blocks_for_flux(basis::Basis, delta_qn::QN) where QN<:QuantumNumber
 
 Determine which blocks exist for a given flux.
@@ -146,10 +191,10 @@ function PropagatorEvalBuffers{T}(
         basis::Basis, max_order::Int, n_tau::Int, n_dlr::Int) where {T <: Number}
     QN = typeof(basis.sectors[1].qn)
 
-    # Allocate buffers for all valid fluxes (fluxes with non-empty block structure).
-    # With flux pre-filtering (build_valid_groups), all diagrams are guaranteed
-    # to only encounter valid fluxes during evaluation.
-    valid_fluxes = compute_valid_fluxes(basis)
+    # Allocate buffers only for fluxes reachable at the given expansion order.
+    # At order M, intermediate fluxes satisfy |ΔN_up| ≤ M, |ΔN_down| ≤ M (QN_NSz)
+    # or |ΔN| ≤ M (QN_N). This avoids allocating buffers for unreachable fluxes.
+    valid_fluxes = compute_order_bounded_fluxes(basis, max_order)
 
     result_pool = Dict{QN, Propagator{T}}()
     op_product_pool = Dict{QN, Propagator{T}}()
@@ -348,12 +393,13 @@ function allocate_green_buffers(solver_data::SolverData{T}, expansion_order::Int
     basis = get_bare_propagator(solver_data.model).vals.basis
     n_flavors = solver_data.model.n_flavors_physical
 
-    max_order = expansion_order
     QN = typeof(basis.sectors[1].qn)
 
-    # Create forward and reverse backbone buffers
-    fwd_buffers = PropagatorEvalBuffers{T}(basis, max_order, n_tau, n_dlr)
-    rev_buffers = PropagatorEvalBuffers{T}(basis, max_order, n_tau, n_dlr)
+    # Green order K = expansion_order. Backbone has K-1 hybridization lines.
+    # Forward/reverse backbone intermediate fluxes: |ΔN_up| ≤ K-1, |ΔN_down| ≤ K-1
+    backbone_max_order = expansion_order - 1
+    fwd_buffers = PropagatorEvalBuffers{T}(basis, backbone_max_order, n_tau, n_dlr)
+    rev_buffers = PropagatorEvalBuffers{T}(basis, backbone_max_order, n_tau, n_dlr)
 
     # Accumulation buffer for each flavor
     ann_opts = get_ann_opts(solver_data.model)
@@ -361,19 +407,20 @@ function allocate_green_buffers(solver_data::SolverData{T}, expansion_order::Int
         [zeros(Propagator{T}, basis, ann_opts[idx].flux, n_tau) for idx in 1:n_flavors]
     )
 
-    # With flux pre-filtering (build_valid_groups), all diagrams have valid fluxes.
-    # Allocate buffers for all valid fluxes.
-    valid_fluxes = compute_valid_fluxes(basis)
-
-    # Reflection pool
+    # Reflection pool: stores reflected reverse backbone result.
+    # Same flux range as reverse backbone: order = K-1.
+    reflected_fluxes = compute_order_bounded_fluxes(basis, backbone_max_order)
     contrib_tau_to_beta_reflected_pool = Dict{QN, Propagator{T}}()
-    for flux_qn in valid_fluxes
+    for flux_qn in reflected_fluxes
         contrib_tau_to_beta_reflected_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
     end
 
-    # Annihilation product pool
+    # Annihilation product pool: stores ann_opt * fwd_backbone_result.
+    # Flux = fwd_backbone_flux + ann_op_flux. Ann op adds ±1 to ΔN_up or ΔN_down,
+    # so max flux order = (K-1) + 1 = K.
+    ann_product_fluxes = compute_order_bounded_fluxes(basis, expansion_order)
     ann_product_pool = Dict{QN, Propagator{T}}()
-    for flux_qn in valid_fluxes
+    for flux_qn in ann_product_fluxes
         ann_product_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
     end
 

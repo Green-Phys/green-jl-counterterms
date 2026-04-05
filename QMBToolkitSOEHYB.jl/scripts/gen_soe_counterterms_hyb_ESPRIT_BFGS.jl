@@ -649,7 +649,8 @@ function _fit_delta_iwn_bfgs(
 
     rng = MersenneTwister(rng_seed)
     λ_lo, λ_hi = lambda_range
-    λ_init = collect(range(λ_lo, λ_hi; length = Np)) .+ 0.05 .* randn(rng, Np)
+    λ_grid = Np == 1 ? Float64[(λ_lo + λ_hi) / 2] : collect(range(λ_lo, λ_hi; length = Np))
+    λ_init = λ_grid .+ 0.05 .* randn(rng, Np)
     V_init = 0.1 .* randn(rng, Float64, Np, n_flavor)
 
     x0   = _bfgs_pack_params(λ_init, V_init)

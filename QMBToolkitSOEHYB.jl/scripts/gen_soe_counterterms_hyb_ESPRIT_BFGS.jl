@@ -853,13 +853,13 @@ function main()
     println("--- Remaining hybridziation SOE ---")
     remaining_G_data = gen_remaining_hyb(G_data.tau_grid, G_data.G_tau, counterterms_contribution, args["n_matsubara"], args["beta"], dlr_euv = args["init_dlr_euv"])
     if !args["do_subtraction_trick"]
-        poles_remain, weights_remain, error_remain = gen_soe(args["beta"], remaining_G_data, args["soe_subroutine_hyb"], args["n_soe_hybridization"]; bfgs_kw...)
+        poles_remain, weights_remain, error_remain = gen_soe(args["beta"], remaining_G_data, args["soe_subroutine_hyb"], args["n_soe_hybridization"]; separate_spins = args["separate_spins"], bfgs_kw...)
     else
         if args["n_soe_hybridization"] <= args["n_soe_counterterms"]
             error("For subtraction trick, n_soe_hybridization must be larger than n_soe_counterterms")
         end
         println("Using subtraction trick for remaining hybridization SOE fitting...")
-        poles_precise, weights_precise, error_precise = gen_soe(args["beta"], G_data, args["soe_subroutine_hyb"], args["n_soe_hybridization"]; bfgs_kw...)
+        poles_precise, weights_precise, error_precise = gen_soe(args["beta"], G_data, args["soe_subroutine_hyb"], args["n_soe_hybridization"]; separate_spins = args["separate_spins"], bfgs_kw...)
         println("The number of precise SOE terms: ", length(poles_precise))
         poles_remain = vcat(poles_precise, poles)
         weights_remain = vcat(weights_precise, -1.0*weights)

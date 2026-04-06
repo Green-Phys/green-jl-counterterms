@@ -286,14 +286,22 @@ def run_preprocessing(iteration: int, iter_dir: Path, args):
             "--n_spin_impurity", args.n_spin,
             "--n_orbital_impurity", args.n_orbital,
             "--n_tau", args.n_tau,
+            "--n_matsubara", 1001,
             "--hyb_type", "SemiCircular",
             "--hopping_file", iter_dir / "hopping.txt",
             "--n_soe_counterterms", args.n_soe_counterterms,
             "--n_soe_hybridization", args.n_soe_hybridization,
             "--output_dir", iter_dir,
             "--do_subtraction_trick", "true" if args.do_subtraction_trick else "false",
-            "--separate_spins", "false",
+            "--separate_spins", "true" if args.separate_spins else "false",
             "--off_diagonal_prefactor", args.init_off_diagonal_prefactor,
+            "--soe_subroutine_counterterms", "BFGS",
+            "--soe_subroutine_hyb", "ESPRIT",
+            "--bfgs_rng_seed", 42,
+            "--bfgs_g_tol", 1e-14,
+            "--bfgs_iterations", 2000,
+            "--bfgs_lambda_min", -5.0,
+            "--bfgs_lambda_max", 5.0,
         ]
     else:
         # Iteration > 1: read delta.txt from write_hyb_G0.jl
@@ -302,6 +310,7 @@ def run_preprocessing(iteration: int, iter_dir: Path, args):
             "--n_spin_impurity", args.n_spin,
             "--n_orbital_impurity", args.n_orbital,
             "--n_tau", args.n_tau,
+            "--n_matsubara", 1001,
             "--hyb_type", "from_seet",
             "--hyb_file", iter_dir / "delta.txt",
             "--init_dlr_euv", args.dlr_euv,
@@ -311,12 +320,19 @@ def run_preprocessing(iteration: int, iter_dir: Path, args):
             "--output_dir", iter_dir,
             "--do_subtraction_trick", "true" if args.do_subtraction_trick else "false",
             "--separate_spins", "true" if args.separate_spins else "false",
+            "--soe_subroutine_counterterms", "BFGS",
+            "--soe_subroutine_hyb", "ESPRIT",
+            "--bfgs_rng_seed", 42,
+            "--bfgs_g_tol", 1e-14,
+            "--bfgs_iterations", 2000,
+            "--bfgs_lambda_min", -5.0,
+            "--bfgs_lambda_max", 5.0,
         ]
 
     run_julia_script(
-        scripts_dir / "gen_soe_counterterms_hyb_light.jl",
+        scripts_dir / "gen_soe_counterterms_hyb_ESPRIT_BFGS.jl",
         script_args,
-        "gen_soe_counterterms_hyb_light.jl"
+        "gen_soe_counterterms_hyb_ESPRIT_BFGS.jl"
     )
 
 

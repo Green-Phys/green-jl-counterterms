@@ -89,7 +89,7 @@ def check_job_status(job_id: str) -> str:
         return _check_job_status_sacct(job_id)
     if "JobState=COMPLETED" in result.stdout:
         return "COMPLETED"
-    elif "JobState=RUNNING" in result.stdout:
+    elif "JobState=RUNNING" in result.stdout or "JobState=COMPLETING" in result.stdout:
         return "RUNNING"
     elif "JobState=PENDING" in result.stdout:
         return "PENDING"

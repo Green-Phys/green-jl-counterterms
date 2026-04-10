@@ -29,7 +29,7 @@ srun -u $SEETexe \
   --itermax 1 \
   --restart {restart} \
   --results_file {results_filename} \
-  --weak_results $WeakCouplingDir/scgw/NiO_GW_1000_lastiter.h5 \
+  --weak_results $WeakCouplingDir/scgw/NiO_GW.h5 \
   --embedding_type SEET \
   --grid_file {ir_file} \
   --input_file $WeakCouplingDir/dft/input.h5 \
@@ -426,15 +426,15 @@ def process_impurity_output(iteration: int, workdir: Path, args: argparse.Namesp
     sigma_inf_in += (X_inv_k[None] @ sigma_inf_local_orth[:, None] @ X_inv_k_H[None]) * weight
     for t in range(ntau_ir):
         sigma_in[t] += (X_inv_k[None] @ sigma_tau_local_orth[t][:, None] @ X_inv_k_H[None]) * weight
+    
+    # Enforce Hermitian symmetry: S -> (S + S†) / 2, matching the C++ make_hermitian() call
+    sigma_inf_in = 0.5 * (sigma_inf_in + sigma_inf_in.conj().transpose(0, 1, 3, 2))
+    sigma_in = 0.5 * (sigma_in + sigma_in.conj().transpose(0, 1, 2, 4, 3))
 
     # Save the data back to results file
     with h5py.File(args.results_file, 'r+') as fsimseet:
         fsimseet[f'iter{iteration}/Selfenergy/data'][...] = sigma_in
         fsimseet[f'iter{iteration}/Sigma1'][...] = sigma_inf_in
-
-    # Enforce Hermitian symmetry: S -> (S + S†) / 2, matching the C++ make_hermitian() call
-    sigma_inf_in = 0.5 * (sigma_inf_in + sigma_inf_in.conj().transpose(0, 1, 3, 2))
-    sigma_in = 0.5 * (sigma_in + sigma_in.conj().transpose(0, 1, 2, 4, 3))
     
     return True  # Return True to continue workflow in placeholder mode
 

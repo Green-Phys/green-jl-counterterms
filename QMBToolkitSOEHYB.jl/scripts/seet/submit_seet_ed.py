@@ -403,6 +403,7 @@ def main():
     parser.add_argument("--do_esprit", type=bool, default=True, help="Whether to use ESPRIT for bath fitting")
     parser.add_argument("--n_soe_counterterms", type=int, default=1, help="Number of SOE counterterms to generate in preprocessing")
     parser.add_argument("--n_soe_hybridization", type=int, default=14, help="Number of SOE hybridization terms to generate in preprocessing")
+    parser.add_argument("--ref_input_dir", type=Path, default=None, help="If set, skip bath-fit preprocessing and copy ed.*.input.h5 from this directory. ED solver and process_impurity_output still run. Used to isolate-test the solver + self-energy injection against a reference bath.")
 
     args = parser.parse_args()
     args.n_impurity = len(args.n_orbitals_impurity)
@@ -411,22 +412,7 @@ def main():
     sanity_check(args)
     job_ids = []
 
-    ## Temporarily copy reference file for benchmarking: copy sim.seet.h5,
-    ## remove the last iteration, and skip all iterations except the last.
-    # if args.niters > 1:
-        # ref_file = Path('../sim.seet.h5')
-        # print(f"Benchmarking: copying {ref_file} -> {args.results_file} and removing last iteration")
-        # shutil.copy(str(ref_file), str(args.results_file))
-        # with h5py.File(args.results_file, 'r+') as f:
-        #     n_iter = int(f['iter'][()])
-        #     if f'iter{n_iter}' in f:
-        #         del f[f'iter{n_iter}']
-        #     f['iter'][...] = n_iter - 1
-
     for iteration in range(1, args.niters+1):
-        # if iteration != args.niters:
-        #     continue
-
         try:
             # ---- SEET ----
             restart = "false" if iteration == 1 else "true"
@@ -445,10 +431,18 @@ def main():
                 break
 
             # ---- Preprocessing ----
-            print(f"\n--- Iteration {iteration}/{args.niters}: Preprocessing ---")
-            if not process_impurity_input(iteration, workdir, args):
-                print(f"Preprocessing failed at iteration {iteration}. Stopping.")
-                break
+            if args.ref_input_dir is not None:
+                print(f"\n--- Iteration {iteration}/{args.niters}: [ref mode] copying ed.*.input.h5 from {args.ref_input_dir} (skipping bath-fit preprocessing) ---")
+                for imp in range(args.n_impurity):
+                    src = args.ref_input_dir / f"ed.{imp}.input.h5"
+                    dst = workdir / f"ed.{imp}.input.h5"
+                    shutil.copy(str(src), str(dst))
+                    print(f"  {src} -> {dst}")
+            else:
+                print(f"\n--- Iteration {iteration}/{args.niters}: Preprocessing ---")
+                if not process_impurity_input(iteration, workdir, args):
+                    print(f"Preprocessing failed at iteration {iteration}. Stopping.")
+                    break
 
             # ---- Impurity solvers ----
             print(f"\n--- Iteration {iteration}/{args.niters}: Impurity solvers ---")

@@ -99,7 +99,22 @@ date
 
 
 IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE_ESPRIT = """#!/bin/bash
+#SBATCH -J preprocess_imp_{imp}_it_{iteration}
+#SBATCH -p ludicrous,super,batch
+#SBATCH -o preprocess_imp_{imp}_it_{iteration}.o%j
+#SBATCH -e preprocess_imp_{imp}_it_{iteration}.e%j
+#SBATCH --exclusive
+#SBATCH --qos special
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH -c 1
+#SBATCH -t 02:00:00
+
 set -euo pipefail
+
+date
+echo $SLURM_NODELIST
+
 mv ed.{imp}.input.h5 ed.{imp}.input.pre_esprit.h5
 
 hyb_type="from_seet"
@@ -179,23 +194,30 @@ def submit_slurm_job(script_path: Path) -> str:
 def check_job_status(job_id: str) -> str:
     """
     Check the status of a SLURM job.
-    Returns: "COMPLETED", "RUNNING", "PENDING", or "FAILED"
+    Returns: "COMPLETED", "RUNNING", "PENDING", "FAILED", or "UNKNOWN".
+    COMPLETING/SUSPENDED are folded into RUNNING so the transient epilog
+    window at job end does not get misreported as UNKNOWN.
     """
     result = subprocess.run(["scontrol", "show", "job", job_id], capture_output=True, text=True)
     if result.returncode != 0:
         # Job may have been purged from scontrol; fall back to sacct
         return _check_job_status_sacct(job_id)
 
-    if "JobState=COMPLETED" in result.stdout:
+    stdout = result.stdout
+    if "JobState=COMPLETED" in stdout:
         return "COMPLETED"
-    elif "JobState=RUNNING" in result.stdout:
+    if any(s in stdout for s in ("JobState=RUNNING", "JobState=COMPLETING", "JobState=SUSPENDED")):
         return "RUNNING"
-    elif "JobState=PENDING" in result.stdout:
+    if any(s in stdout for s in ("JobState=PENDING", "JobState=REQUEUED", "JobState=RESIZING")):
         return "PENDING"
-    elif "JobState=FAILED" in result.stdout or "JobState=TIMEOUT" in result.stdout:
+    if any(s in stdout for s in (
+        "JobState=FAILED", "JobState=TIMEOUT", "JobState=CANCELLED",
+        "JobState=NODE_FAIL", "JobState=OUT_OF_MEMORY", "JobState=BOOT_FAIL",
+        "JobState=DEADLINE", "JobState=PREEMPTED", "JobState=REVOKED",
+    )):
         return "FAILED"
-    else:
-        return "UNKNOWN"
+    # scontrol responded with an unrecognized state — try sacct as a tiebreaker
+    return _check_job_status_sacct(job_id)
 
 def _check_job_status_sacct(job_id: str) -> str:
     """
@@ -207,25 +229,33 @@ def _check_job_status_sacct(job_id: str) -> str:
     )
     if result.returncode != 0 or not result.stdout.strip():
         return "UNKNOWN"
-    # sacct may return multiple lines (job + job steps); use the first line
-    state = result.stdout.strip().splitlines()[0].strip()
+    # sacct may return multiple lines (job + job steps); use the first line.
+    # States may carry a trailing descriptor like "CANCELLED by 1234" — take first token.
+    state = result.stdout.strip().splitlines()[0].strip().split()[0]
     if state == "COMPLETED":
         return "COMPLETED"
-    elif state in ("FAILED", "TIMEOUT", "CANCELLED", "NODE_FAIL", "OUT_OF_MEMORY"):
+    if state in ("RUNNING", "COMPLETING", "SUSPENDED"):
+        return "RUNNING"
+    if state in ("PENDING", "REQUEUED", "RESIZING"):
+        return "PENDING"
+    if state in ("FAILED", "TIMEOUT", "CANCELLED", "NODE_FAIL", "OUT_OF_MEMORY",
+                 "BOOT_FAIL", "DEADLINE", "PREEMPTED", "REVOKED"):
         return "FAILED"
-    elif state in ("RUNNING", "PENDING"):
-        return state
-    else:
-        return "UNKNOWN"
+    return "UNKNOWN"
 
-def wait_for_jobs(job_ids: list, check_interval: int = 30, max_wait: int = 186400) -> bool:
+def wait_for_jobs(job_ids: list, check_interval: int = 30, max_wait: int = 186400,
+                  unknown_tolerance: int = 5) -> bool:
     """
     Wait for all jobs to complete.
     Polls at a fixed interval of check_interval seconds.
+    UNKNOWN is treated as a transient condition and retried up to
+    unknown_tolerance consecutive times per job before the job is declared
+    failed. Any recognized live state (RUNNING/PENDING) resets the streak.
     Returns True if all jobs completed successfully, False otherwise.
     """
     remaining = set(job_ids)
     prev_statuses = {}
+    unknown_streak = {}
     elapsed = 0
     while remaining and elapsed < max_wait:
         for job_id in list(remaining):
@@ -235,8 +265,16 @@ def wait_for_jobs(job_ids: list, check_interval: int = 30, max_wait: int = 18640
                 prev_statuses[job_id] = status
             if status == "COMPLETED":
                 remaining.discard(job_id)
-            elif status in ("FAILED", "UNKNOWN"):
+                unknown_streak.pop(job_id, None)
+            elif status == "FAILED":
                 return False
+            elif status == "UNKNOWN":
+                unknown_streak[job_id] = unknown_streak.get(job_id, 0) + 1
+                if unknown_streak[job_id] >= unknown_tolerance:
+                    print(f"  Job {job_id}: UNKNOWN for {unknown_tolerance} consecutive checks, giving up")
+                    return False
+            else:
+                unknown_streak.pop(job_id, None)
         if not remaining:
             return True
         time.sleep(check_interval)
@@ -283,19 +321,25 @@ def collect_iteration_files(iteration: int, workdir: Path):
         if f.is_file():
             f.unlink()
 
-def process_impurity_input(iteration: int, workdir: Path, args: argparse.Namespace) -> bool:
+def process_impurity_input(iteration: int, workdir: Path, args: argparse.Namespace, job_ids: list) -> bool:
     """
     Process impurity input files for a given iteration.
+    Submits the ESPRIT preprocessing as one sbatch job per impurity,
+    serially (wait for each to finish before submitting the next). The
+    counterterm exe writes generic-named output files (hyb_poles.txt,
+    hyb_weights.txt, soe_error.txt) in the cwd, so running preprocess
+    jobs concurrently in the same workdir would race.
     """
     if args.do_esprit:
         print(f"\n--- Iteration {iteration}/{args.niters}: ESPRIT overwrite ---")
         for imp in range(args.n_impurity):
-            preprocess_script = IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE_ESPRIT.format(imp=imp, beta=args.beta, n_tau=args.n_tau, n_spin_impurity=args.n_spin_impurity, n_orbital_impurity=args.n_orbitals_impurity[imp], n_soe_counterterms=args.n_soe_counterterms, n_soe_hybridization=args.n_soe_hybridization)
+            preprocess_script = IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE_ESPRIT.format(iteration=iteration, imp=imp, beta=args.beta, n_tau=args.n_tau, n_spin_impurity=args.n_spin_impurity, n_orbital_impurity=args.n_orbitals_impurity[imp], n_soe_counterterms=args.n_soe_counterterms, n_soe_hybridization=args.n_soe_hybridization)
             preprocess_script_path = workdir / f"preprocess_imp_{imp}_it_{iteration}.sh"
             write_script(preprocess_script_path, preprocess_script)
-            result = subprocess.run([str(preprocess_script_path)], capture_output=True, text=True, cwd=workdir)
-            if result.returncode != 0:
-                print(f"Preprocessing failed for impurity {imp} at iteration {iteration}: {result.stderr}")
+            job_id = submit_slurm_job(preprocess_script_path)
+            job_ids.append(("Preprocess", iteration, job_id))
+            if not wait_for_jobs([job_id], check_interval=args.imp_check_interval):
+                print(f"Preprocessing failed for impurity {imp} at iteration {iteration}.")
                 return False
 
     return True
@@ -440,7 +484,7 @@ def main():
                     print(f"  {src} -> {dst}")
             else:
                 print(f"\n--- Iteration {iteration}/{args.niters}: Preprocessing ---")
-                if not process_impurity_input(iteration, workdir, args):
+                if not process_impurity_input(iteration, workdir, args, job_ids):
                     print(f"Preprocessing failed at iteration {iteration}. Stopping.")
                     break
 

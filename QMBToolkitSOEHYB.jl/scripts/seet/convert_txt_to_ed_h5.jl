@@ -260,10 +260,16 @@ function convert_txt_to_ed_h5(uijkl_file::String, hopping_file::String,
             fh5["freq"] = freq_data
             println("Written freq ($(length(freq_data)) points) from reference file")
 
-            # Copy Delta group (data, data_in, static)
+            # Copy Delta group (data, data_in, static). The new embedding.exe
+            # only writes data_in/static (no data), while the old ed_input_generator
+            # wrote all three. Skip whichever keys are not present in the reference.
             for dset_name in ["Delta/data", "Delta/data_in", "Delta/static"]
-                fh5[dset_name] = read(ref, dset_name)
-                println("Written $dset_name from reference file")
+                if haskey(ref, dset_name)
+                    fh5[dset_name] = read(ref, dset_name)
+                    println("Written $dset_name from reference file")
+                else
+                    println("Skipped $dset_name (not in reference file)")
+                end
             end
 
             # Copy G0_imp/data

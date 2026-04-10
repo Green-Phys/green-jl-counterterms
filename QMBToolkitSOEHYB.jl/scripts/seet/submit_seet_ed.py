@@ -29,7 +29,7 @@ srun -u $SEETexe \
   --itermax 1 \
   --restart {restart} \
   --results_file {results_filename} \
-  --weak_results $WeakCouplingDir/scgw/NiO_GW_1000_lastiter.h5 \
+  --weak_results $WeakCouplingDir/scgw/NiO_GW.h5 \
   --embedding_type SEET \
   --grid_file {ir_file} \
   --input_file $WeakCouplingDir/dft/input.h5 \
@@ -47,115 +47,6 @@ srun -u $SEETexe \
   --verbose 4
 
 date
-"""
-
-
-IMPURITY_SCRIPT_TEMPLATE = """#!/bin/bash
-#SBATCH -J imp_{imp}_it_{iteration}             # Job name
-#SBATCH -p super
-#SBATCH -o imp_{imp}_it_{iteration}.o%j         # Name of stdout output file
-#SBATCH -e imp_{imp}_it_{iteration}.e%j         # Name of stderr error file
-#SBATCH --exclusive
-#SBATCH --qos special
-#SBATCH -N 1
-#SBATCH -n 1
-#SBATCH -c 1
-#SBATCH --hint nomultithread
-#SBATCH -t 48:00:00
-
-date
-echo $SLURM_NODELIST
-
-export OPENBLAS_NUM_THREADS=1
-export HDF5_USE_FILE_LOCKING=FALSE
-export LD_LIBRARY_PATH=$HOME/install/arpack/lib64:$LD_LIBRARY_PATH
-SolversDir="/home/umyangyu/install/seet_solvers/"
-
-NBATH_PER_ORBITAL={n_bath_per_orbital}             
-BETA={beta}                    
-NORBITALS={n_orbital_impurity}                  
-NBATH_TOTAL=$((NORBITALS * NBATH_PER_ORBITAL))  
-NSITES=$((NORBITALS + NBATH_TOTAL)) 
-INPUT_FILE="./ed.{imp}.input.h5"
-OUTPUT_FILE="./ed.{imp}.result.h5"
-
-srun $SolversDir/bin/ed_solver \
-  --arpack.NEV=8 \
-  --arpack.NCV=25 \
-  --lanc.NOMEGA=1000 \
-  --FREQ_FILE={ir_file} \
-  --FREQ_PATH=/fermi/ngrid \
-  --NSITES=$NSITES \
-  --NSPINS={n_spin_impurity} \
-  --INPUT_FILE=$INPUT_FILE \
-  --OUTPUT_FILE=$OUTPUT_FILE \
-  --arpack.SECTOR=false \
-  --siam.NORBITALS=$NORBITALS \
-  --spinstorage.ORBITAL_NUMBER=$NORBITALS \
-  --lanc.BETA=$BETA
-
-date
-"""
-
-
-IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE = """#!/bin/bash
-#SBATCH -p super,batch
-#SBATCH -N 1
-#SBATCH -n 64
-#SBATCH -c 1
-#SBATCH -J ed_gen_it_{iteration}
-#SBATCH -t 1:00:00
-#SBATCH -o ed_gen_it_{iteration}.o%j
-#SBATCH -e ed_gen_it_{iteration}.e%j
-#SBATCH --qos special
-
-export HDF5_USE_FILE_LOCKING=FALSE
-export OMP_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
-
-echo "Running on $(hostname) at $(date)"
-
-srun -u /home/umyangyu/install/ed_input_generator/bin/ed_input_generator \
-  --BETA {beta} \
-  --grid_file {ir_file} \
-  --input_file {input_file} \
-  --seet_input {transform_file} \
-  --bath_file {bath_file} \
-  --seet_root_dir ./ \
-  --spin_symm false \
-  --results_file {results_file} \
-  --tolerance 1e-9 \
-  --iter_offset {iter_offset}
-
-echo "Finished at $(date)"
-"""
-
-
-RECOMPUTE_GTAU_SCRIPT_TEMPLATE = """#!/bin/bash
-#SBATCH -p super,batch
-#SBATCH -N 1
-#SBATCH -n 64
-#SBATCH -c 1
-#SBATCH -J recompute_gtau_it_{iteration}
-#SBATCH -t 1:00:00
-#SBATCH -o recompute_gtau_it_{iteration}.o%j
-#SBATCH -e recompute_gtau_it_{iteration}.e%j
-#SBATCH --qos special
-
-export HDF5_USE_FILE_LOCKING=FALSE
-export OMP_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
-
-echo "Running on $(hostname) at $(date)"
-
-srun -u /home/umyangyu/install/recompute_gtau/bin/recompute_gtau \
-  --BETA {beta} \
-  --grid_file {ir_file} \
-  --input_file {input_file} \
-  --results_file {results_file} \
-  --iter_offset 0
-
-echo "Finished at $(date)"
 """
 
 
@@ -208,6 +99,7 @@ date
 
 
 IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE_ESPRIT = """#!/bin/bash
+set -euo pipefail
 mv ed.{imp}.input.h5 ed.{imp}.input.pre_esprit.h5
 
 hyb_type="from_seet"
@@ -395,22 +287,6 @@ def process_impurity_input(iteration: int, workdir: Path, args: argparse.Namespa
     """
     Process impurity input files for a given iteration.
     """
-    if iteration == 1:
-        results_file = args.weak_coupling_dir / "scgw/NiO_GW_1000_lastiter.h5"
-    else:
-        results_file = args.results_file
-    preprocess_script = IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE.format(
-        iteration=iteration, beta=args.beta, ir_file=args.ir_file,
-        transform_file=args.transform_file, results_file=results_file,
-        bath_file=workdir / args.bath_file, input_file=args.input_file,
-        iter_offset=1 if iteration > 1 else 0
-    )
-    preprocess_script_path = workdir / f"preprocess_it_{iteration}.sh"
-    write_script(preprocess_script_path, preprocess_script)
-    preprocess_job_id = submit_slurm_job(preprocess_script_path)
-    if not wait_for_job(preprocess_job_id, check_interval=args.imp_check_interval):
-        print(f"Preprocessing job failed for iteration {iteration}.")
-        return False
     if args.do_esprit:
         print(f"\n--- Iteration {iteration}/{args.niters}: ESPRIT overwrite ---")
         for imp in range(args.n_impurity):
@@ -420,6 +296,7 @@ def process_impurity_input(iteration: int, workdir: Path, args: argparse.Namespa
             result = subprocess.run([str(preprocess_script_path)], capture_output=True, text=True, cwd=workdir)
             if result.returncode != 0:
                 print(f"Preprocessing failed for impurity {imp} at iteration {iteration}: {result.stderr}")
+                return False
 
     return True
 
@@ -513,7 +390,7 @@ def main():
     parser.add_argument("--seet-check-interval", type=int, default=10, help="Initial polling interval (seconds) for SEET job status, doubles each round")
     parser.add_argument("--imp-check-interval", type=int, default=10, help="Initial polling interval (seconds) for impurity job status, doubles each round")
     parser.add_argument("--transform_file", type=Path, default="../transform.h5", help="Path to transformation file")
-    parser.add_argument("--results_file", type=Path, default="seet_results.h5", help="Path to SEET results file")
+    parser.add_argument("--results_file", type=Path, default="sim.seet.h5", help="Path to SEET results file")
     parser.add_argument("--input_file", type=Path, default="/pauli-storage/gharsha/NiO/dft/input.h5", help="Path to DFT input file (for IBZ k-point mapping)")
     parser.add_argument("--mixing", type=float, default=0.4, help="Mixing parameter for self-energy update")
     parser.add_argument("--ir_file", type=Path, default="/home/umyangyu/src/green-grids/data/ir/1e4.h5", help="Path to IR grid file")
@@ -522,7 +399,6 @@ def main():
     parser.add_argument("--n_spin_impurity", type=int, default=2, help="Number of spins in a single impurity model")
     parser.add_argument("--n_orbitals_impurity", type=int, nargs='+', default=[2,2], help="Number of orbitals in each impurity model (list of length n_impurity)")
     parser.add_argument("--weak_coupling_dir", type=Path, default="/pauli-storage/gharsha/NiO/", help="Directory containing weak coupling results (GW)")
-    parser.add_argument("--bath_file", type=Path, default="../bath_2bpo.txt", help="Path to bath file generated by impurity preprocessing step")
     parser.add_argument("--n_bath_per_orbital", type=int, default=2, help="Number of bath orbitals per impurity orbital")
     parser.add_argument("--do_esprit", type=bool, default=True, help="Whether to use ESPRIT for bath fitting")
     parser.add_argument("--n_soe_counterterms", type=int, default=1, help="Number of SOE counterterms to generate in preprocessing")
@@ -594,20 +470,6 @@ def main():
             print(f"\n--- Iteration {iteration}/{args.niters}: Processing impurity output ---")
             if not process_impurity_output(iteration, workdir, args):
                 print(f"Failed to process impurity output at iteration {iteration}. Stopping.")
-                break
-
-            # ---- Recompute G(tau) and energies from corrected sigma ----
-            print(f"\n--- Iteration {iteration}/{args.niters}: Recompute G(tau) and energies ---")
-            recompute_script = RECOMPUTE_GTAU_SCRIPT_TEMPLATE.format(
-                iteration=iteration, beta=args.beta, ir_file=args.ir_file,
-                input_file=args.input_file, results_file=args.results_file
-            )
-            recompute_script_path = workdir / f"recompute_gtau_it_{iteration}.sh"
-            write_script(recompute_script_path, recompute_script)
-            recompute_job_id = submit_slurm_job(recompute_script_path)
-            job_ids.append(("RecomputeG", iteration, recompute_job_id))
-            if not wait_for_job(recompute_job_id, check_interval=args.imp_check_interval):
-                print(f"Recompute G(tau) failed at iteration {iteration}. Stopping.")
                 break
         finally:
             collect_iteration_files(iteration, workdir)

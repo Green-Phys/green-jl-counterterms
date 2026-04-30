@@ -248,7 +248,7 @@ Invalid (α) combinations during evaluation are skipped via haskey check.
 
 ## Accumulation buffers:
 
-  - `backbone_0_to_beta_with_ann`: Accumulated backbone with annihilation operator [n_flavors]
+  - `backbone_0_to_beta_with_ann`: Accumulated backbone with annihilation operator [n_flavors_physical]
 
 ## Reflection pool (indexed by flux):
 

@@ -183,9 +183,10 @@ function init_model_data(model_params::ModelParams, solver_params::SolverParams,
     kernel_cache = compute_kernel_cache(dlr_grid)
     convolution_workspace = _create_convolution_workspace(T, dlr_grid, bare_propagator_tau)
 
-    # Precompute barred operators
-    ann_opts_bar = _gen_opts_bar(ann_opts, hyb_soe.coeffs, :annihilation)
-    cre_opts_bar = _gen_opts_bar(cre_opts, hyb_soe.coeffs, :creation)
+    # Precompute barred operators (only for physical flavors; counterterm flavors
+    # have zero hybridization weight, so their barred operators are never used)
+    ann_opts_bar = _gen_opts_bar(ann_opts, hyb_soe.coeffs, :annihilation, n_flavors_physical)
+    cre_opts_bar = _gen_opts_bar(cre_opts, hyb_soe.coeffs, :creation, n_flavors_physical)
     is_root && println("Barred operators complete")
 
     # Calculate partition function for counter-terms
@@ -539,22 +540,29 @@ end
 =============================================================================#
 
 """
-    _gen_opts_bar(opts::Vector{<:Operator}, coeffs::Array{Float64,3}, opt_type::Symbol)
+    _gen_opts_bar(opts::Vector{<:Operator}, coeffs::Array{Float64,3}, opt_type::Symbol,
+                  n_flavors_physical::Int)
 
-Generate barred operators.
+Generate barred operators for the physical flavor sector only.
 
 coeffs shape: (p, o1, o2), o1 correspond to creation and o2 correspond to annihilation
 
   - For creation: c̄†_{o,l} = Σ_{o'} Δ_{l,o',o} c†_{o'}
   - For annihilation: c̄_{o,l} = Σ_{o'} Δ_{l,o,o'} c_{o'}
 
+The outer index `o` and inner sum `o'` both run over physical flavors only.
+Counterterm flavors carry zero hybridization weight, so their barred operators
+are never accessed during diagram evaluation.
+
 # Arguments
 
-  - `opts`: Vector of operators (creation or annihilation)
-  - `coeffs`: SOE coefficients array
+  - `opts`: Vector of operators (creation or annihilation), length == total n_flavors
+  - `coeffs`: SOE coefficients array, shape (p, n_flavors, n_flavors)
   - `opt_type`: Either `:creation` or `:annihilation`
+  - `n_flavors_physical`: Number of physical flavors; output is sized (n_flavors_physical, p)
 """
-function _gen_opts_bar(opts::Vector{<:Operator}, coeffs::Array{Float64, 3}, opt_type::Symbol)
+function _gen_opts_bar(opts::Vector{<:Operator}, coeffs::Array{Float64, 3}, opt_type::Symbol,
+        n_flavors_physical::Int)
     opt_type in (:creation, :annihilation) ||
         error("opt_type must be :creation or :annihilation, got $opt_type")
     n_flavors = length(opts)
@@ -563,22 +571,24 @@ function _gen_opts_bar(opts::Vector{<:Operator}, coeffs::Array{Float64, 3}, opt_
         error("Size mismatch between coeffs dimension 2 and number of flavors: expected $n_flavors, got $(size(coeffs, 2))")
     size(coeffs, 3) == n_flavors ||
         error("Size mismatch between coeffs dimension 3 and number of flavors: expected $n_flavors, got $(size(coeffs, 3))")
+    n_flavors_physical <= n_flavors ||
+        error("n_flavors_physical ($n_flavors_physical) must not exceed n_flavors ($n_flavors)")
 
-    opts_bar = Matrix{Operator}(undef, n_flavors, p)
-    for o in 1:n_flavors
+    opts_bar = Matrix{Operator}(undef, n_flavors_physical, p)
+    for o in 1:n_flavors_physical
         for l in 1:p
             # Find first non-zero coefficient to initialize result
             # This avoids adding operators with incompatible occupancy ranges
             first_nonzero_idx = 0
             if opt_type == :creation
-                for o_prime in 1:n_flavors
+                for o_prime in 1:n_flavors_physical
                     if coeffs[l, o_prime, o] != 0.0
                         first_nonzero_idx = o_prime
                         break
                     end
                 end
             else
-                for o_prime in 1:n_flavors
+                for o_prime in 1:n_flavors_physical
                     if coeffs[l, o, o_prime] != 0.0
                         first_nonzero_idx = o_prime
                         break
@@ -587,7 +597,8 @@ function _gen_opts_bar(opts::Vector{<:Operator}, coeffs::Array{Float64, 3}, opt_
             end
 
             if first_nonzero_idx == 0
-                # All coefficients are zero, use this flavor's operator to preserve correct flux
+                # All coefficients are zero for this (o, l); produce a zero operator
+                # with the correct block structure (preserves flux invariants downstream)
                 result = 0.0 * opts[o]
             else
                 # Initialize with the first non-zero term
@@ -599,13 +610,13 @@ function _gen_opts_bar(opts::Vector{<:Operator}, coeffs::Array{Float64, 3}, opt_
 
                 # Add remaining non-zero terms
                 if opt_type == :creation
-                    for o_prime in (first_nonzero_idx + 1):n_flavors
+                    for o_prime in (first_nonzero_idx + 1):n_flavors_physical
                         if coeffs[l, o_prime, o] != 0.0
                             result = result + coeffs[l, o_prime, o] * opts[o_prime]
                         end
                     end
                 else
-                    for o_prime in (first_nonzero_idx + 1):n_flavors
+                    for o_prime in (first_nonzero_idx + 1):n_flavors_physical
                         if coeffs[l, o, o_prime] != 0.0
                             result = result + coeffs[l, o, o_prime] * opts[o_prime]
                         end

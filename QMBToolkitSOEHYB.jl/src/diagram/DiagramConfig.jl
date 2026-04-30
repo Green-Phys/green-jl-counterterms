@@ -204,7 +204,9 @@ Build a complete configuration cache for diagram generation.
 # Arguments
 
   - `order::Int`: Expansion order
-  - `n_flavors::Int`: Number of fermion flavors
+  - `n_flavors::Int`: Flavor enumeration range for hybridization lines (typically `n_flavors_physical`).
+    Lines with flavors outside this range carry zero hybridization weight, so they
+    are excluded from enumeration to avoid evaluating zero-contribution diagrams.
   - `exponents::Vector{Float64}`: SOE exponents
   - `diagram_type::Symbol`: :propagator_diagram or :green_diagram
   - `is_bold::Bool`: Whether using bold expansion (only for green_diagram)
@@ -404,7 +406,8 @@ struct DiagramGroup
 end
 
 """
-    check_flux_sequence(topo_config, directions, flavors, basis, diagram_type, valid_fluxes) -> Bool
+    check_flux_sequence(topo_config, directions, flavors, basis, diagram_type, valid_fluxes,
+                        n_flavors_external) -> Bool
 
 Check if the operator sequence produces only valid intermediate fluxes.
 
@@ -414,6 +417,8 @@ would have non-empty block structure in the given basis.
 For propagator diagrams: single flux evolution through the entire backbone.
 For Green's function diagrams: separate forward and reverse backbone evolutions,
 plus validation that external operators can produce valid combined fluxes.
+The Green's function external operators (α, β) range over physical flavors only,
+so `n_flavors_external` should be `n_flavors_physical`.
 
 # Arguments
 
@@ -423,6 +428,7 @@ plus validation that external operators can produce valid combined fluxes.
   - `basis::Basis`: The basis defining valid fluxes
   - `diagram_type::Symbol`: :propagator_diagram or :green_diagram
   - `valid_fluxes::Set{QN}`: Pre-computed set of valid flux values
+  - `n_flavors_external::Int`: Range of external Green's function flavors (physical only)
 
 # Returns
 
@@ -434,7 +440,8 @@ function check_flux_sequence(
         flavors::NTuple{L, Int},
         basis::Basis,
         diagram_type::Symbol,
-        valid_fluxes::Set{QN}
+        valid_fluxes::Set{QN},
+        n_flavors_external::Int
 ) where {L, QN <: QuantumNumber}
     M = topo_config.M
 
@@ -526,10 +533,9 @@ function check_flux_sequence(
         #
         # We need to check if there exists valid (α, β) pair
 
-        n_flavors = length(basis.flavor_qns)
         has_valid_external = false
 
-        for α in 1:n_flavors
+        for α in 1:n_flavors_external
             α_qn = basis.flavor_qns[α]
             ann_product_flux = fwd_flux + (-α_qn)
 
@@ -538,7 +544,7 @@ function check_flux_sequence(
                 continue
             end
 
-            for β in 1:n_flavors
+            for β in 1:n_flavors_external
                 β_qn = basis.flavor_qns[β]
                 # After multiplying with reverse backbone: rev_flux + ann_product_flux
                 # After applying c†_β: rev_flux + ann_product_flux + β_qn
@@ -599,9 +605,11 @@ function build_valid_groups(cache::DiagramConfigCache{L}, basis::Basis) where {L
             for flav_idx in 1:cache.n_flavors_combo
                 flavors = cache.flavors[flav_idx]
 
-                # Check if this combination has valid flux sequence
+                # Check if this combination has valid flux sequence.
+                # cache.n_flavors is the physical flavor enumeration range, which
+                # also bounds the external (α, β) loop for Green's function diagrams.
                 if check_flux_sequence(topo_config, directions, flavors, basis,
-                    cache.diagram_type, valid_fluxes)
+                    cache.diagram_type, valid_fluxes, cache.n_flavors)
                     push!(groups, DiagramGroup(
                         topo_idx, dir_idx, flav_idx, cache.n_exponents_combo
                     ))

@@ -28,7 +28,7 @@ function eval_diagrams!(solver_data::SolverData{T}, solver_params::SolverParams,
         empty!(solver_data.calc.propagator_diagram_info)
 
         for order in 0:(solver_params.propagator.expansion_order)
-            cache = build_config_cache(order, solver_data.model.n_flavors,
+            cache = build_config_cache(order, solver_data.model.n_flavors_physical,
                 solver_data.model.hyb.exponents, :propagator_diagram)
             dims = config_dimensions(cache)
             n_total = total_diagrams(cache)
@@ -58,7 +58,7 @@ function eval_diagrams!(solver_data::SolverData{T}, solver_params::SolverParams,
         empty!(solver_data.calc.green_diagram_info)
 
         for order in 1:(solver_params.green.expansion_order)
-            cache = build_config_cache(order, solver_data.model.n_flavors,
+            cache = build_config_cache(order, solver_data.model.n_flavors_physical,
                 solver_data.model.hyb.exponents, :green_diagram; is_bold = false)
             dims = config_dimensions(cache)
             n_total = total_diagrams(cache)

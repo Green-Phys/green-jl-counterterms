@@ -52,12 +52,12 @@ date
 
 IMPURITY_SCRIPT_TEMPLATE = """#!/bin/bash
 #SBATCH -J imp_{imp}_it_{iteration}             # Job name
-#SBATCH -p ludicrous
+#SBATCH -p ludicrous,super
 #SBATCH -o imp_{imp}_it_{iteration}.o%j         # Name of stdout output file
 #SBATCH -e imp_{imp}_it_{iteration}.e%j         # Name of stderr error file
 #SBATCH --exclusive
 #SBATCH --qos special
-#SBATCH -N 1
+#SBATCH -N {n_nodes}
 #SBATCH -n {n_tasks}
 #SBATCH -c 1
 #SBATCH --hint nomultithread
@@ -343,6 +343,9 @@ def process_impurity_input(iteration: int, workdir: Path, args: argparse.Namespa
     jobs concurrently in the same workdir would race.
     """
     for imp in range(args.n_impurity):
+        if imp == args.skip_impurity:
+            print(f"  Skipping preprocessing for impurity {imp} (--skip_impurity)")
+            continue
         preprocess_script = IMPURITY_PREPROCESSING_SCRIPT_TEMPLATE.format(iteration=iteration, imp=imp, beta=args.beta, n_tau=args.n_tau, n_spin_impurity=args.n_spin_impurity, n_orbital_impurity=args.n_orbitals_impurity[imp], n_soe_counterterms=args.n_soe_counterterms, n_soe_hybridization=args.n_soe_hybridization)
         preprocess_script_path = workdir / f"preprocess_imp_{imp}_it_{iteration}.sh"
         write_script(preprocess_script_path, preprocess_script)
@@ -511,11 +514,17 @@ def main():
     parser.add_argument("--n_orbitals_impurity", type=int, nargs='+', default=[2,2], help="Number of orbitals in each impurity model (list of length n_impurity)")
     parser.add_argument("--weak_coupling_dir", type=Path, default="/pauli-storage/gharsha/NiO/", help="Directory containing weak coupling results (GW)")
     parser.add_argument("--n_soe_counterterms", type=int, default=1, help="Number of SOE counterterms to generate in preprocessing")
-    parser.add_argument("--n_soe_hybridization", type=int, default=14, help="Number of SOE hybridization terms to generate in preprocessing")
+    parser.add_argument("--n_soe_hybridization", type=int, default=20, help="Number of SOE hybridization terms to generate in preprocessing")
     parser.add_argument("--imp_n_tasks", type=int, default=64, help="Number of MPI tasks (sbatch -n) for each impurity solver job")
+    parser.add_argument("--imp_n_nodes", type=int, default=1, help="Number of nodes (sbatch -N) for each impurity solver job")
+    parser.add_argument("--skip_impurity", type=int, default=-1, help="Impurity index (>=0) to skip preprocessing and solver for. -1 means skip none. When used, process_impurity_output will fail (missing imp_*_sim.h5); that is expected — the finally block still collects files into it_{iteration}/.")
 
     args = parser.parse_args()
     args.n_impurity = len(args.n_orbitals_impurity)
+    if args.skip_impurity >= 0:
+        if args.skip_impurity >= args.n_impurity:
+            raise ValueError(f"--skip_impurity {args.skip_impurity} out of range (n_impurity={args.n_impurity})")
+        print(f"WARNING: --skip_impurity={args.skip_impurity} is set. Preprocessing and solver for impurity {args.skip_impurity} will be skipped. process_impurity_output will fail when it tries to read the missing imp_{args.skip_impurity}_sim.h5, so no self-energy update will be produced for this iteration. Results for the non-skipped impurities will still be collected into it_{{iteration}}/.")
     workdir = args.workdir
     workdir.mkdir(parents=True, exist_ok=True)
     sanity_check(args)
@@ -549,10 +558,13 @@ def main():
             print(f"\n--- Iteration {iteration}/{args.niters}: Impurity solvers ---")
             impurity_job_ids = []
             for imp in range(args.n_impurity):
+                if imp == args.skip_impurity:
+                    print(f"  Skipping solver for impurity {imp} (--skip_impurity)")
+                    continue
                 create_impurity_input(iteration, imp, workdir, args)
                 imp_script_path = workdir / f"imp_{imp}_it_{iteration}.sh"
                 imp_script = IMPURITY_SCRIPT_TEMPLATE.format(
-                    iteration=iteration, imp=imp, input_file=f"imp_{imp}_it_{iteration}.toml", beta=args.beta, n_tasks=args.imp_n_tasks
+                    iteration=iteration, imp=imp, input_file=f"imp_{imp}_it_{iteration}.toml", beta=args.beta, n_tasks=args.imp_n_tasks, n_nodes=args.imp_n_nodes
                 )
                 write_script(imp_script_path, imp_script)
                 impurity_job_id = submit_slurm_job(imp_script_path)

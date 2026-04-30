@@ -80,8 +80,8 @@ INPUT_FILE="./ed.{imp}.input.h5"
 OUTPUT_FILE="./ed.{imp}.result.h5"
 
 srun $SolversDir/bin/ed_solver \
-  --arpack.NEV=8 \
-  --arpack.NCV=25 \
+  --arpack.NEV=6 \
+  --arpack.NCV=20 \
   --lanc.NOMEGA=1000 \
   --FREQ_FILE={ir_file} \
   --FREQ_PATH=/fermi/ngrid \
@@ -446,7 +446,7 @@ def main():
     parser.add_argument("--n_bath_per_orbital", type=int, default=2, help="Number of bath orbitals per impurity orbital")
     parser.add_argument("--do_esprit", type=bool, default=True, help="Whether to use ESPRIT for bath fitting")
     parser.add_argument("--n_soe_counterterms", type=int, default=1, help="Number of SOE counterterms to generate in preprocessing")
-    parser.add_argument("--n_soe_hybridization", type=int, default=14, help="Number of SOE hybridization terms to generate in preprocessing")
+    parser.add_argument("--n_soe_hybridization", type=int, default=10, help="Number of SOE hybridization terms to generate in preprocessing")
     parser.add_argument("--ref_input_dir", type=Path, default=None, help="If set, skip bath-fit preprocessing and copy ed.*.input.h5 from this directory. ED solver and process_impurity_output still run. Used to isolate-test the solver + self-energy injection against a reference bath.")
 
     args = parser.parse_args()

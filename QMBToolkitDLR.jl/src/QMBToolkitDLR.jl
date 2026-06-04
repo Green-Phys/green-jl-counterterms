@@ -17,6 +17,7 @@ export kernel_tau, KernelCache, compute_kernel_cache, ConvolutionWorkspace
 
 # Dense operation exports
 export do_convolution_dlr2tau!
+export do_convolution_dlr2tau_Fdiag!, do_convolution_dlr2tau_Gdiag!
 export do_reflection_tau2tau!
 
 end

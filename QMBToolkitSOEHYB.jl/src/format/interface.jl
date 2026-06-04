@@ -81,7 +81,6 @@ function compute_new_flux_reverse end
 
 # Buffer accessors (used in backbone evaluation)
 function get_result end
-function get_op_product end
 function get_result_dlr end
 function get_conv_operand end
 function get_conv_dlr end

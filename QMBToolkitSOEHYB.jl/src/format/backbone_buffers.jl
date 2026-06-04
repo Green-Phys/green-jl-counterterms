@@ -41,8 +41,8 @@ to have valid intermediate fluxes, so no empty propagator sentinels are needed.
 
 ## Variable-flux pools (indexed by QuantumNumber):
 
-  - `result_pool`: Accumulates the backbone result (flux changes during evaluation)
-  - `op_product_pool`: Holds operator multiplication output (new flux after op)
+  - `result_pool`: Accumulates the backbone result (flux changes during evaluation;
+    operator products are written directly into the new-flux entry)
   - `result_dlr_pool`: DLR transform of result (same flux as result)
 
 ## Fixed zero-flux buffers:
@@ -69,7 +69,6 @@ struct PropagatorEvalBuffers{T <: Number, QN <: QuantumNumber}
     # Variable-flux pools (indexed by QuantumNumber)
     # Only contains entries for fluxes with non-empty block structure
     result_pool::Dict{QN, Propagator{T}}
-    op_product_pool::Dict{QN, Propagator{T}}
     result_dlr_pool::Dict{QN, Propagator{T}}
 
     # Fixed zero-flux buffers
@@ -212,12 +211,10 @@ function PropagatorEvalBuffers{T}(
     valid_fluxes = compute_order_bounded_fluxes(basis, max_order)
 
     result_pool = Dict{QN, Propagator{T}}()
-    op_product_pool = Dict{QN, Propagator{T}}()
     result_dlr_pool = Dict{QN, Propagator{T}}()
 
     for flux_qn in valid_fluxes
         result_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
-        op_product_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
         result_dlr_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_dlr, T)
     end
 
@@ -230,7 +227,7 @@ function PropagatorEvalBuffers{T}(
 
     return PropagatorEvalBuffers{T, QN}(
         basis, n_tau, n_dlr,
-        result_pool, op_product_pool, result_dlr_pool,
+        result_pool, result_dlr_pool,
         zero_flux, conv_operand, conv_dlr,
         conv_dlr_cache, conv_sig_scratch
     )
@@ -348,10 +345,6 @@ is_zero_flux(flux::QuantumNumber) = flux == zero(typeof(flux))
 
 function get_result(buffers::PropagatorEvalBuffers{T, QN}, flux::QN) where {T, QN}
     return buffers.result_pool[flux]
-end
-
-function get_op_product(buffers::PropagatorEvalBuffers{T, QN}, flux::QN) where {T, QN}
-    return buffers.op_product_pool[flux]
 end
 
 function get_result_dlr(buffers::PropagatorEvalBuffers{T, QN}, flux::QN) where {T, QN}

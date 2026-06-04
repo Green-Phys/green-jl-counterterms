@@ -14,7 +14,7 @@ interface functions.
 
 # Interface Functions Used
 - get_flux, compute_new_flux, compute_new_flux_reverse: Flux handling
-- get_result, get_op_product, get_result_dlr, get_conv_operand, get_conv_dlr: Buffer accessors
+- get_result, get_result_dlr, get_conv_operand, get_conv_dlr: Buffer accessors
 - multiply_op_prop!, multiply_prop_op!: Operator multiplications
 - apply_hybridization_inplace!: Hybridization application
 - tau2dlr!, do_convolution_dlr2tau!: DLR operations
@@ -147,10 +147,9 @@ Reference to the result buffer containing diagram contribution on DLR τ-grid.
 Pre-allocated buffers are reused across all diagram evaluations for efficiency.
 All operations are in-place to minimize allocations.
 
-# Buffer Usage (5 roles)
+# Buffer Usage (4 roles)
 
-  - `result`: Accumulates backbone result
-  - `op_product`: Holds operator multiplication output
+  - `result`: Accumulates backbone result (operator products are written directly here)
   - `conv_operand`: Propagator copy for convolution
   - `conv_dlr`: DLR transform of conv operand
   - `result_dlr`: DLR transform of result
@@ -186,25 +185,25 @@ function multiplication_convolution(
             # Compute new flux after operator multiplication
             new_flux = compute_new_flux(current_flux, op)
 
-            # Get op_product buffer for the new flux
-            op_product = get_op_product(buffers, new_flux)
-            fill!(op_product, zero(T))
+            # Multiply straight into the new-flux result buffer. The operator flux is
+            # nonzero so new_flux ≠ current_flux: source and destination are distinct
+            # buffers, and the multiply zeroes its own output blocks, so no scratch
+            # buffer and no copy are needed.
+            prev_result = result
+            result = get_result(buffers, new_flux)
 
             # Get K-vector for node hybridization (empty if NoHyb)
             K = get_K_vector(node.attached_hyb, model_data, is_reverse = false)
 
             if !isempty(K)
-                # Fused multiplication: op * result -> op_product, with K scaling
-                multiply_op_prop_with_K!(op_product, op, result, K)
+                # Fused multiplication: op * prev_result -> result, with K scaling
+                multiply_op_prop_with_K!(result, op, prev_result, K)
             else
                 # No K-factor, use standard multiplication
-                multiply_op_prop!(op_product, op, result)
+                multiply_op_prop!(result, op, prev_result)
             end
 
-            # Update current flux and get new result buffer
             current_flux = new_flux
-            result = get_result(buffers, current_flux)
-            copyto!(result, op_product)
         else
             # No operator at this node, just apply hybridization
             apply_hybridization_inplace!(result, node.attached_hyb, model_data, is_reverse = false)
@@ -289,25 +288,24 @@ function multiplication_convolution_reverse(
             # Compute new flux after operator multiplication (reverse direction)
             new_flux = compute_new_flux_reverse(current_flux, op)
 
-            # Get op_product buffer for the new flux
-            op_product = get_op_product(buffers, new_flux)
-            fill!(op_product, zero(T))
+            # Multiply straight into the new-flux result buffer (see forward note):
+            # new_flux ≠ current_flux, so source/destination are distinct and the
+            # multiply zeroes its own output — no scratch buffer and no copy needed.
+            prev_result = result
+            result = get_result(buffers, new_flux)
 
             # Get K-vector for node hybridization (is_reverse=true swaps K+/K-, empty if NoHyb)
             K = get_K_vector(node.attached_hyb, model_data, is_reverse = true)
 
             if !isempty(K)
-                # Fused multiplication: result * op -> op_product, with K scaling
-                multiply_prop_op_with_K!(op_product, result, op, K)
+                # Fused multiplication: prev_result * op -> result, with K scaling
+                multiply_prop_op_with_K!(result, prev_result, op, K)
             else
                 # No K-factor, use standard multiplication
-                multiply_prop_op!(op_product, result, op)
+                multiply_prop_op!(result, prev_result, op)
             end
 
-            # Update current flux and get new result buffer
             current_flux = new_flux
-            result = get_result(buffers, current_flux)
-            copyto!(result, op_product)
         else
             # No operator at this node, just apply hybridization
             apply_hybridization_inplace!(result, node.attached_hyb, model_data, is_reverse = true)

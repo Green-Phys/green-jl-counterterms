@@ -104,8 +104,11 @@ const G_ANALYTICAL_2SPIN = compute_2spin_G_analytical()
 
 """
 Generate input.toml content for a given data directory.
+
+`checkpoint_group_interval` controls within-order checkpoint cadence (0 = only at
+order boundaries, the default); the within-order restart tests pass a positive value.
 """
-function generate_input_toml(data_dir::String = DATA_DIR)
+function generate_input_toml(data_dir::String = DATA_DIR; checkpoint_group_interval::Int = 0)
     """
     [model]
     beta = 10.0
@@ -117,6 +120,7 @@ function generate_input_toml(data_dir::String = DATA_DIR)
 
     [solver]
     output_path = "."
+    checkpoint_group_interval = $(checkpoint_group_interval)
 
     [solver.propagator]
     is_bold = false
@@ -256,5 +260,8 @@ include("checkpoint_restart_test.jl")
     end
     @testset "Checkpoint restart" begin
         run_checkpoint_restart_test()
+    end
+    @testset "Checkpoint restart (within order)" begin
+        run_within_order_checkpoint_test()
     end
 end

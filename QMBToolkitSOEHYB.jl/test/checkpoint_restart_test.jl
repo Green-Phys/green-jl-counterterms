@@ -114,3 +114,98 @@ function run_checkpoint_restart_test()
         _assert_identical(_read_sim_arrays(joinpath(test_dir, "sim.h5")), ref)
     end
 end
+
+# --- Within-order (sub-order) checkpoint / restart --------------------------
+#
+# With `checkpoint_group_interval = C > 0`, each order's diagram groups are
+# processed in consecutive prefix chunks of C groups; after each chunk the partial
+# sum is Allreduced into the cumulative accumulator and a checkpoint records that
+# accumulator plus the integer count of groups done. A crash mid-order is simulated
+# with the group hook (QMBTOOLKIT_CRASH_AFTER_GROUPS); resume continues from the
+# next chunk and must be bit-identical to an UNINTERRUPTED run at the SAME interval
+# and nprocs (same chunk boundaries => same per-chunk FP operations replayed).
+#
+# Note: a given C>0 differs from C=0 only at ~1e-16 relative (FP summation is
+# regrouped across chunk boundaries), so the science is unchanged but the bytes are
+# not bit-identical to C=0 — hence each interval is compared against its OWN
+# uninterrupted reference for the exact `==` checks, and against the C=0 reference
+# only with rtol=1e-12.
+
+# Uninterrupted run at a given within-order checkpoint interval; returns sim arrays.
+function _run_with_interval(interval::Int)
+    d = mktempdir()
+    inp = joinpath(d, "input.toml")
+    write(inp, generate_input_toml(; checkpoint_group_interval = interval))
+    QMBToolkitSOEHYB.run(inp)
+    @test isfile(joinpath(d, "sim.h5"))
+    @test !isfile(joinpath(d, "sim.ckpt.h5"))   # deleted on success
+    return _read_sim_arrays(joinpath(d, "sim.h5"))
+end
+
+# Crash mid-order via the group hook (after `groups` groups of `order` in `phase`),
+# verify the checkpoint metadata, then auto-resume; assert bit-identical to `ref`
+# (an uninterrupted run at the same interval and nprocs). `groups` must be a chunk
+# boundary strictly below the order's valid-group count.
+function _crash_then_resume_within(phase::String, order::Int, groups::Int, interval::Int, ref)
+    d = mktempdir()
+    inp = joinpath(d, "input.toml")
+    write(inp, generate_input_toml(; checkpoint_group_interval = interval))
+    ckpt = joinpath(d, "sim.ckpt.h5")
+
+    threw = false
+    ENV["QMBTOOLKIT_CRASH_PHASE"] = phase
+    ENV["QMBTOOLKIT_CRASH_AFTER_ORDER"] = string(order)
+    ENV["QMBTOOLKIT_CRASH_AFTER_GROUPS"] = string(groups)
+    try
+        QMBToolkitSOEHYB.run(inp)
+    catch
+        threw = true
+    finally
+        delete!(ENV, "QMBTOOLKIT_CRASH_PHASE")
+        delete!(ENV, "QMBTOOLKIT_CRASH_AFTER_ORDER")
+        delete!(ENV, "QMBTOOLKIT_CRASH_AFTER_GROUPS")
+    end
+    @test threw                 # the within-order crash hook fired
+    @test isfile(ckpt)          # checkpoint persisted before the crash
+
+    # The mid-order checkpoint records the in-flight group count and the highest
+    # FULLY completed order (= order-1) in the right phase.
+    h5open(ckpt, "r") do f
+        @test read(f["meta/phase"]) == phase
+        @test Int(read(f["meta/in_flight_groups"])) == groups
+        @test Int(read(f["meta/last_completed_order"])) == order - 1
+    end
+
+    QMBToolkitSOEHYB.run(inp)   # auto-resume from the next chunk
+    @test isfile(joinpath(d, "sim.h5"))
+    @test !isfile(ckpt)         # deleted on successful completion
+
+    _assert_identical(_read_sim_arrays(joinpath(d, "sim.h5")), ref)
+end
+
+function run_within_order_checkpoint_test()
+    ref0 = _run_with_interval(0)
+    ref1 = _run_with_interval(1)   # checkpoint after every single group
+    ref3 = _run_with_interval(3)   # chunks of 3 groups (uneven final chunk)
+
+    # Chunking must not change the science: any interval reproduces interval=0 to ~1e-12.
+    @testset "interval=$C matches interval=0 (rtol 1e-12)" for (C, refC) in ((1, ref1), (3, ref3))
+        @test isapprox(refC.Z, ref0.Z; rtol = 1e-12)
+        @test isapprox(refC.g1, ref0.g1; rtol = 1e-12)
+        @test isapprox(refC.g2, ref0.g2; rtol = 1e-12)
+        @test isapprox(refC.g3, ref0.g3; rtol = 1e-12)
+    end
+
+    # Within-order resume == uninterrupted run at the same interval, bit-identical.
+    # Valid-group counts for the test data (probed): propagator order 2 = 8,
+    # green order 2 = 5, green order 3 = 32. Crash points are chunk boundaries
+    # strictly below those counts. The propagator scenario also exercises the
+    # phase guard: after the propagator resume completes, the green phase must run
+    # fresh (group offset must NOT leak across phases).
+    @testset "within-order resume interval=1: $phase order $order after $groups groups" for (phase, order, groups) in (("propagator", 2, 3), ("green", 2, 2), ("green", 3, 5))
+        _crash_then_resume_within(phase, order, groups, 1, ref1)
+    end
+    @testset "within-order resume interval=3: green order 3 after 6 groups" begin
+        _crash_then_resume_within("green", 3, 6, 3, ref3)
+    end
+end

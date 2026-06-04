@@ -454,7 +454,24 @@ function allocate_green_buffers(solver_data::SolverData{T}, expansion_order::Int
     # Forward/reverse backbone intermediate fluxes: |ΔN_up| ≤ K-1, |ΔN_down| ≤ K-1
     backbone_max_order = expansion_order - 1
     fwd_buffers = PropagatorEvalBuffers{T}(basis, backbone_max_order, n_tau, n_dlr)
-    rev_buffers = PropagatorEvalBuffers{T}(basis, backbone_max_order, n_tau, n_dlr)
+
+    # The reverse sweep runs only after the forward sweep has fully completed and
+    # parked its result in fwd_buffers.result_pool (still read in the ann loop below).
+    # Every other forward buffer is pure per-edge scratch that is dead by then, so the
+    # reverse sweep shares them — only result_pool must stay private to avoid clobbering
+    # the forward result. The conv-operand DLR cache is keyed by hyb signature and built
+    # direction-independently (build_conv_dlr! always uses is_reverse=false), so sharing it
+    # is correct and lets the reverse sweep reuse entries the forward sweep already built.
+    rev_result_pool = Dict{QN, Propagator{T}}()
+    for flux_qn in compute_order_bounded_fluxes(basis, backbone_max_order)
+        rev_result_pool[flux_qn] = allocate_buffer_for_flux(basis, flux_qn, n_tau, T)
+    end
+    rev_buffers = PropagatorEvalBuffers{T, QN}(
+        basis, n_tau, n_dlr,
+        rev_result_pool, fwd_buffers.result_dlr_pool,
+        fwd_buffers.zero_flux, fwd_buffers.conv_operand, fwd_buffers.conv_dlr,
+        fwd_buffers.conv_dlr_cache, fwd_buffers.conv_sig_scratch
+    )
 
     # Accumulation buffer for each flavor
     ann_opts = get_ann_opts(solver_data.model)

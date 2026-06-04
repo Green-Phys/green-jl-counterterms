@@ -13,6 +13,7 @@ include("format/propagator.jl")
 
 include("solver/Data.jl")
 include("util/io.jl")
+include("util/checkpoint.jl")
 include("util/init_data.jl")
 include("solver/solve.jl")
 include("diagram/DiagramStructure.jl")

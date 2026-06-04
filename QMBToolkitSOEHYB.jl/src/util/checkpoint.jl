@@ -21,7 +21,7 @@ result is still correct but differs at ~1e-16 relative (FP non-associativity).
 using MPI
 using HDF5
 
-const CHECKPOINT_FORMAT_VERSION = 1
+const CHECKPOINT_FORMAT_VERSION = 2
 
 """
     ResumeState
@@ -29,14 +29,20 @@ const CHECKPOINT_FORMAT_VERSION = 1
 Resume directive derived from an on-disk checkpoint.
 
   - `phase ∈ {:none, :propagator, :green}` — which phase the checkpoint stopped in.
-  - `last_completed_order` — the highest order already accumulated in that phase
+  - `last_completed_order` — the highest order FULLY accumulated in that phase
     (-1 when `phase == :none`).
+  - `in_flight_groups` — diagram groups of the next order (`last_completed_order+1`)
+    already accumulated when the checkpoint was taken mid-order; `0` means the next
+    order had not started (an order-boundary checkpoint). Enables within-order
+    resume when `checkpoint_group_interval > 0`.
 """
 struct ResumeState
     phase::Symbol
     last_completed_order::Int
+    in_flight_groups::Int
 end
-ResumeState() = ResumeState(:none, -1)
+ResumeState() = ResumeState(:none, -1, 0)
+ResumeState(phase::Symbol, last_completed_order::Int) = ResumeState(phase, last_completed_order, 0)
 
 """
     checkpoint_path(output_path)
@@ -153,7 +159,9 @@ function find_resume_state(model::ModelData, params::SolverParams, comm::MPI.Com
             end
             phase = Symbol(read(file["meta/phase"]))
             last_order = Int(read(file["meta/last_completed_order"]))
-            state = ResumeState(phase, last_order)
+            in_flight = _haspath(file, "meta/in_flight_groups") ?
+                        Int(read(file["meta/in_flight_groups"])) : 0
+            state = ResumeState(phase, last_order, in_flight)
         end
     catch err
         rank == 0 && @warn "Failed to read checkpoint; starting fresh." path exception = err
@@ -182,10 +190,11 @@ function _atomic_write(write_fn::Function, path::String)
     return nothing
 end
 
-function _write_meta(file, phase::String, last_order::Int)
+function _write_meta(file, phase::String, last_order::Int, in_flight_groups::Int)
     grp = create_group(file, "meta")
     grp["phase"] = phase
     grp["last_completed_order"] = last_order
+    grp["in_flight_groups"] = in_flight_groups
     grp["format_version"] = CHECKPOINT_FORMAT_VERSION
 end
 
@@ -240,20 +249,22 @@ end
 # --- Write ------------------------------------------------------------------
 
 """
-    write_checkpoint_propagator!(solver_data, params, last_order, nprocs)
+    write_checkpoint_propagator!(solver_data, params, last_order, nprocs; in_flight_groups=0)
 
-Rank-0-only. Atomically checkpoint the propagator phase after completing
-`last_order`: partition function (orders 0..last_order), propagator diagram info,
-and the accumulated propagator value blocks.
+Rank-0-only. Atomically checkpoint the propagator phase. `last_order` is the
+highest FULLY completed order; `in_flight_groups > 0` records a mid-order
+checkpoint where that many groups of order `last_order+1` are already accumulated
+into the (cumulative) propagator blocks. Stores the partition function and
+propagator diagram info for the completed orders plus the accumulated blocks.
 """
 function write_checkpoint_propagator!(solver_data::SolverData, params::SolverParams,
-        last_order::Int, nprocs::Int)
+        last_order::Int, nprocs::Int; in_flight_groups::Int = 0)
     path = checkpoint_path(params.output_path)
     fp = compute_fingerprint(solver_data.model, params)
     calc = solver_data.calc
     prop = get_propagator(calc)
     _atomic_write(path) do file
-        _write_meta(file, "propagator", last_order)
+        _write_meta(file, "propagator", last_order, in_flight_groups)
         _write_fingerprint(file, fp, nprocs)
         create_group(file, "partition_function")["by_order"] = calc.partition_function_by_order
         _write_diagram_info(create_group(file, "propagator"), "diagram_info",
@@ -264,20 +275,23 @@ function write_checkpoint_propagator!(solver_data::SolverData, params::SolverPar
 end
 
 """
-    write_checkpoint_green!(solver_data, params, last_order, nprocs)
+    write_checkpoint_green!(solver_data, params, last_order, nprocs; in_flight_groups=0)
 
-Rank-0-only. Atomically checkpoint the green phase after completing `last_order`.
-Stores the FULL partition function and FULL propagator diagram info (so the final
-sim.h5 stays complete) plus the green diagram info, accumulated numerator
-(`green.vals`), and the per-order numerator snapshots 1..last_order.
+Rank-0-only. Atomically checkpoint the green phase. `last_order` is the highest
+FULLY completed green order; `in_flight_groups > 0` records a mid-order checkpoint
+where that many groups of order `last_order+1` are already accumulated into the
+(cumulative) `green.vals`. Stores the FULL partition function and FULL propagator
+diagram info (so the final sim.h5 stays complete) plus the green diagram info, the
+accumulated numerator (`green.vals`), and the per-order numerator snapshots
+1..last_order.
 """
 function write_checkpoint_green!(solver_data::SolverData, params::SolverParams,
-        last_order::Int, nprocs::Int)
+        last_order::Int, nprocs::Int; in_flight_groups::Int = 0)
     path = checkpoint_path(params.output_path)
     fp = compute_fingerprint(solver_data.model, params)
     calc = solver_data.calc
     _atomic_write(path) do file
-        _write_meta(file, "green", last_order)
+        _write_meta(file, "green", last_order, in_flight_groups)
         _write_fingerprint(file, fp, nprocs)
         create_group(file, "partition_function")["by_order"] = calc.partition_function_by_order
         _write_diagram_info(create_group(file, "propagator"), "diagram_info",

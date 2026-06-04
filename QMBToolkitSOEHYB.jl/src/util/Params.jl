@@ -40,6 +40,7 @@ struct SolverParams
     dlr::DLRParams
     output_path::String
     prune_threshold::Float64  # Threshold for pruning small bare propagator sectors (0 = no pruning)
+    checkpoint_group_interval::Int  # Within-order checkpoint cadence in diagram groups (0 = checkpoint only at order boundaries)
 end
 
 """

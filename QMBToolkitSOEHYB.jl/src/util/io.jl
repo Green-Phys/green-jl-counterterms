@@ -79,15 +79,17 @@ function read_input(file_path::String)
         dict["solver"]["dlr"]["rtol"]
     )
 
-    # Optional parameter with default value
+    # Optional parameters with default values
     prune_threshold = get(dict["solver"], "prune_threshold", 0.0)
+    checkpoint_group_interval = get(dict["solver"], "checkpoint_group_interval", 0)
 
     solver_params = SolverParams(
         propagator_params,
         green_params,
         dlr_params,
         output_path,
-        prune_threshold
+        prune_threshold,
+        checkpoint_group_interval
     )
 
     return Params(model_params, solver_params)
@@ -121,6 +123,7 @@ function print_parameters(params::Params)
     println("    Euv: ", params.solver.dlr.Euv)
     println("    rtol: ", params.solver.dlr.rtol)
     println("  prune_threshold: ", params.solver.prune_threshold)
+    println("  checkpoint_group_interval: ", params.solver.checkpoint_group_interval)
 end
 
 """

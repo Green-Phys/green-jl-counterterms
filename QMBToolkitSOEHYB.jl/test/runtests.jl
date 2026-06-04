@@ -245,11 +245,16 @@ function run_2spin_bare_expansion_test()
     # Cleanup handled automatically by mktempdir()
 end
 
+include("checkpoint_restart_test.jl")
+
 @testset "QMBToolkitSOEHYB.jl" begin
     @testset "Bare expansion 1-spin" begin
         run_bare_expansion_test()
     end
     @testset "Bare expansion 2-spin" begin
         run_2spin_bare_expansion_test()
+    end
+    @testset "Checkpoint restart" begin
+        run_checkpoint_restart_test()
     end
 end

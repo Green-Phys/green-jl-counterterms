@@ -69,6 +69,52 @@ end
 =============================================================================#
 
 """
+    build_conv_dlr!(conv_dlr, conv_operand, propagator, edge, model_data, dlr_grid, dlr_workspace)
+
+Build the convolution-operand DLR transform from scratch: copy the base propagator,
+apply the edge's hybridization K-factors, and transform to DLR. Writes into `conv_dlr`.
+"""
+function build_conv_dlr!(conv_dlr, conv_operand, propagator, edge,
+        model_data::ModelData, dlr_grid::DLRGrid, dlr_workspace)
+    copyto!(conv_operand, propagator)
+    for hyb in get_attached_hybs(edge)
+        apply_hybridization_inplace!(conv_operand, hyb, model_data, is_reverse = false)
+    end
+    tau2dlr!(conv_dlr, dlr_grid, conv_operand, dlr_grid.τ, dlr_workspace)
+    return conv_dlr
+end
+
+"""
+    prepare_conv_dlr!(buffers, propagator, edge, model_data, dlr_grid, dlr_workspace, base_is_diagonal)
+
+Prepare the convolution-operand DLR transform for an edge, using the diagonal cache
+when the base propagator is diagonal (bare expansion). On a cache miss the operand is
+built and its diagonal stored; on a hit the cached diagonal is scattered back into the
+dense `conv_dlr` buffer. When the base is not diagonal (bold), always rebuild.
+
+Returns the `conv_dlr` buffer.
+"""
+function prepare_conv_dlr!(buffers, propagator, edge, model_data::ModelData,
+        dlr_grid::DLRGrid, dlr_workspace, base_is_diagonal::Bool)
+    conv_dlr = get_conv_dlr(buffers)
+    if base_is_diagonal
+        sig = conv_signature!(buffers.conv_sig_scratch, get_attached_hybs(edge))
+        cached = get(buffers.conv_dlr_cache, sig, nothing)
+        if cached === nothing
+            build_conv_dlr!(conv_dlr, get_conv_operand(buffers), propagator, edge,
+                model_data, dlr_grid, dlr_workspace)
+            buffers.conv_dlr_cache[copy(sig)] = cache_conv_diagonals(conv_dlr)
+        else
+            scatter_conv_diagonals!(conv_dlr, cached)
+        end
+    else
+        build_conv_dlr!(conv_dlr, get_conv_operand(buffers), propagator, edge,
+            model_data, dlr_grid, dlr_workspace)
+    end
+    return conv_dlr
+end
+
+"""
     multiplication_convolution(nodes, edges, dlr_grid, model_data, propagator, buffers)
 
 Calculate backbone diagram contribution via multiplication and convolution from right to left.
@@ -116,7 +162,8 @@ All operations are in-place to minimize allocations.
 """
 function multiplication_convolution(
         nodes::AbstractVector{BackBoneNode}, edges::AbstractVector, dlr_grid::DLRGrid,
-        model_data::ModelData{T}, propagator, buffers) where {T <: Number}
+        model_data::ModelData{T}, propagator, buffers,
+        base_is_diagonal::Bool = true) where {T <: Number}
     length(nodes) == length(edges) + 1 ||
         error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
@@ -171,18 +218,10 @@ function multiplication_convolution(
         # Calculate the convolution with the next edge
         edge_plus1 = edges[i + 1]
 
-        # Get conv_operand buffer (fixed zero flux) and copy propagator
-        conv_operand = get_conv_operand(buffers)
-        copyto!(conv_operand, propagator)
-
-        for hyb in get_attached_hybs(edge_plus1)
-            apply_hybridization_inplace!(conv_operand, hyb, model_data, is_reverse = false)
-        end
-
-        # Transform to DLR using buffers and workspace
-        conv_dlr = get_conv_dlr(buffers)
+        # Build (or fetch from cache) the convolution operand's DLR transform
         dlr_workspace = model_data.convolution_workspace.dlr_workspace
-        tau2dlr!(conv_dlr, dlr_grid, conv_operand, dlr_grid.τ, dlr_workspace)
+        conv_dlr = prepare_conv_dlr!(buffers, propagator, edge_plus1, model_data,
+            dlr_grid, dlr_workspace, base_is_diagonal)
 
         result_dlr = get_result_dlr(buffers, current_flux)
         tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.τ, dlr_workspace)
@@ -219,7 +258,8 @@ Reference to the result buffer containing diagram contribution on DLR τ-grid.
 """
 function multiplication_convolution_reverse(
         nodes::AbstractVector{BackBoneNode}, edges::AbstractVector, dlr_grid::DLRGrid,
-        model_data::ModelData{T}, propagator, buffers) where {T <: Number}
+        model_data::ModelData{T}, propagator, buffers,
+        base_is_diagonal::Bool = true) where {T <: Number}
     length(nodes) == length(edges) + 1 ||
         error("Number of nodes must be one more than number of edges: got $(length(nodes)) nodes and $(length(edges)) edges")
 
@@ -273,21 +313,14 @@ function multiplication_convolution_reverse(
         # Calculate the convolution with the next edge
         edge_minus1 = edges[i - 1]
 
-        # Get conv_operand buffer (fixed zero flux) and copy propagator
-        conv_operand = get_conv_operand(buffers)
-        copyto!(conv_operand, propagator)
-
-        for hyb in get_attached_hybs(edge_minus1)
-            apply_hybridization_inplace!(conv_operand, hyb, model_data, is_reverse = false)
-        end
-
         # Transform to DLR using buffers and workspace (note: order reversed)
         dlr_workspace = model_data.convolution_workspace.dlr_workspace
         result_dlr = get_result_dlr(buffers, current_flux)
         tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.τ, dlr_workspace)
 
-        conv_dlr = get_conv_dlr(buffers)
-        tau2dlr!(conv_dlr, dlr_grid, conv_operand, dlr_grid.τ, dlr_workspace)
+        # Build (or fetch from cache) the convolution operand's DLR transform
+        conv_dlr = prepare_conv_dlr!(buffers, propagator, edge_minus1, model_data,
+            dlr_grid, dlr_workspace, base_is_diagonal)
 
         # Perform convolution (reversed order) - result is written back to result buffer
         do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,
@@ -352,14 +385,16 @@ Evaluate forward backbone contribution from node 1 to split_point.
 Forward backbone contribution on DLR τ-grid.
 """
 function eval_green_forward_backbone(diagram::MutableBackBone, split_point::Int,
-        solver_data::SolverData{T}, propagator, buffers) where {T}
+        solver_data::SolverData{T}, propagator, buffers,
+        base_is_diagonal::Bool = true) where {T}
     return multiplication_convolution(
         @view(diagram.nodes[1:split_point]),
         @view(diagram.edges[1:(split_point - 1)]),
         solver_data.model.dlr_grid,
         solver_data.model,
         propagator,
-        buffers.fwd_buffers
+        buffers.fwd_buffers,
+        base_is_diagonal
     )
 end
 
@@ -381,13 +416,15 @@ Evaluate reverse backbone contribution from split_point to end.
 Reverse backbone contribution on DLR τ-grid.
 """
 function eval_green_reverse_backbone(diagram::MutableBackBone, split_point::Int,
-        solver_data::SolverData{T}, propagator, buffers) where {T}
+        solver_data::SolverData{T}, propagator, buffers,
+        base_is_diagonal::Bool = true) where {T}
     return multiplication_convolution_reverse(
         @view(diagram.nodes[split_point:diagram.M]),
         @view(diagram.edges[split_point:(diagram.M - 1)]),
         solver_data.model.dlr_grid,
         solver_data.model,
         propagator,
-        buffers.rev_buffers
+        buffers.rev_buffers,
+        base_is_diagonal
     )
 end

@@ -92,11 +92,11 @@ function eval_green_given_order!(
             split_point = mutable_bb.external_opts_loc[2]
 
             contrib_0_to_tau = eval_green_forward_backbone(
-                mutable_bb, split_point, solver_data, propagator, buffers
+                mutable_bb, split_point, solver_data, propagator, buffers, !is_bold
             )
 
             contrib_tau_to_beta_unreflected = eval_green_reverse_backbone(
-                mutable_bb, split_point, solver_data, propagator, buffers
+                mutable_bb, split_point, solver_data, propagator, buffers, !is_bold
             )
 
             # Reflection: tau -> beta - tau (using pre-computed reflection matrix)

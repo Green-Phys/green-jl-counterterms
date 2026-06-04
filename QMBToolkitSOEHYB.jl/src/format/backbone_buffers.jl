@@ -49,6 +49,17 @@ to have valid intermediate fluxes, so no empty propagator sentinels are needed.
 
   - `conv_operand`: Propagator copy for convolution (always zero flux)
   - `conv_dlr`: DLR transform of convolution operand (always zero flux)
+
+## Convolution-operand DLR cache:
+
+The convolution operand is `bare ⊙ ∏K`, which is flavor-independent and depends
+only on the multiset of hybridization indices crossing the edge. When the base
+propagator is diagonal (bare expansion), the operand is diagonal, so its DLR
+transform is cached by the canonical hyb signature and stored in diagonal form
+(`dim × r` per sector) to keep memory bounded.
+
+  - `conv_dlr_cache`: signature → per-block diagonal DLR (only valid when base is diagonal)
+  - `conv_sig_scratch`: reusable scratch for building the sorted signature key
 """
 struct PropagatorEvalBuffers{T <: Number, QN <: QuantumNumber}
     basis::Basis
@@ -65,6 +76,10 @@ struct PropagatorEvalBuffers{T <: Number, QN <: QuantumNumber}
     zero_flux::QN
     conv_operand::Propagator{T}
     conv_dlr::Propagator{T}
+
+    # Convolution-operand DLR cache (diagonal storage, keyed by hyb signature)
+    conv_dlr_cache::Dict{Vector{Int}, Dict{Tuple{Int, Int}, Matrix{T}}}
+    conv_sig_scratch::Vector{Int}
 end
 
 """
@@ -210,10 +225,14 @@ function PropagatorEvalBuffers{T}(
     conv_operand = allocate_buffer_for_flux(basis, zero_flux, n_tau, T)
     conv_dlr = allocate_buffer_for_flux(basis, zero_flux, n_dlr, T)
 
+    conv_dlr_cache = Dict{Vector{Int}, Dict{Tuple{Int, Int}, Matrix{T}}}()
+    conv_sig_scratch = Int[]
+
     return PropagatorEvalBuffers{T, QN}(
         basis, n_tau, n_dlr,
         result_pool, op_product_pool, result_dlr_pool,
-        zero_flux, conv_operand, conv_dlr
+        zero_flux, conv_operand, conv_dlr,
+        conv_dlr_cache, conv_sig_scratch
     )
 end
 
@@ -341,6 +360,71 @@ end
 
 get_conv_operand(buffers::PropagatorEvalBuffers) = buffers.conv_operand
 get_conv_dlr(buffers::PropagatorEvalBuffers) = buffers.conv_dlr
+
+#=============================================================================
+# Convolution-operand DLR cache helpers
+=============================================================================#
+
+"""
+    conv_signature!(scratch::Vector{Int}, attached_hybs)
+
+Build a canonical (sorted) signature of the hybridization indices crossing an
+edge into the reusable `scratch` vector and return it. Sorting makes the key
+order-independent; the empty edge yields an empty signature.
+"""
+function conv_signature!(scratch::Vector{Int}, attached_hybs)
+    n = length(attached_hybs)
+    resize!(scratch, n)
+    @inbounds for j in 1:n
+        scratch[j] = attached_hybs[j].index
+    end
+    sort!(scratch)
+    return scratch
+end
+
+"""
+    cache_conv_diagonals(conv_dlr::Propagator{T}) where {T}
+
+Extract the per-block diagonal of a diagonal convolution-operand DLR propagator
+into compact `dim × r` matrices. Used to populate the cache on a miss.
+"""
+function cache_conv_diagonals(conv_dlr::Propagator{T}) where {T}
+    cached = Dict{Tuple{Int, Int}, Matrix{T}}()
+    for (key, block) in conv_dlr.blocks
+        d = size(block, 1)
+        r = size(block, 3)
+        D = Matrix{T}(undef, d, r)
+        @inbounds for k in 1:r
+            for a in 1:d
+                D[a, k] = block[a, a, k]
+            end
+        end
+        cached[key] = D
+    end
+    return cached
+end
+
+"""
+    scatter_conv_diagonals!(conv_dlr::Propagator{T}, cached) where {T}
+
+Write cached per-block diagonals back into the dense `conv_dlr` buffer's diagonal
+blocks. Off-diagonal entries are assumed to be zero (the operand is diagonal and
+the buffer is never written with non-zero off-diagonals in this mode).
+"""
+function scatter_conv_diagonals!(conv_dlr::Propagator{T},
+        cached::Dict{Tuple{Int, Int}, Matrix{T}}) where {T}
+    for (key, D) in cached
+        block = conv_dlr.blocks[key]
+        d = size(block, 1)
+        r = size(block, 3)
+        @inbounds for k in 1:r
+            for a in 1:d
+                block[a, a, k] = D[a, k]
+            end
+        end
+    end
+    return conv_dlr
+end
 
 # GreenEvalBuffers accessors
 # With flux pre-filtering, all accessed fluxes are guaranteed to exist in pools

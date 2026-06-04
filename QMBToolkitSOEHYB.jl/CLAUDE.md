@@ -263,6 +263,43 @@ Saved to `<output_path>/sim.h5`:
   total_wall_time, total_cpu_time
 ```
 
+### Checkpoint / Restart
+
+A killed run (walltime limit, reboot, crash) resumes from completed work: rerun the
+**identical command** and it continues where it stopped. Auto-resume is ON by
+default with zero required config. Implementation is `src/util/checkpoint.jl`, wired
+into `solve.jl` and `diagram/eval_common.jl`.
+
+- **Checkpoint file**: `sim.ckpt.h5`, a sibling of `sim.h5`. Written atomically
+  (same-dir temp + `rename`), and **deleted on successful completion** so a fresh
+  rerun starts clean.
+- **Fingerprint guard**: the checkpoint stores a fingerprint (beta, expansion
+  orders, is_bold flags, flavor counts, DLR Euv/rtol, exponents, sector dims). On a
+  mismatch the solver warns and starts fresh without deleting the stale file.
+  `nprocs` is intentionally excluded — resume may use a different rank count.
+- **Granularity**:
+  - *Order level* (default): checkpoint after each completed expansion order.
+  - *Within order*: set `[solver] checkpoint_group_interval = N` (default `0` =
+    order boundaries only). Each order's diagram groups are processed in consecutive
+    prefix chunks of `N` groups; after each chunk the partial sum is `Allreduce`d
+    into the cumulative accumulator (every rank then identical) and the checkpoint
+    records that accumulator plus the integer count of groups done. Use this when a
+    single order is itself very long.
+- **Reproducibility**: a resumed run is **bit-identical** to an uninterrupted run at
+  the **same nprocs and same interval** (deterministic per-rank group split +
+  per-block Allreduce + lossless HDF5 Float64 round-trip). Across **different
+  nprocs**, or between **different intervals** (including `N>0` vs `0`), the result
+  is still correct but differs at ~1e-16 relative because floating-point summation
+  is regrouped — this is expected, not a bug.
+- **Env vars**: `QMBTOOLKIT_NO_RESUME=1` ignores any existing checkpoint and starts
+  fresh. (`QMBTOOLKIT_CRASH_PHASE` / `QMBTOOLKIT_CRASH_AFTER_ORDER` /
+  `QMBTOOLKIT_CRASH_AFTER_GROUPS` are test-only hooks that simulate a mid-run kill.)
+- **Scope**: covers the implemented **bare** path (propagator orders `0..P`, green
+  orders `1..G`). The bold path is not implemented and not yet checkpoint-aware.
+- **Tests**: `test/checkpoint_restart_test.jl` (in-process, single rank, part of
+  `Pkg.test()`); `test/checkpoint_restart_mpi.jl` (manual multi-rank verification —
+  run directly, launches real `mpiexec` jobs).
+
 ### Current Implementation Status
 
 **Implemented**:
@@ -271,6 +308,7 @@ Saved to `<output_path>/sim.h5`:
 - DLR-based representation
 - SOE decomposition of hybridization
 - MPI parallelization for diagram evaluation
+- Checkpoint / restart with auto-resume (order-level and within-order; see above)
 
 **Not Yet Implemented**:
 - Bold propagator calculation (error at `solve.jl:42`)

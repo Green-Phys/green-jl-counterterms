@@ -19,15 +19,33 @@ eliminating per-diagram allocation overhead.
   - `comm::MPI.Comm`: MPI communicator
 """
 function eval_diagrams!(solver_data::SolverData{T}, solver_params::SolverParams,
-        diagram_type::Symbol, comm::MPI.Comm) where {T}
+        diagram_type::Symbol, comm::MPI.Comm;
+        resume::ResumeState = ResumeState()) where {T}
     rank = MPI.Comm_rank(comm)
+    nprocs = MPI.Comm_size(comm)
     propagator = get_propagator(solver_data.calc)
 
     if diagram_type == :propagator_diagram && !solver_params.propagator.is_bold
-        empty!(solver_data.calc.partition_function_by_order)
-        empty!(solver_data.calc.propagator_diagram_info)
+        # On a :green resume the propagator phase is already complete; its blocks
+        # are not needed (bare green uses the bare propagator) and the green
+        # restore repopulates partition_function_by_order. Skip this phase.
+        resume.phase == :green && return
 
-        for order in 0:(solver_params.propagator.expansion_order)
+        if resume.phase == :propagator
+            h5open(checkpoint_path(solver_params.output_path), "r") do file
+                restore_checkpoint_propagator!(solver_data, file)
+            end
+            # Barrier so a fast rank cannot enter the next Allreduce before a slow
+            # rank has finished reading the (identical) checkpoint.
+            MPI.Barrier(comm)
+            start_order = resume.last_completed_order + 1
+        else
+            empty!(solver_data.calc.partition_function_by_order)
+            empty!(solver_data.calc.propagator_diagram_info)
+            start_order = 0
+        end
+
+        for order in start_order:(solver_params.propagator.expansion_order)
             cache = build_config_cache(order, solver_data.model.n_flavors_physical,
                 solver_data.model.hyb.exponents, :propagator_diagram)
             dims = config_dimensions(cache)
@@ -47,17 +65,32 @@ function eval_diagrams!(solver_data::SolverData{T}, solver_params::SolverParams,
             Z_current = tr(propagator_at_beta)
             # Use real() since partition function must be real; imaginary part is numerical noise
             push!(solver_data.calc.partition_function_by_order, real(Z_current))
+
+            # Checkpoint after each completed order (rank 0, atomic), then the
+            # test crash hook (inert in production).
+            rank == 0 && write_checkpoint_propagator!(solver_data, solver_params, order, nprocs)
+            _maybe_crash(:propagator, order, comm)
         end
 
+        # A boundary resume (start_order == P+1) skips the loop above; this still
+        # runs harmlessly on the restored vals (coeffs are unused by bare green).
         propagator.coeffs = tau2dlr(
             solver_data.model.dlr_grid, propagator.vals, solver_data.model.dlr_grid.τ)
 
     elseif diagram_type == :green_diagram && !solver_params.green.is_bold
-        empty!(solver_data.calc.green_numerator_by_order)
-        empty!(solver_data.calc.green_by_order)
-        empty!(solver_data.calc.green_diagram_info)
+        if resume.phase == :green
+            h5open(checkpoint_path(solver_params.output_path), "r") do file
+                restore_checkpoint_green!(solver_data, file)
+            end
+            MPI.Barrier(comm)
+            start_order = resume.last_completed_order + 1
+        else
+            empty!(solver_data.calc.green_numerator_by_order)
+            empty!(solver_data.calc.green_diagram_info)
+            start_order = 1
+        end
 
-        for order in 1:(solver_params.green.expansion_order)
+        for order in start_order:(solver_params.green.expansion_order)
             cache = build_config_cache(order, solver_data.model.n_flavors_physical,
                 solver_data.model.hyb.exponents, :green_diagram; is_bold = false)
             dims = config_dimensions(cache)
@@ -72,11 +105,17 @@ function eval_diagrams!(solver_data::SolverData{T}, solver_params::SolverParams,
 
             eval_green_given_order!(solver_data, cache, solver_params.green.is_bold, comm)
 
+            # green.vals accumulates the numerator across orders; snapshot it.
             push!(solver_data.calc.green_numerator_by_order,
                 copy(solver_data.calc.green.vals))
+
+            rank == 0 && write_checkpoint_green!(solver_data, solver_params, order, nprocs)
+            _maybe_crash(:green, order, comm)
         end
 
-        # Compute Green's function by order (numerator / Z)
+        # Rebuild Green's function by order (numerator / Z) from the full per-order
+        # vectors; identical on a fresh run and a resumed one.
+        empty!(solver_data.calc.green_by_order)
         for green_order in 1:(solver_params.green.expansion_order)
             propagator_index = green_order
             green_index = green_order

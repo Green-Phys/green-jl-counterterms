@@ -30,6 +30,17 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
               "green.expansion_order=$(solver_params.green.expansion_order).")
     end
 
+    # === Auto-resume from checkpoint (if any) ===
+    resume = find_resume_state(solver_data.model, solver_params, comm)
+    if rank == 0
+        if resume.phase == :none
+            println("\nNo checkpoint found; starting fresh.")
+        else
+            println("\nResuming from checkpoint: phase=$(resume.phase), " *
+                    "last completed order=$(resume.last_completed_order).")
+        end
+    end
+
     # === Propagator Calculation ===
     if rank == 0
         println()
@@ -43,10 +54,12 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
     end
 
     t_start = MPI.Wtime()
-    eval_diagrams!(solver_data, solver_params, :propagator_diagram, comm)
+    eval_diagrams!(solver_data, solver_params, :propagator_diagram, comm; resume = resume)
     t_prop_wall = MPI.Wtime() - t_start
 
-    if rank == 0
+    # On a :green resume the propagator phase is skipped and these accumulators are
+    # repopulated later by the green restore, so only print when available.
+    if rank == 0 && !isempty(solver_data.calc.partition_function_by_order)
         println("Partition function Z = ", solver_data.calc.partition_function_by_order[end])
         println("\nPartition function by expansion order:")
         for (idx, Z) in enumerate(solver_data.calc.partition_function_by_order)
@@ -63,12 +76,19 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
     end
 
     t_start = MPI.Wtime()
-    eval_diagrams!(solver_data, solver_params, :green_diagram, comm)
+    eval_diagrams!(solver_data, solver_params, :green_diagram, comm; resume = resume)
     t_green_wall = MPI.Wtime() - t_start
 
     # === Data Processing and Saving (rank 0 only) ===
     if rank == 0
         save_results(solver_data, solver_params)
+    end
+
+    # The result is now persisted to sim.h5. Barrier makes "all ranks finished"
+    # explicit, then rank 0 removes the checkpoint so a fresh rerun starts clean.
+    MPI.Barrier(comm)
+    if rank == 0
+        delete_checkpoint(solver_params.output_path)
     end
 
     # Record total wall time (before MPI reduction)

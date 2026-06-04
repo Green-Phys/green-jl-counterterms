@@ -372,14 +372,34 @@ end
 # Test-only crash hook: when QMBTOOLKIT_CRASH_PHASE / QMBTOOLKIT_CRASH_AFTER_ORDER
 # match the current (phase, order), barrier then error on all ranks — modelling a
 # realistic mid-run kill AFTER the order's checkpoint is on disk and the HDF5
-# handle is closed. Inert unless both env vars are set.
+# handle is closed. Inert unless both env vars are set. Stays inert whenever the
+# within-order hook is armed (QMBTOOLKIT_CRASH_AFTER_GROUPS set) so the two test
+# modes never both fire in one run.
 function _maybe_crash(phase::Symbol, order::Int, comm::MPI.Comm)
+    get(ENV, "QMBTOOLKIT_CRASH_AFTER_GROUPS", "") != "" && return nothing
     crash_phase = get(ENV, "QMBTOOLKIT_CRASH_PHASE", "")
     crash_order = get(ENV, "QMBTOOLKIT_CRASH_AFTER_ORDER", "")
     if crash_phase != "" && crash_order != "" &&
        String(phase) == crash_phase && parse(Int, crash_order) == order
         MPI.Barrier(comm)
         error("QMBTOOLKIT test crash hook: phase=$phase order=$order (checkpoint written)")
+    end
+    return nothing
+end
+
+# Within-order variant: fires when QMBTOOLKIT_CRASH_PHASE / QMBTOOLKIT_CRASH_AFTER_ORDER
+# / QMBTOOLKIT_CRASH_AFTER_GROUPS match the current (phase, order, groups-accumulated),
+# barrier then error on all ranks — modelling a kill mid-order AFTER the within-order
+# checkpoint is on disk. Inert unless all three env vars are set.
+function _maybe_crash_group(phase::Symbol, order::Int, groups_done::Int, comm::MPI.Comm)
+    crash_phase = get(ENV, "QMBTOOLKIT_CRASH_PHASE", "")
+    crash_order = get(ENV, "QMBTOOLKIT_CRASH_AFTER_ORDER", "")
+    crash_groups = get(ENV, "QMBTOOLKIT_CRASH_AFTER_GROUPS", "")
+    if crash_phase != "" && crash_order != "" && crash_groups != "" &&
+       String(phase) == crash_phase && parse(Int, crash_order) == order &&
+       parse(Int, crash_groups) == groups_done
+        MPI.Barrier(comm)
+        error("QMBTOOLKIT test crash hook: phase=$phase order=$order groups=$groups_done (checkpoint written)")
     end
     return nothing
 end

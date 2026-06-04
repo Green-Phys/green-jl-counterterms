@@ -36,8 +36,11 @@ function solve(solver_data::SolverData, solver_params::SolverParams, comm::MPI.C
         if resume.phase == :none
             println("\nNo checkpoint found; starting fresh.")
         else
-            println("\nResuming from checkpoint: phase=$(resume.phase), " *
-                    "last completed order=$(resume.last_completed_order).")
+            msg = "\nResuming from checkpoint: phase=$(resume.phase), " *
+                  "last completed order=$(resume.last_completed_order)"
+            resume.in_flight_groups > 0 &&
+                (msg *= ", in-flight groups=$(resume.in_flight_groups)")
+            println(msg, ".")
         end
     end
 

@@ -195,6 +195,69 @@ function do_convolution_dlr2tau_propagator!(
     return dest
 end
 
+"""
+    do_convolution_dlr2tau_Fdiag_propagator!(dest, workspace, dlr_grid, kernel_cache, Fdiag_cache, G_dlr)
+
+Convolution H = F * G where F is a zero-flux propagator that is diagonal within each block
+(the bare/diagonal base decorated by per-τ scalar K-factors). F is supplied only as its
+cached block diagonals `Fdiag_cache[(i,i)]` (each a d×r matrix), so no full F propagator is
+materialized. Since F is block-diagonal, the result block (target, source) receives a single
+intermediate contribution from F's (target, target) diagonal times G's (target, source) block.
+"""
+function do_convolution_dlr2tau_Fdiag_propagator!(
+        dest::Propagator{T}, workspace::ConvolutionWorkspace{T},
+        dlr_grid::DLRGrid, kernel_cache::KernelCache,
+        Fdiag_cache::Dict{Tuple{Int, Int}, Matrix{T}}, G_dlr::Propagator{T}) where {T <: Number}
+    fill!(dest, zero(T))
+
+    @inbounds for (dest_key, dest_block) in dest.blocks
+        target_idx, source_idx = dest_key
+
+        Fdiag = get(Fdiag_cache, (target_idx, target_idx), nothing)
+        Fdiag === nothing && continue
+
+        G_block = get(G_dlr.blocks, (target_idx, source_idx), nothing)
+        G_block === nothing && continue
+
+        block_contrib = QMBToolkitDLR.do_convolution_dlr2tau_Fdiag!(
+            workspace, dlr_grid, kernel_cache, Fdiag, G_block; do_view = true)
+        dest_block .+= block_contrib
+    end
+
+    return dest
+end
+
+"""
+    do_convolution_dlr2tau_Gdiag_propagator!(dest, workspace, dlr_grid, kernel_cache, F_dlr, Gdiag_cache)
+
+Convolution H = F * G where G is a zero-flux propagator diagonal within each block, supplied
+only as its cached block diagonals `Gdiag_cache[(i,i)]`. Since G is block-diagonal, the result
+block (target, source) receives a single intermediate contribution from F's (target, source)
+block times G's (source, source) diagonal.
+"""
+function do_convolution_dlr2tau_Gdiag_propagator!(
+        dest::Propagator{T}, workspace::ConvolutionWorkspace{T},
+        dlr_grid::DLRGrid, kernel_cache::KernelCache,
+        F_dlr::Propagator{T}, Gdiag_cache::Dict{Tuple{Int, Int}, Matrix{T}}) where {T <: Number}
+    fill!(dest, zero(T))
+
+    @inbounds for (dest_key, dest_block) in dest.blocks
+        target_idx, source_idx = dest_key
+
+        F_block = get(F_dlr.blocks, (target_idx, source_idx), nothing)
+        F_block === nothing && continue
+
+        Gdiag = get(Gdiag_cache, (source_idx, source_idx), nothing)
+        Gdiag === nothing && continue
+
+        block_contrib = QMBToolkitDLR.do_convolution_dlr2tau_Gdiag!(
+            workspace, dlr_grid, kernel_cache, F_block, Gdiag; do_view = true)
+        dest_block .+= block_contrib
+    end
+
+    return dest
+end
+
 #=============================================================================
 # Tau Extraction Operations
 =============================================================================#

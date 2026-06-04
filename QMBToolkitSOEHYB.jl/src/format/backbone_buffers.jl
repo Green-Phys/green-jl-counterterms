@@ -404,28 +404,6 @@ function cache_conv_diagonals(conv_dlr::Propagator{T}) where {T}
     return cached
 end
 
-"""
-    scatter_conv_diagonals!(conv_dlr::Propagator{T}, cached) where {T}
-
-Write cached per-block diagonals back into the dense `conv_dlr` buffer's diagonal
-blocks. Off-diagonal entries are assumed to be zero (the operand is diagonal and
-the buffer is never written with non-zero off-diagonals in this mode).
-"""
-function scatter_conv_diagonals!(conv_dlr::Propagator{T},
-        cached::Dict{Tuple{Int, Int}, Matrix{T}}) where {T}
-    for (key, D) in cached
-        block = conv_dlr.blocks[key]
-        d = size(block, 1)
-        r = size(block, 3)
-        @inbounds for k in 1:r
-            for a in 1:d
-                block[a, a, k] = D[a, k]
-            end
-        end
-    end
-    return conv_dlr
-end
-
 # GreenEvalBuffers accessors
 # With flux pre-filtering, all accessed fluxes are guaranteed to exist in pools
 

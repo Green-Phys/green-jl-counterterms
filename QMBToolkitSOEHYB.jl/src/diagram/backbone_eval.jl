@@ -85,33 +85,28 @@ function build_conv_dlr!(conv_dlr, conv_operand, propagator, edge,
 end
 
 """
-    prepare_conv_dlr!(buffers, propagator, edge, model_data, dlr_grid, dlr_workspace, base_is_diagonal)
+    prepare_conv_diag!(buffers, propagator, edge, model_data, dlr_grid, dlr_workspace)
 
-Prepare the convolution-operand DLR transform for an edge, using the diagonal cache
-when the base propagator is diagonal (bare expansion). On a cache miss the operand is
-built and its diagonal stored; on a hit the cached diagonal is scattered back into the
-dense `conv_dlr` buffer. When the base is not diagonal (bold), always rebuild.
+Return the convolution operand's per-block diagonals for an edge, keyed by the edge's
+hybridization signature. On a cache miss the operand is built into the `conv_dlr` scratch
+buffer, its block diagonals are extracted and cached, and the dict is returned. On a hit the
+cached diagonals are returned directly — no DLR transform and no dense scatter. Only valid
+when the base propagator is diagonal (bare expansion).
 
-Returns the `conv_dlr` buffer.
+Returns a `Dict{Tuple{Int,Int}, Matrix{T}}` mapping each (i,i) sector block to its d×r diagonal.
 """
-function prepare_conv_dlr!(buffers, propagator, edge, model_data::ModelData,
-        dlr_grid::DLRGrid, dlr_workspace, base_is_diagonal::Bool)
-    conv_dlr = get_conv_dlr(buffers)
-    if base_is_diagonal
-        sig = conv_signature!(buffers.conv_sig_scratch, get_attached_hybs(edge))
-        cached = get(buffers.conv_dlr_cache, sig, nothing)
-        if cached === nothing
-            build_conv_dlr!(conv_dlr, get_conv_operand(buffers), propagator, edge,
-                model_data, dlr_grid, dlr_workspace)
-            buffers.conv_dlr_cache[copy(sig)] = cache_conv_diagonals(conv_dlr)
-        else
-            scatter_conv_diagonals!(conv_dlr, cached)
-        end
-    else
+function prepare_conv_diag!(buffers, propagator, edge, model_data::ModelData,
+        dlr_grid::DLRGrid, dlr_workspace)
+    sig = conv_signature!(buffers.conv_sig_scratch, get_attached_hybs(edge))
+    cached = get(buffers.conv_dlr_cache, sig, nothing)
+    if cached === nothing
+        conv_dlr = get_conv_dlr(buffers)
         build_conv_dlr!(conv_dlr, get_conv_operand(buffers), propagator, edge,
             model_data, dlr_grid, dlr_workspace)
+        cached = cache_conv_diagonals(conv_dlr)
+        buffers.conv_dlr_cache[copy(sig)] = cached
     end
-    return conv_dlr
+    return cached
 end
 
 """
@@ -217,18 +212,26 @@ function multiplication_convolution(
 
         # Calculate the convolution with the next edge
         edge_plus1 = edges[i + 1]
-
-        # Build (or fetch from cache) the convolution operand's DLR transform
         dlr_workspace = model_data.convolution_workspace.dlr_workspace
-        conv_dlr = prepare_conv_dlr!(buffers, propagator, edge_plus1, model_data,
-            dlr_grid, dlr_workspace, base_is_diagonal)
 
         result_dlr = get_result_dlr(buffers, current_flux)
         tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.τ, dlr_workspace)
 
-        # Perform convolution - result is written back to result buffer
-        do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,
-            model_data.kernel_cache, conv_dlr, result_dlr)
+        # Perform convolution - result is written back to result buffer.
+        # Forward direction: conv operand is the left factor F.
+        if base_is_diagonal
+            # F is diagonal within-block: use the cached diagonals and the row-scaling path
+            Fdiag_cache = prepare_conv_diag!(buffers, propagator, edge_plus1, model_data,
+                dlr_grid, dlr_workspace)
+            do_convolution_dlr2tau_Fdiag_propagator!(result, model_data.convolution_workspace,
+                dlr_grid, model_data.kernel_cache, Fdiag_cache, result_dlr)
+        else
+            conv_dlr = get_conv_dlr(buffers)
+            build_conv_dlr!(conv_dlr, get_conv_operand(buffers), propagator, edge_plus1,
+                model_data, dlr_grid, dlr_workspace)
+            do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,
+                model_data.kernel_cache, conv_dlr, result_dlr)
+        end
     end
 
     return result
@@ -312,19 +315,27 @@ function multiplication_convolution_reverse(
 
         # Calculate the convolution with the next edge
         edge_minus1 = edges[i - 1]
+        dlr_workspace = model_data.convolution_workspace.dlr_workspace
 
         # Transform to DLR using buffers and workspace (note: order reversed)
-        dlr_workspace = model_data.convolution_workspace.dlr_workspace
         result_dlr = get_result_dlr(buffers, current_flux)
         tau2dlr!(result_dlr, dlr_grid, result, dlr_grid.τ, dlr_workspace)
 
-        # Build (or fetch from cache) the convolution operand's DLR transform
-        conv_dlr = prepare_conv_dlr!(buffers, propagator, edge_minus1, model_data,
-            dlr_grid, dlr_workspace, base_is_diagonal)
-
-        # Perform convolution (reversed order) - result is written back to result buffer
-        do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,
-            model_data.kernel_cache, result_dlr, conv_dlr)
+        # Perform convolution (reversed order) - result is written back to result buffer.
+        # Reverse direction: conv operand is the right factor G.
+        if base_is_diagonal
+            # G is diagonal within-block: use the cached diagonals and the column-scaling path
+            Gdiag_cache = prepare_conv_diag!(buffers, propagator, edge_minus1, model_data,
+                dlr_grid, dlr_workspace)
+            do_convolution_dlr2tau_Gdiag_propagator!(result, model_data.convolution_workspace,
+                dlr_grid, model_data.kernel_cache, result_dlr, Gdiag_cache)
+        else
+            conv_dlr = get_conv_dlr(buffers)
+            build_conv_dlr!(conv_dlr, get_conv_operand(buffers), propagator, edge_minus1,
+                model_data, dlr_grid, dlr_workspace)
+            do_convolution_dlr2tau!(result, model_data.convolution_workspace, dlr_grid,
+                model_data.kernel_cache, result_dlr, conv_dlr)
+        end
     end
 
     return result

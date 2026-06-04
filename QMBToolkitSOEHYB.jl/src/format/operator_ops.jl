@@ -58,12 +58,17 @@ function _multiply_op_prop!(
     @boundscheck @assert temp_buffer.flux == result_flux "Buffer flux must match result flux"
 
     # For each result block, compute: result[tgt, src](τ) = Σ_mid A[tgt, mid] * B[mid, src](τ)
-    # Use direct dict lookups instead of building temporary index structures
+    # The operator A is τ-independent, so all τ slices share the same left factor.
+    # Reshaping B's block to (d_mid, d_src·n_tau) collapses the per-τ loop into a single GEMM.
     for (result_key, result_block) in temp_buffer.blocks
         (tgt, src) = result_key
 
         # Zero out the buffer block
         fill!(result_block, zero(T))
+
+        d_tgt = size(result_block, 1)
+        d_src = size(result_block, 2)
+        result_mat = reshape(result_block, d_tgt, d_src * n_tau)
 
         # Sum over all intermediate sectors with direct O(1) lookups
         @inbounds for mid in 1:n_sectors
@@ -75,10 +80,10 @@ function _multiply_op_prop!(
                 A_block = A.blocks[A_key]
                 B_block = B.blocks[B_key]
 
-                # For each time point: result[tgt, src](τ) += A[tgt, mid] * B[mid, src](τ)
-                @inbounds for k in 1:n_tau
-                    mul!(view(result_block,:,:,k), A_block, view(B_block,:,:,k), 1.0, 1.0)
-                end
+                # result[tgt, src] += A[tgt, mid] * B[mid, src] batched over all τ
+                d_mid = size(B_block, 1)
+                B_mat = reshape(B_block, d_mid, d_src * n_tau)
+                mul!(result_mat, A_block, B_mat, one(T), one(T))
             end
         end
     end
@@ -313,7 +318,11 @@ function _multiply_op_prop_with_K!(
         (tgt, src) = result_key
         fill!(result_block, zero(T))
 
-        # Matrix multiplication: result = A * B
+        d_tgt = size(result_block, 1)
+        d_src = size(result_block, 2)
+        result_mat = reshape(result_block, d_tgt, d_src * n_tau)
+
+        # Matrix multiplication: result = A * B, batched over all τ in one GEMM
         @inbounds for mid in 1:n_sectors
             A_key = (tgt, mid)
             B_key = (mid, src)
@@ -322,9 +331,9 @@ function _multiply_op_prop_with_K!(
                 A_block = A.blocks[A_key]
                 B_block = B.blocks[B_key]
 
-                @inbounds for k in 1:n_tau
-                    mul!(view(result_block,:,:,k), A_block, view(B_block,:,:,k), 1.0, 1.0)
-                end
+                d_mid = size(B_block, 1)
+                B_mat = reshape(B_block, d_mid, d_src * n_tau)
+                mul!(result_mat, A_block, B_mat, one(T), one(T))
             end
         end
 

@@ -12,6 +12,16 @@ All operations respect quantum number conservation and only compute non-zero blo
 using QMBToolkitED: Basis, Operator
 using LinearAlgebra
 
+# Both Operator and Propagator carry a definite flux, so every block (tgt, src)
+# satisfies QN(tgt) = QN(src) + flux. In a product result block (tgt, src) the
+# intermediate sector is therefore fixed by the left factor's flux alone:
+# QN(mid) = QN(tgt) - flux_left. This selects the single contributing mid via one
+# qn_to_sector lookup instead of scanning every sector. Returns 0 if no such sector.
+@inline function _intermediate_sector(basis::Basis, left_flux, tgt::Int)
+    mid_qn = basis.sectors[tgt].qn + (-left_flux)
+    return get(basis.qn_to_sector, mid_qn, 0)
+end
+
 """
     _multiply_op_prop!(temp_buffer::Propagator{T}, A::Operator, B::Propagator{T}) where T<:Number
 
@@ -50,8 +60,6 @@ function _multiply_op_prop!(
     # All blocks should have same n_tau, so get from any block (layout: dim1, dim2, n_tau)
     n_tau = size(first(values(B.blocks)), 3)
     basis = B.basis
-    n_sectors = length(basis.sectors)
-
     # Result flux is composition of input fluxes
     result_flux = A.flux + B.flux
     # Allow flux mismatch for empty buffers (they represent zero regardless of flux)
@@ -70,22 +78,19 @@ function _multiply_op_prop!(
         d_src = size(result_block, 2)
         result_mat = reshape(result_block, d_tgt, d_src * n_tau)
 
-        # Sum over all intermediate sectors with direct O(1) lookups
-        @inbounds for mid in 1:n_sectors
-            A_key = (tgt, mid)
-            B_key = (mid, src)
+        # Single contributing intermediate sector, fixed by the left flux
+        mid = _intermediate_sector(basis, A.flux, tgt)
+        mid == 0 && continue
+        A_key = (tgt, mid)
+        B_key = (mid, src)
+        (haskey(A.blocks, A_key) && haskey(B.blocks, B_key)) || continue
+        A_block = A.blocks[A_key]
+        B_block = B.blocks[B_key]
 
-            # Direct dict lookups - no allocation, O(1) each
-            if haskey(A.blocks, A_key) && haskey(B.blocks, B_key)
-                A_block = A.blocks[A_key]
-                B_block = B.blocks[B_key]
-
-                # result[tgt, src] += A[tgt, mid] * B[mid, src] batched over all τ
-                d_mid = size(B_block, 1)
-                B_mat = reshape(B_block, d_mid, d_src * n_tau)
-                mul!(result_mat, A_block, B_mat, one(T), one(T))
-            end
-        end
+        # result[tgt, src] = A[tgt, mid] * B[mid, src] batched over all τ
+        d_mid = size(B_block, 1)
+        B_mat = reshape(B_block, d_mid, d_src * n_tau)
+        mul!(result_mat, A_block, B_mat, one(T), one(T))
     end
 
     return temp_buffer
@@ -127,8 +132,6 @@ function _multiply_prop_op!(
     # Get time dimension and basis (layout: dim1, dim2, n_tau)
     n_tau = size(first(values(A.blocks)), 3)
     basis = A.basis
-    n_sectors = length(basis.sectors)
-
     # Result flux is composition of input fluxes
     result_flux = A.flux + B.flux
     # Allow flux mismatch for empty buffers (they represent zero regardless of flux)
@@ -142,21 +145,18 @@ function _multiply_prop_op!(
         # Zero out the buffer block
         fill!(result_block, zero(T))
 
-        # Sum over all intermediate sectors with direct O(1) lookups
-        @inbounds for mid in 1:n_sectors
-            A_key = (tgt, mid)
-            B_key = (mid, src)
+        # Single contributing intermediate sector, fixed by the left flux
+        mid = _intermediate_sector(basis, A.flux, tgt)
+        mid == 0 && continue
+        A_key = (tgt, mid)
+        B_key = (mid, src)
+        (haskey(A.blocks, A_key) && haskey(B.blocks, B_key)) || continue
+        A_block = A.blocks[A_key]
+        B_block = B.blocks[B_key]
 
-            # Direct dict lookups - no allocation, O(1) each
-            if haskey(A.blocks, A_key) && haskey(B.blocks, B_key)
-                A_block = A.blocks[A_key]
-                B_block = B.blocks[B_key]
-
-                # For each time point: result[tgt, src](τ) += A[tgt, mid](τ) * B[mid, src]
-                @inbounds for k in 1:n_tau
-                    mul!(view(result_block,:,:,k), view(A_block,:,:,k), B_block, 1.0, 1.0)
-                end
-            end
+        # For each time point: result[tgt, src](τ) = A[tgt, mid](τ) * B[mid, src]
+        @inbounds for k in 1:n_tau
+            mul!(view(result_block,:,:,k), view(A_block,:,:,k), B_block, 1.0, 1.0)
         end
     end
 
@@ -244,8 +244,6 @@ function _multiply_prop_prop!(
     # Get time dimension and basis (layout: dim1, dim2, n_tau)
     n_tau = size(first(values(A.blocks)), 3)
     basis = A.basis
-    n_sectors = length(basis.sectors)
-
     # Result flux is composition of input fluxes
     result_flux = A.flux + B.flux
     @boundscheck @assert temp_buffer.flux == result_flux "Buffer flux must match result flux"
@@ -258,22 +256,19 @@ function _multiply_prop_prop!(
         # Zero out the buffer block
         fill!(result_block, zero(T))
 
-        # Sum over all intermediate sectors with direct O(1) lookups
-        @inbounds for mid in 1:n_sectors
-            A_key = (tgt, mid)
-            B_key = (mid, src)
+        # Single contributing intermediate sector, fixed by the left flux
+        mid = _intermediate_sector(basis, A.flux, tgt)
+        mid == 0 && continue
+        A_key = (tgt, mid)
+        B_key = (mid, src)
+        (haskey(A.blocks, A_key) && haskey(B.blocks, B_key)) || continue
+        A_block = A.blocks[A_key]
+        B_block = B.blocks[B_key]
 
-            # Direct dict lookups - no allocation, O(1) each
-            if haskey(A.blocks, A_key) && haskey(B.blocks, B_key)
-                A_block = A.blocks[A_key]
-                B_block = B.blocks[B_key]
-
-                # For each time point: result[tgt, src](τ) += A[tgt, mid](τ) * B[mid, src](τ)
-                @inbounds for k in 1:n_tau
-                    mul!(view(result_block,:,:,k), view(A_block,:,:,k),
-                        view(B_block,:,:,k), 1.0, 1.0)
-                end
-            end
+        # For each time point: result[tgt, src](τ) = A[tgt, mid](τ) * B[mid, src](τ)
+        @inbounds for k in 1:n_tau
+            mul!(view(result_block,:,:,k), view(A_block,:,:,k),
+                view(B_block,:,:,k), 1.0, 1.0)
         end
     end
 
@@ -309,8 +304,6 @@ function _multiply_op_prop_with_K!(
 
     n_tau = size(first(values(B.blocks)), 3)
     basis = B.basis
-    n_sectors = length(basis.sectors)
-
     result_flux = A.flux + B.flux
     @boundscheck @assert result.flux == result_flux "Buffer flux must match result flux"
 
@@ -322,15 +315,16 @@ function _multiply_op_prop_with_K!(
         d_src = size(result_block, 2)
         result_mat = reshape(result_block, d_tgt, d_src * n_tau)
 
-        # Matrix multiplication: result = A * B, batched over all τ in one GEMM
-        @inbounds for mid in 1:n_sectors
+        # Single contributing intermediate sector, fixed by the left flux
+        mid = _intermediate_sector(basis, A.flux, tgt)
+        if mid != 0
             A_key = (tgt, mid)
             B_key = (mid, src)
-
             if haskey(A.blocks, A_key) && haskey(B.blocks, B_key)
                 A_block = A.blocks[A_key]
                 B_block = B.blocks[B_key]
 
+                # result = A * B batched over all τ in one GEMM
                 d_mid = size(B_block, 1)
                 B_mat = reshape(B_block, d_mid, d_src * n_tau)
                 mul!(result_mat, A_block, B_mat, one(T), one(T))
@@ -370,8 +364,6 @@ function _multiply_prop_op_with_K!(
 
     n_tau = size(first(values(A.blocks)), 3)
     basis = A.basis
-    n_sectors = length(basis.sectors)
-
     result_flux = A.flux + B.flux
     @boundscheck @assert result.flux == result_flux "Buffer flux must match result flux"
 
@@ -379,17 +371,18 @@ function _multiply_prop_op_with_K!(
         (tgt, src) = result_key
         fill!(result_block, zero(T))
 
-        # Matrix multiplication: result = A * B
-        @inbounds for mid in 1:n_sectors
+        # Single contributing intermediate sector, fixed by the left flux
+        mid = _intermediate_sector(basis, A.flux, tgt)
+        if mid != 0
             A_key = (tgt, mid)
             B_key = (mid, src)
-
             if haskey(A.blocks, A_key) && haskey(B.blocks, B_key)
                 A_block = A.blocks[A_key]
                 B_block = B.blocks[B_key]
 
                 @inbounds for k in 1:n_tau
-                    mul!(view(result_block,:,:,k), view(A_block,:,:,k), B_block, 1.0, 1.0)
+                    mul!(view(result_block,:,:,k), view(A_block,:,:,k), B_block, 1.0,
+                        1.0)
                 end
             end
         end

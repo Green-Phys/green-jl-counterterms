@@ -1,0 +1,4 @@
+.env
+/docs/Manifest*.toml
+/docs/build/
+/auxiliary/

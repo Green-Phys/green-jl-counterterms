@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(julia:*)",
+      "Bash(python -c \"import json; nb=json.load\\(open\\('NiO_2orb_seet_final.ipynb'\\)\\); [print\\('---',c.get\\('id',''\\),'---\\\\n',''.join\\(c['source']\\)[-600:]\\) for c in nb['cells'] if c.get\\('id',''\\)=='e31ff238']\")"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/format-julia.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

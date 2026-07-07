@@ -1,0 +1,15 @@
+*.jl.*.cov
+*.jl.cov
+*.jl.mem
+/docs/Manifest*.toml
+/docs/build/
+/auxiliary/
+/examples/
+test_*.jl
+/reference/
+/comparison/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride

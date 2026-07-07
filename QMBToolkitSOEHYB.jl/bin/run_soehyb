@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+# QMBToolkitSOEHYB MPI-enabled runner script
+# Usage: ./run_soehyb <input_file.toml> [number_of_processes]
+
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 <input_file.toml> [number_of_processes]"
+    echo "  input_file.toml: Path to the input configuration file"
+    echo "  number_of_processes: Number of MPI processes (default: 1)"
+    exit 1
+fi
+
+INPUT_FILE="$1"
+NPROCS="${2:-1}"
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Disable OpenBLAS multi-threading to avoid conflicts with MPI processes
+export OPENBLAS_NUM_THREADS=1
+# This prevents all MPI ranks from trying to compile simultaneously
+julia --check-bounds=no --project=${PROJECT_DIR} -e "using QMBToolkitSOEHYB"
+
+# Run with mpiexecjl
+~/.julia/bin/mpiexecjl -n "$NPROCS" julia --check-bounds=no --project="$PROJECT_DIR" -e "
+using QMBToolkitSOEHYB
+QMBToolkitSOEHYB.run(\"$INPUT_FILE\")
+"

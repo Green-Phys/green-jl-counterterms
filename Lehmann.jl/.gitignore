@@ -1,0 +1,10 @@
+*.jl.*.cov
+*.jl.cov
+*.jl.mem
+*.dat
+Manifest.toml
+/docs/build/
+*.DS_Store
+*.pb.gz
+*.pdf
+.history

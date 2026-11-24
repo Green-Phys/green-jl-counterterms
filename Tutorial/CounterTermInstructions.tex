@@ -86,14 +86,12 @@ scan over counterterm number $n_{\mathrm{CT}}$ and expansion order $k$.
 
 \section{Repository and Environment}
 
-The working checkout used for this run is
-\begin{center}
-\texttt{/Users/egull/sandbox/YangsCodes}.
-\end{center}
-The relevant Julia package is
-\begin{center}
-\texttt{QMBToolkit/QMBToolkitSOEHYB.jl}.
-\end{center}
+All commands are run from the \texttt{QMBToolkitSOEHYB.jl} package directory of a
+checkout of \url{https://github.com/Green-Phys/green-jl-counterterms}:
+\begin{verbatim}
+git clone https://github.com/Green-Phys/green-jl-counterterms.git
+cd green-jl-counterterms/QMBToolkitSOEHYB.jl
+\end{verbatim}
 Julia was installed with MacPorts and tested as
 \begin{verbatim}
 julia --version
@@ -112,9 +110,8 @@ The light counterterm generator imports \texttt{ArgParse} and
 \texttt{NumericsSOE}.  Add them to the \texttt{QMBToolkitSOEHYB.jl}
 environment before running the generator:
 \begin{verbatim}
-cd /Users/egull/sandbox/YangsCodes/QMBToolkit/QMBToolkitSOEHYB.jl
-julia --project=. -e 'using Pkg; Pkg.add("ArgParse"); \\
-+  Pkg.develop(path="../NumericsSOE.jl"); Pkg.instantiate()'
+cd green-jl-counterterms/QMBToolkitSOEHYB.jl
+julia --project=. -e 'using Pkg; Pkg.add("ArgParse"); Pkg.develop(path="../NumericsSOE.jl"); Pkg.instantiate()'
 \end{verbatim}
 \end{keybox}
 
@@ -177,7 +174,7 @@ save_linear_size = 1001
 
 Start from the package directory:
 \begin{verbatim}
-cd /Users/egull/sandbox/YangsCodes/QMBToolkit/QMBToolkitSOEHYB.jl
+cd green-jl-counterterms/QMBToolkitSOEHYB.jl
 \end{verbatim}
 
 Create the paper-input directories:
@@ -188,15 +185,15 @@ mkdir -p paper_inputs/spinless_beta8_nct3_k2/output
 
 Generate the initial non-interacting spinless impurity Hamiltonian files:
 \begin{verbatim}
-julia --project=. scripts/gen_interaction_hopping.jl \\
-+  --n_spin_impurity 1 \\
-+  --n_orbital_impurity 1 \\
-+  --t 0.0 \\
-+  --U 0.0 \\
-+  --J 0.0 \\
-+  --Uprime 0.0 \\
-+  --mu 0.0 \\
-+  --output_dir paper_inputs/spinless_beta8_nct3_k2/data
+julia --project=. scripts/gen_interaction_hopping.jl \
+  --n_spin_impurity 1 \
+  --n_orbital_impurity 1 \
+  --t 0.0 \
+  --U 0.0 \
+  --J 0.0 \
+  --Uprime 0.0 \
+  --mu 0.0 \
+  --output_dir paper_inputs/spinless_beta8_nct3_k2/data
 \end{verbatim}
 This creates \texttt{hopping.txt} and \texttt{Uijkl.txt}; before adding
 counterterms, \texttt{Uijkl.txt} contains only \texttt{0}.
@@ -205,17 +202,17 @@ Fit the semicircular hybridization using the in-repository ESPRIT routine,
 construct three counterterms, modify the hopping matrix, and write the residual
 hybridization SOE:
 \begin{verbatim}
-julia --project=. scripts/gen_soe_counterterms_hyb_light.jl \\
-+  --beta 8.0 \\
-+  --n_spin_impurity 1 \\
-+  --n_orbital_impurity 1 \\
-+  --n_tau 1000 \\
-+  --hyb_type SemiCircular \\
-+  --hopping_file paper_inputs/spinless_beta8_nct3_k2/data/hopping.txt \\
-+  --n_soe_counterterms 3 \\
-+  --n_soe_hybridization 10 \\
-+  --output_dir paper_inputs/spinless_beta8_nct3_k2/data \\
-+  --do_subtraction_trick true
+julia --project=. scripts/gen_soe_counterterms_hyb_light.jl \
+  --beta 8.0 \
+  --n_spin_impurity 1 \
+  --n_orbital_impurity 1 \
+  --n_tau 1000 \
+  --hyb_type SemiCircular \
+  --hopping_file paper_inputs/spinless_beta8_nct3_k2/data/hopping.txt \
+  --n_soe_counterterms 3 \
+  --n_soe_hybridization 10 \
+  --output_dir paper_inputs/spinless_beta8_nct3_k2/data \
+  --do_subtraction_trick true
 \end{verbatim}
 The generator reported
 \begin{verbatim}
@@ -226,8 +223,8 @@ Residual SOE poles    = 13
 
 Run the solver:
 \begin{verbatim}
-julia --project=. -e 'using QMBToolkitSOEHYB; \\
-+  QMBToolkitSOEHYB.run("paper_inputs/spinless_beta8_nct3_k2/input.toml")'
+julia --project=. -e 'using QMBToolkitSOEHYB; QMBToolkitSOEHYB.run(ARGS[1])' \
+  paper_inputs/spinless_beta8_nct3_k2/input.toml
 \end{verbatim}
 The run completed in about 35 seconds on one process and wrote
 \texttt{output/sim.h5}.
@@ -323,7 +320,10 @@ The helper script
 \texttt{paper\_inputs/spinful\_hubbard\_beta8\_U2\_scan/prepare\_inputs.py}
 \end{center}
 writes the \texttt{input.toml} files for $n_{\mathrm{CT}}=0,1,2,3$ and
-$k=0,1,2$.
+$k=0,1,2$.  (This script is not yet part of the repository; each input has the
+same form as the spinless \texttt{input.toml}, with \texttt{file\_path} pointing
+to the \texttt{nct}$n$\texttt{/data} directory and the propagator and
+Green's-function orders set to $k$ and $k+1$.)
 
 \subsection{Generation Commands}
 
@@ -370,7 +370,7 @@ $n_{\mathrm{CT}}$ & counterterm fit error & residual SOE error \\
 
 Run one case as
 \begin{verbatim}
-INPUT=paper_inputs/spinful_hubbard_beta8_U2_scan/nct2/k1/input.toml
+export INPUT=paper_inputs/spinful_hubbard_beta8_U2_scan/nct2/k1/input.toml
 julia --project=. -e '
 using QMBToolkitSOEHYB
 QMBToolkitSOEHYB.run(ENV["INPUT"])

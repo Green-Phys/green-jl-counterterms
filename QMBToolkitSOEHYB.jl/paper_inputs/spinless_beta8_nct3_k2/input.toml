@@ -1,0 +1,28 @@
+# Spinless semicircular-bath benchmark: beta t = 8, three counterterms,
+# bare hybridization expansion through k = 2.
+# Paths are relative to this file. Generate data/ first; see the top-level README.md.
+
+[model]
+beta = 8.0
+file_path = "data"
+hopping_file = "hopping.txt"
+interaction_file = "Uijkl.txt"
+hybridization_poles_file = "hyb_poles.txt"
+hybridization_weights_file = "hyb_weights.txt"
+
+[solver]
+output_path = "output"
+
+# The propagator order counts hybridization lines; the Green's-function order is one larger.
+[solver.propagator]
+is_bold = false
+expansion_order = 2
+
+[solver.green]
+is_bold = false
+expansion_order = 3
+save_linear_size = 1001
+
+[solver.dlr]
+Euv = 500.0
+rtol = 1e-14

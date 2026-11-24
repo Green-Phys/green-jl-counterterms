@@ -28,7 +28,7 @@ binaries; no system MPI or HDF5 is needed.
 
 This reproduces the simplest benchmark from the paper: a non-interacting spinless impurity coupled to a
 semicircular bath at $\beta t = 8$, with three counterterms and a bare hybridization expansion through $k = 2$.
-It runs in under a minute on a single core.
+It takes a few minutes on a single core, most of it spent compiling Julia code on the first run.
 
 ```sh
 git clone https://github.com/Green-Phys/green-jl-counterterms.git

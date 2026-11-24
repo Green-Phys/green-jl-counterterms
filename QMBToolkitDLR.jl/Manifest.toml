@@ -76,7 +76,7 @@ version = "1.7.1"
 
 [[deps.Lehmann]]
 deps = ["ChainRulesCore", "CompositeGrids", "DelimitedFiles", "FastGaussQuadrature", "LinearAlgebra", "Printf", "Quadmath", "Random", "StaticArrays"]
-path = "/Users/yangyu/src/Lehmann.jl/"
+path = "../Lehmann.jl/"
 uuid = "95bf888a-8996-4655-9f35-1c0506bdfefe"
 version = "0.2.7"
 

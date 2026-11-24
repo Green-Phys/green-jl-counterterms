@@ -1,0 +1,61 @@
+name: README quick start
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  spinless-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: QMBToolkitSOEHYB.jl
+    steps:
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1.12'
+      - uses: julia-actions/cache@v3
+
+      - name: Set up environment (as in README)
+        run: julia --project=. -e 'using Pkg; Pkg.add("ArgParse"); Pkg.develop(path="../NumericsSOE.jl"); Pkg.instantiate()'
+
+      - name: Generate input and run solver (as in README)
+        run: |
+          set -euo pipefail
+          RUN=paper_inputs/spinless_beta8_nct3_k2
+          mkdir -p $RUN/data $RUN/output
+          julia --project=. scripts/gen_interaction_hopping.jl \
+            --n_spin_impurity 1 --n_orbital_impurity 1 \
+            --t 0.0 --U 0.0 --J 0.0 --Uprime 0.0 --mu 0.0 \
+            --output_dir $RUN/data
+          julia --project=. scripts/gen_soe_counterterms_hyb_light.jl \
+            --beta 8.0 --n_spin_impurity 1 --n_orbital_impurity 1 --n_tau 1000 \
+            --hyb_type SemiCircular --hopping_file $RUN/data/hopping.txt \
+            --n_soe_counterterms 3 --n_soe_hybridization 10 \
+            --output_dir $RUN/data --do_subtraction_trick true
+          time julia --project=. -e 'using QMBToolkitSOEHYB; QMBToolkitSOEHYB.run(ARGS[1])' $RUN/input.toml
+
+      - name: Compare with the reference values in Tutorial/CounterTermInstructions.tex
+        run: |
+          julia --project=. -e '
+            using HDF5
+            h5open("paper_inputs/spinless_beta8_nct3_k2/output/sim.h5") do f
+              Z   = read(f, "/partition_function/partition_function_by_order")
+              tau = read(f, "/green/linear_grid/tau")
+              G   = read(f, "/green/linear_grid/green_tau")
+              println("Z by order: ", Z)
+              println("tau[1:4]:   ", tau[1:4])
+              println("G[1:4]:     ", vec(G)[1:4])
+              Zref = [1.1272573397719343, 1.127404158880327, 1.1273824707953337]
+              Gref = [-0.5000000000165467, -0.4966851837749550, -0.4934020226658121, -0.4901501755234226]
+              @assert isapprox(Z, Zref; rtol=1e-6) "Z differs from the tutorial reference"
+              @assert isapprox(vec(G)[1:4], Gref; rtol=1e-6) "G(tau) differs from the tutorial reference"
+            end'
+
+      - name: Package tests (as in README)
+        run: julia --project=. -e 'using Pkg; Pkg.test()'

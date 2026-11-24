@@ -16,7 +16,7 @@ QMBToolkitED = "1d152fa9-cea6-4728-9c5c-b50c1b54dcac"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 
 [sources]
-Lehmann = {path = "../../Lehmann.jl/"}
+Lehmann = {path = "../Lehmann.jl/"}
 QMBToolkitDLR = {path = "../QMBToolkitDLR.jl"}
 QMBToolkitED = {path = "../QMBToolkitED.jl/"}
 
